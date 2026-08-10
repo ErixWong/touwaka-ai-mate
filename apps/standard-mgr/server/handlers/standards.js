@@ -63,7 +63,9 @@ export async function get(ctx, deps) {
  * - standard_code：标准编号，如 "GB/T 19001-2016"
  * - standard_name：标准名称
  *
- * 校验：文档存在、doc_type='standard'、processing_status='ready'、document_id 不重复
+ * 校验：文档存在、processing_status='ready'、document_id 不重复；
+ * 文档类型不限（contract / knowledge / department_doc / standard 均可），
+ * 纳管成功后 documents.doc_type 改写为 'standard'
  */
 export async function post(ctx, deps) {
   try {

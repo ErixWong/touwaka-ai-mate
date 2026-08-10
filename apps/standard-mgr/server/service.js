@@ -1582,8 +1582,9 @@ class StandardMgrService {
    * 从文档平台纳管一份标准文档
    *
    * 校验：
-   * - 文档存在且 doc_type='standard'
-   * - 文档 processing_status='ready'（已完成 OCR → Clean → Outline → Chunk → Embedding 全链路）
+   * - 文档存在且 processing_status='ready'（已完成 OCR → Clean → Outline → Chunk → Embedding 全链路）
+   * - 文档类型不限：contract / knowledge / department_doc / standard 均可纳管，
+   *   纳管成功后会把该文档的 doc_type 改写为 'standard'（类型改写，见下方步骤 6）
    * - document_id 唯一：同一文档只能纳管一次
    *
    * @param {object} params
@@ -1596,7 +1597,7 @@ class StandardMgrService {
    * @returns {Promise<object>} 创建的 app_standard 记录
    */
   async createStandard({ document_id, standard_type, standard_code, standard_name, revision_id, user_id, enterprise_id }) {
-    // ---- 1. 校验文档存在与类型 ----
+    // ---- 1. 校验文档存在与处理状态（类型不限，纳管时改写为 standard） ----
     const Document = this.db.getModel('document');
     const doc = await Document.findByPk(document_id, {
       attributes: ['id', 'doc_type', 'processing_status', 'current_revision_id', 'collection_id'],
@@ -1605,12 +1606,6 @@ class StandardMgrService {
     if (!doc) {
       const err = new Error(`Document not found: ${document_id}`);
       err.status = 404;
-      throw err;
-    }
-
-    if (doc.doc_type !== 'standard') {
-      const err = new Error(`Document must be doc_type=standard (current: ${doc.doc_type})`);
-      err.status = 400;
       throw err;
     }
 
@@ -1693,6 +1688,16 @@ class StandardMgrService {
       manual_fix_count: 0,
       created_by: user_id || null,
     });
+
+    // ---- 6. 类型改写：把文档平台的文档类型改写为 standard ----
+    // 设计意图：纳管=把任意类型文档收编为标准，documents.doc_type 同步改写，
+    // 保证文档平台/检索侧与 app_standard 侧类型语义一致
+    if (doc.doc_type !== 'standard') {
+      await Document.update(
+        { doc_type: 'standard' },
+        { where: { id: document_id } },
+      );
+    }
 
     return standard.toJSON ? standard.toJSON() : standard;
   }

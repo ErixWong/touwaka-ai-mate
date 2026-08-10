@@ -382,9 +382,10 @@ async function handleSearch() {
   searchTimer = setTimeout(async () => {
     docSearchLoading.value = true
     try {
+      // 纳管搜索不限制 doc_type：任何类型文档都可被选为纳管对象，
+      // 纳管时后端会把该文档的 doc_type 改写为 standard（见 service.createStandard）
       const result = await searchDocuments({
         keyword: searchKeyword.value || undefined,
-        doc_type: 'standard',
         processing_status: 'ready',
         page_size: 50,
       })

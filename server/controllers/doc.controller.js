@@ -229,7 +229,38 @@ class DocController {
       if (doc_type) where.doc_type = doc_type;
       if (collection_id) where.collection_id = collection_id;
       if (processing_status) where.processing_status = processing_status;
-      if (keyword) where.title = { [Op.like]: `%${keyword}%` };
+      if (keyword) {
+        // 扩展 keyword 匹配：标题 / 文档ID / 来源主键 / 版本ID / 版本标签 / 版本号
+        const kw = `%${keyword}%`;
+        const orConditions = [
+          { title: { [Op.like]: kw } },
+          { id: { [Op.like]: kw } },
+          { source_ref_id: { [Op.like]: kw } },
+        ];
+        // 版本维度匹配：先查 document_revisions 拿到匹配的 document_id 集合
+        const DocVersion = this.db.getModel('document_revision');
+        const revWhere = {
+          [Op.or]: [
+            { id: { [Op.like]: kw } },
+            { revision_label: { [Op.like]: kw } },
+          ],
+        };
+        // 纯数字关键词额外匹配 revision_no（机器版号）
+        const numericKeyword = Number(keyword);
+        if (Number.isInteger(numericKeyword)) {
+          revWhere[Op.or].push({ revision_no: numericKeyword });
+        }
+        const revRows = await DocVersion.findAll({
+          where: revWhere,
+          attributes: ['document_id'],
+          raw: true,
+        });
+        if (revRows.length) {
+          const docIds = [...new Set(revRows.map(r => r.document_id))];
+          orConditions.push({ id: { [Op.in]: docIds } });
+        }
+        where[Op.or] = orConditions;
+      }
 
       const { count, rows } = await this.models.DocDocument.findAndCountAll({
         where,

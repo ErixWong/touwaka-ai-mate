@@ -226,6 +226,8 @@ function handleRebuild() {
 function handleOnboarded() {
   showUploadDialog.value = false
   store.fetchStandards()
+  // R16: 纳管可能新建了企业，同步刷新企业花名册，避免左侧树分组显示企业 ID
+  store.fetchEnterprises()
 }
 
 /** R9-1: 关闭页签（按 tab_id） */
