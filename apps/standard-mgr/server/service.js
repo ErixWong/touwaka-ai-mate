@@ -20,8 +20,12 @@
 
 import logger from '../../../lib/logger.js';
 import Utils from '../../../lib/utils.js';
+import jwt from 'jsonwebtoken';
 import DocAccessService from '../../../lib/doc-access-service.js';
 import { Op } from 'sequelize';
+
+const CLEAN_TIMEOUT_MS = 15 * 60 * 1000; // 15 分钟
+const TASK_TOKEN_EXPIRY = '4h'; // 后台任务 token 有效期（需长于清洗超时）
 
 // ============================================================
 // 常量
@@ -1352,6 +1356,208 @@ class StandardMgrService {
     return affected > 0;
   }
 
+  // ============================================================
+  // R17-1: runCleaningPipeline — 清洗流程单一编排点
+  // ============================================================
+
+  /**
+   * 执行一次完整的锚点清洗生命周期（R17-1 收编）。
+   *
+   * 编排顺序（全部在本方法内完成，入口层只负责调用本方法）：
+   *   1. 校验标准存在且已关联文档/版本
+   *   2. 原子锁（tryLockForCleaning）——已被占用时直接返回 { accepted: false }
+   *   3. 生成后台任务长期 token（防止工具回调 401）
+   *   4. 异步执行清洗会话（_runCleaningAsync）：
+   *      - 查找锚点清洗专家
+   *      - 清理 auto 记录（deleteAutoRefAnchors）
+   *      - 创建 Topic
+   *      - 构造开工消息（buildCleanMessage）
+   *      - 驱动 agent（streamChat，带超时）
+   *      - 成功 → updateAnchorBuildStatus('done')（内部连锁触发副本重建）
+   *                 + 异步 runGapBackfill({ trigger: 'clean_done' })
+   *      - 失败 → updateAnchorBuildStatus('error', msg)
+   *
+   * 所有入口（clean 端点、纳管自动清洗钩子）统一走本方法，
+   * 禁止在 handler / 脚本中复制编排。
+   *
+   * @param {string} standardId
+   * @param {object} opts
+   * @param {object} opts.session - 触发者会话（用于生成长期 token）
+   * @param {object} opts.chatService - ChatService 实例（由入口层注入）
+   * @returns {Promise<{ accepted: boolean, reason?: string }>}
+   *   accepted=false 表示该标准正在清洗中（调用方应返回 409）
+   */
+  async runCleaningPipeline(standardId, { session, chatService } = {}) {
+    // 1. 校验标准
+    const standard = await this.getStandard(standardId);
+    if (!standard) {
+      const err = new Error('Standard not found');
+      err.status = 404;
+      throw err;
+    }
+
+    const documentId = standard.document_id;
+    const revisionId = standard.current_revision_id;
+    if (!documentId || !revisionId) {
+      const err = new Error('标准缺少关联的文档或版本信息');
+      err.status = 400;
+      throw err;
+    }
+
+    if (!chatService) {
+      const err = new Error('ChatService 不可用');
+      err.status = 500;
+      throw err;
+    }
+
+    const userId = session?.id;
+    if (!userId) {
+      const err = new Error('未登录');
+      err.status = 401;
+      throw err;
+    }
+
+    // 2. 原子锁（R14-2）
+    const locked = await this.tryLockForCleaning(standardId);
+    if (!locked) {
+      return { accepted: false, reason: '清洗正在进行中' };
+    }
+
+    // 3. 生成长期 token 替代用户短期 JWT，防止工具回调 401
+    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    const taskToken = jwt.sign(
+      { userId, role: session.roles?.[0] || 'user' },
+      jwtSecret,
+      { expiresIn: TASK_TOKEN_EXPIRY },
+    );
+    const taskSession = { ...session, accessToken: taskToken };
+
+    // 4. 异步执行清洗，不阻塞响应
+    this._runCleaningAsync({
+      chatService,
+      userId,
+      session: taskSession,
+      standardId,
+      documentId,
+      revisionId,
+    }).catch(err => {
+      logger.error(`[standard-mgr] runCleaningPipeline async error for ${standardId}: ${err.message}`);
+    });
+
+    return { accepted: true };
+  }
+
+  /**
+   * 异步清洗会话（内部实现，编排在 runCleaningPipeline 中声明）
+   */
+  async _runCleaningAsync({ chatService, userId, session, standardId, documentId, revisionId }) {
+    let expertId = null;
+
+    try {
+      // ── 1. 查找锚点清洗专家 ──
+      expertId = await this._findAnchorExpert();
+      if (!expertId) {
+        throw Object.assign(
+          new Error('未找到标准引用清洗专家，请先运行 scripts/setup-anchor-expert.mjs'),
+          { status: 404 },
+        );
+      }
+
+      logger.info(
+        `[standard-mgr] 开始清洗: standard=${standardId} doc=${documentId} revision=${revisionId} expert=${expertId}`
+      );
+
+      // ── 2. 清空 auto 记录（R15-6），manual/user_confirmed 永久保留 ──
+      const deletedCount = await this.deleteAutoRefAnchors(standardId, revisionId);
+      logger.info(`[standard-mgr] 清洗前置清理: 删除 ${deletedCount} 条 auto 记录`);
+
+      // ── 3. 创建会话 ──
+      const topicId = await chatService.createNewTopic(userId, expertId, `标准清洗 — ${standardId}`, null);
+
+      // ── 4. 构造开工消息 ──
+      const content = buildCleanMessage(documentId, revisionId, standardId);
+
+      // ── 5. 驱动 AgentLoop（带超时） ──
+      const result = await new Promise((resolve) => {
+        let settled = false;
+        const timeoutId = setTimeout(() => {
+          if (!settled) { settled = true; resolve({ ok: false, error: '清洗超时（15 分钟）' }); }
+        }, CLEAN_TIMEOUT_MS);
+
+        chatService.streamChat(
+          {
+            topic_id: topicId,
+            user_id: userId,
+            expert_id: expertId,
+            content,
+            session,
+          },
+          // onDelta — 清洗不需要实时推送
+          () => {},
+          // onComplete
+          (completeResult) => {
+            if (!settled) {
+              settled = true;
+              clearTimeout(timeoutId);
+              resolve({ ok: true, messageId: completeResult.message_id });
+            }
+          },
+          // onError
+          (error) => {
+            if (!settled) {
+              settled = true;
+              clearTimeout(timeoutId);
+              resolve({ ok: false, error: error.message || String(error) });
+            }
+          },
+        );
+      });
+
+      // ── 6. 根据结果更新状态（连锁触发重建）与回填 ──
+      if (result.ok) {
+        await this.updateAnchorBuildStatus(standardId, 'done');
+        logger.info(`[standard-mgr] 清洗完成: standard=${standardId}`);
+
+        // P1-3 触发②：清洗完成后异步执行 gap 回填
+        this.runGapBackfill({
+          trigger: 'clean_done',
+          standard_id: standardId,
+        }).catch(err => {
+          logger.error(`[standard-mgr] backfill-clean-done failed: ${err.message}`);
+        });
+      } else {
+        await this.updateAnchorBuildStatus(standardId, 'error', result.error);
+        logger.warn(`[standard-mgr] 清洗失败: standard=${standardId} error=${result.error}`);
+      }
+    } catch (err) {
+      logger.error(`[standard-mgr] 清洗异常: standard=${standardId} ${err.message}`);
+      try {
+        await this.updateAnchorBuildStatus(standardId, 'error', err.message);
+      } catch (statusErr) {
+        logger.error(`[standard-mgr] 更新错误状态失败: ${statusErr.message}`);
+      }
+    }
+  }
+
+  /**
+   * 查找绑定 skill-standard-anchor 且启用的专家 ID
+   */
+  async _findAnchorExpert() {
+    const ExpertSkill = this.db.getModel('expert_skill');
+    const Expert = this.db.getModel('expert');
+    const Skill = this.db.getModel('skill');
+
+    const record = await ExpertSkill.findOne({
+      include: [
+        { model: Skill, as: 'skill', where: { id: 'skill-standard-anchor' }, required: true },
+        { model: Expert, as: 'expert', where: { is_active: true }, required: true },
+      ],
+      raw: true,
+    });
+
+    return record?.expert_id || null;
+  }
+
   /**
    * 更新标准的锚点构建状态
    *
@@ -2036,6 +2242,63 @@ class StandardMgrService {
 
     return null;
   }
+}
+
+/**
+ * R17-1：构造清洗开工消息（原位于 handlers/standards/clean.js，随编排收编迁入 service）
+ */
+function buildCleanMessage(documentId, revisionId, standardId) {
+  return `请对以下标准文档执行完整的引用清洗（含外部引用和内部交叉引用）。
+
+文档 ID: ${documentId}
+版本 ID: ${revisionId}
+标准 ID: ${standardId}
+
+请按以下流程执行：
+
+### 阶段 1：获取章节结构
+1. 调用 list_revision_sections 获取章节列表，记录 outline_id → title 映射
+
+### 阶段 2：读写交替（核心）
+2. **逐批读**：每轮调用 1-3 个 read_section_context（建议 1-3 节），跳过"规范性引用文件""参考文献""前言""范围"等书目章。**读完立刻分析并写入，不攒！**
+3. **立刻写**：读完当前这批后，立即识别所有引用并调用 write_anchor_result 写入：
+   - 外部引用：对其他标准（GB/T、ISO、QC/T 等）的引用，先落 gap（定位在阶段 3 做）
+   - 内部交叉引用：对本文档其他章节的引用（如"符合 3.2.2 条""见 4.3"等），从步骤 1 的章节列表匹配目标 outline_id，直接落 valid
+4. **写入前查重**：写某个 section 前先调 list_section_references 看一眼已有记录，从 max(existing_index)+1 开始编号，同 source_text/同 target 的不重复写
+5. 写入后立刻回到步骤 2 读下一批，不攒、不等
+   效率目标：每批 1-3 章节，~30 轮覆盖全部 51 章节
+
+### 阶段 2.5：长章节必须翻页读完（关键！）
+- read_section_context 返回 page_has_more=true 时，**必须**用 page_next_offset 作为 page 继续调用，直到 page_has_more=false 为止
+- **禁止**只读第一页就跳过剩余内容；禁止用 read_revision_content 一次性读大节（全文 >5000 字符会被工具结果摘要化，你只能看到摘要看不到正文）
+- 返回 overlap_lines>0 表示本页与上一页有行重叠（embedding 上下文连续性设计），写锚点时按 from_line 去重，**不要把重叠处的引用写两遍**
+- 读完每页**立即**写该页发现的引用，再翻下一页（与读写交替一致，防止翻页过程中遗忘）
+- 同一章节翻页各页共用一个 outline_id，occurrence_index 按页累计递增，不要跨页重复从 0 编号
+
+### 阶段 3：补定位
+6. 对已写入的外部 gap 引用，逐条定位目标文档/章节并回写
+
+### 阶段 3.5：完成前强制检查（必须执行）
+7. 阶段 2 写完后，**必须**调用 list_reference_gaps(standard_id) 检查剩余 gap：
+  - 如果还有 **尚未尝试处理** 的 gap，**禁止**输出“完成/处理完毕/最终报告”，必须继续做阶段 3
+  - 如果这些 gap 你已经逐条尝试定位，但因为系统内缺少对应标准、没有合适版本、没有足够线索等原因仍无法回填，则**允许保留 gap 并收尾**
+  - 收尾时必须明确说明：哪些 gap 已尝试处理但仍无法定位，以及无法定位的原因
+8. 阶段 3 中，外部引用定位必须优先组合使用以下工具：
+  - find_documents_by_standard_code
+  - find_documents_by_standard_name
+  - get_document_revisions
+  - select_revision_candidate
+  - find_section_candidates
+9. **禁止跳过阶段 3**：即使阶段 2 已经把所有外部引用先落成 gap，也不代表任务完成；gap 只是待回填中间态，不是最终完成态
+
+⚠️ 关键约束：
+- source_outline_id 必须是 list_revision_sections 返回的 outline_id 的**逐字复制**
+- **跨 outline 独立**：每个 outline 是独立引用作用域，**禁止跨 outline 去重**。同一标准出现在 3.x 章和 4.x 章 → 各写一条，不要因为"另一个章节写过了"就跳过
+- **逐子节扫描**：read_section_context 返回的原文按 \`##\` 分界为独立子节，每个子节必须扫描
+- OCR 可能导致章节边界不准（如 3.15.1 的正文出现在 3.16 的 chunk 中），读到正文后以正文为准，不要因为 outline 标题对不上就跳过内容
+- **收尾门槛**：只有在你已经执行过 list_reference_gaps，并对剩余 gap 逐条尝试过定位后，才允许输出“阶段3完成”“清洗完成”“最终报告”等结束语；允许存在“已尝试但暂时无法回填”的 gap
+
+请开始。`;
 }
 
 export default StandardMgrService;

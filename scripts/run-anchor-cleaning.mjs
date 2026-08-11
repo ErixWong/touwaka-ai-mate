@@ -1,12 +1,20 @@
 /**
- * P0-3: 引用清洗 agent 驱动脚本
+ * P0-3: 引用清洗触发脚本（R17-2 退役改造）
  *
- * 以根模式驱动"标准引用清洗专家"完成一次端到端引用清洗。
- * 捕获完整 SSE 事件流、工具调用轨迹，落盘到 runs/ 目录。
+ * 原实现自建聊天驱动（createFreshTopic + openSse + POST /api/chat），
+ * 与服务端 /clean 端点形成"双驾驶路径"并长期漂移（副本未重建事故的根因之一）。
+ *
+ * R17-2：退役为"端点调用方"——只做：
+ *   1. 登录
+ *   2. 获取文档信息
+ *   3. （可选）纳管标准
+ *   4. 触发 POST /api/apps/standard-mgr/standards/:standardId/clean
+ *      （清洗生命周期全部在 service.runCleaningPipeline 内完成）
+ *   5. 轮询 GET /standards/:standardId 的 anchor_build_status 直到 done/error
+ *   6. 落盘运行记录到 runs/ 目录
  *
  * Usage:
  *   $env:API_BASE='http://localhost:3017'
- *   $env:EXPERT_ID='<expert_id>'
  *   $env:DOCUMENT_ID='mscmltrt3ejy03obd9f5'
  *   node scripts/run-anchor-cleaning.mjs
  *
@@ -14,13 +22,13 @@
  *   API_BASE          — 服务地址（默认 http://localhost:3017）
  *   TEST_ACCOUNT      — 登录账号（默认 admin）
  *   TEST_PASSWORD     — 登录密码（默认 password123）
- *   EXPERT_ID         — 清洗专家 ID（必填）
  *   DOCUMENT_ID       — 待清洗文档 ID（必填）
  *   STANDARD_CODE     — 标准编号（纳管用，默认 auto-extract）
  *   STANDARD_NAME     — 标准名称（纳管用，默认 auto-extract）
  *   STANDARD_TYPE     — 标准类型（默认 national）
  *   SKIP_ONBOARD      — 跳过纳管步骤（默认 false，设 1 跳过）
- *   REQUEST_TIMEOUT_MS — 清洗超时（默认 600000，10 分钟）
+ *   POLL_TIMEOUT_MS   — 轮询超时（默认 900000，15 分钟，与服务端一致）
+ *   POLL_INTERVAL_MS  — 轮询间隔（默认 5000，5 秒）
  */
 
 import http from 'node:http';
@@ -33,18 +41,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const API_BASE = process.env.API_BASE || 'http://localhost:3017';
 const TEST_ACCOUNT = process.env.TEST_ACCOUNT || 'admin';
 const TEST_PASSWORD = process.env.TEST_PASSWORD || 'password123';
-const EXPERT_ID = process.env.EXPERT_ID || '';
 const DOCUMENT_ID = process.env.DOCUMENT_ID || '';
 const STANDARD_CODE = process.env.STANDARD_CODE || '';
 const STANDARD_NAME = process.env.STANDARD_NAME || '';
 const STANDARD_TYPE = process.env.STANDARD_TYPE || 'national';
 const SKIP_ONBOARD = process.env.SKIP_ONBOARD === '1';
-const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 600000);
+const POLL_TIMEOUT_MS = Number(process.env.POLL_TIMEOUT_MS || 900000);
+const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 5000);
 
-if (!EXPERT_ID) {
-  console.error('❌ EXPERT_ID is required');
-  process.exit(1);
-}
 if (!DOCUMENT_ID) {
   console.error('❌ DOCUMENT_ID is required');
   process.exit(1);
@@ -85,76 +89,6 @@ function requestJson(path, { method = 'GET', token = null, body = null, timeout_
     req.on('error', reject);
     if (payload) req.write(payload);
     req.end();
-  });
-}
-
-function parseSseChunk(buffer, onEvent) {
-  let remaining = buffer;
-  let index = remaining.indexOf('\n\n');
-  while (index !== -1) {
-    const raw = remaining.slice(0, index);
-    remaining = remaining.slice(index + 2);
-    index = remaining.indexOf('\n\n');
-
-    const event = { event: 'message', data: '' };
-    for (const line of raw.split('\n')) {
-      if (line.startsWith('event:')) {
-        event.event = line.slice('event:'.length).trim();
-      } else if (line.startsWith('data:')) {
-        event.data += line.slice('data:'.length).trim();
-      }
-    }
-    if (event.data) {
-      try { event.data = JSON.parse(event.data); } catch { /* raw text */ }
-    }
-    onEvent(event);
-  }
-  return remaining;
-}
-
-function openSse({ expert_id, token, onEvent, onError, onClose }) {
-  const url = new URL('/api/chat/stream', API_BASE);
-  url.searchParams.set('expert_id', expert_id);
-  url.searchParams.set('token', token);
-  const transport = url.protocol === 'https:' ? https : http;
-
-  const req = transport.get(url, { headers: { Accept: 'text/event-stream' } });
-
-  let buffer = '';
-  let connected = false;
-
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      if (!connected) reject(new Error('Timed out waiting for SSE connected event'));
-    }, 10000);
-
-    req.on('response', res => {
-      res.setEncoding('utf8');
-      res.on('data', chunk => {
-        buffer = parseSseChunk(buffer + chunk, event => {
-          onEvent(event);
-          if (!connected && event.event === 'connected') {
-            connected = true;
-            clearTimeout(timer);
-            resolve({ close: () => req.destroy() });
-          }
-        });
-      });
-      res.on('error', err => {
-        clearTimeout(timer);
-        if (onError) onError(err);
-        reject(err);
-      });
-      res.on('end', () => {
-        clearTimeout(timer);
-        if (onClose) onClose();
-      });
-    });
-    req.on('error', err => {
-      clearTimeout(timer);
-      if (onError) onError(err);
-      reject(err);
-    });
   });
 }
 
@@ -211,11 +145,38 @@ async function onboardStandard(token, documentId, standardType, standardCode, st
   throw new Error(`Onboard failed: ${JSON.stringify(response.data)}`);
 }
 
+async function triggerClean(token, standardId) {
+  const response = await requestJson(`/api/apps/standard-mgr/standards/${standardId}/clean`, {
+    method: 'POST',
+    token,
+  });
+
+  if (response.status === 200 && response.data?.code === 200) {
+    return { accepted: true, data: response.data.data };
+  }
+  if (response.status === 200 && response.data?.code === 409) {
+    return { accepted: false, reason: response.data.message };
+  }
+  throw new Error(`Trigger clean failed: ${JSON.stringify(response.data)}`);
+}
+
+async function getStandard(token, standardId) {
+  const response = await requestJson(`/api/apps/standard-mgr/standards/${standardId}`, { token });
+  if (response.status !== 200 || response.data?.code !== 200) {
+    throw new Error(`Get standard failed: ${JSON.stringify(response.data)}`);
+  }
+  return response.data.data;
+}
+
 async function main() {
-  console.log('=== P0-3: 引用清洗驱动脚本 ===\n');
+  console.log('=== P0-3: 引用清洗触发脚本（端点调用方）===\n');
   const runLog = { runId: RUN_ID, startedAt: new Date().toISOString(), steps: [], events: [], toolCalls: [], errors: [] };
 
   let token;
+  let standardId = null;
+  let finalStatus = null;
+  let triggerResult = { accepted: true };
+
   try {
     // ---- Step 1: Login ----
     console.log('[1/5] 登录...');
@@ -236,12 +197,9 @@ async function main() {
     runLog.steps.push({ step: 'get_document', status: 'ok', document: { id: doc.id, title: doc.title, status: doc.processing_status, revision_id: doc.current_revision_id } });
 
     // ---- Step 3: Onboard standard ----
-    let standardId = null;
     if (!SKIP_ONBOARD) {
       console.log('[3/5] 纳管标准...');
-      // R2-5：standard_code 与 standard_name 分离
       // standard_code 优先取环境变量 → 从标题提取编号部分 → 回退用标题
-      // standard_name 优先取环境变量 → 用文档标题（不含编号时需人工传）
       const code = STANDARD_CODE || doc.title?.match(/^[\w/\s-]+/)?.[0]?.trim() || doc.title;
       const name = STANDARD_NAME || doc.title;
       if (!STANDARD_NAME) {
@@ -281,130 +239,57 @@ async function main() {
       }
     }
 
-    // ---- Step 4: Run cleaning via SSE ----
-    console.log('[4/5] 启动清洗对话...');
-    const revisionId = doc.current_revision_id;
-
-    const chatMessage = `请对以下标准文档执行完整的引用清洗。
-
-文档 ID: ${DOCUMENT_ID}
-版本 ID: ${revisionId}${standardId ? `\n标准 ID: ${standardId}` : ''}
-
-请按以下流程执行：
-1. 调用 list_revision_sections 获取章节结构
-2. 逐节通读内容，识别引用
-3. 对每个引用定位目标文档/章节
-4. 调用 write_anchor_result 写入结果
-
-请开始。`;
-
-    let chatRequestId = null;
-    let completeEvent = null;
-    let errorEvent = null;
-
-    const { close } = await openSse({
-      expert_id: EXPERT_ID,
-      token,
-      onEvent: (event) => {
-        runLog.events.push({ time: new Date().toISOString(), ...event });
-
-        // Track tool calls — R2-7: SSE tool_call 事件用 camelCase toolId
-        if (event.event === 'tool_call_start' || event.event === 'tool_call') {
-          const toolName = event.data?.toolId
-            || event.data?.toolCallData?.tool_name
-            || event.data?.toolCallData?.toolName
-            || event.data?.tool_name
-            || event.data?.toolName
-            || event.data?.name
-            || 'unknown';
-          const toolArgs = event.data?.arguments || event.data?.tool_args || null;
-          runLog.toolCalls.push({
-            time: new Date().toISOString(),
-            event: event.event,
-            tool_name: toolName,
-            arguments: toolArgs,
-            request_id: event.data?.request_id,
-          });
-          console.log(`  🔧 ${toolName}`);
-        }
-
-        if (event.event === 'tool_result' || event.event === 'tool_call_result') {
-          const last = runLog.toolCalls[runLog.toolCalls.length - 1];
-          if (last) {
-            last.result = event.data?.result || event.data?.content || null;
-          }
-        }
-
-        // Track chat request ID
-        if (event.data?.request_id && !chatRequestId) {
-          chatRequestId = event.data.request_id;
-        }
-
-        // Track terminal events
-        if (event.event === 'complete') {
-          completeEvent = event;
-        }
-        if (event.event === 'error') {
-          errorEvent = event;
-        }
-      },
-      onError: (err) => {
-        runLog.errors.push({ type: 'sse_error', error: err.message });
-      },
-    });
-
-    // ---- Send the chat message (POST /api/chat) ----
-    console.log('  发送清洗指令...');
-    const postResp = await requestJson('/api/chat', {
-      method: 'POST',
-      token,
-      body: {
-        expert_id: EXPERT_ID,
-        content: chatMessage,
-      },
-    });
-    if (postResp.status !== 200 || postResp.data?.code !== 200) {
-      console.error(`  ❌ 发送消息失败: ${JSON.stringify(postResp.data)}`);
-      close();
-      process.exit(1);
+    if (!standardId) {
+      throw new Error(`无法确定 standard_id（纳管失败且未查询到已有标准），document_id=${DOCUMENT_ID}`);
     }
-    console.log('  ✅ 消息已发送，等待清洗完成...');
 
-    // Wait for completion
-    console.log('  等待清洗完成...');
+    // ---- Step 4: Trigger cleaning via endpoint (R17-2) ----
+    console.log('[4/5] 触发服务端清洗（POST /standards/:id/clean）...');
+    triggerResult = await triggerClean(token, standardId);
+    if (!triggerResult.accepted) {
+      console.log(`  ⚠️ 服务端拒绝触发: ${triggerResult.reason}（可能是已有清洗在进行中）\n`);
+      runLog.errors.push({ type: 'trigger_rejected', reason: triggerResult.reason });
+    } else {
+      console.log('  ✅ 已受理，服务端异步执行清洗\n');
+    }
+    runLog.steps.push({ step: 'trigger_clean', status: triggerResult.accepted ? 'ok' : 'rejected', standard_id: standardId, reason: triggerResult.reason });
+
+    // ---- Step 5: Poll status until done/error/timeout ----
+    console.log('[5/5] 轮询清洗状态...');
     const startedAt = Date.now();
-    let completed = false;
+    let finished = false;
 
-    while (Date.now() - startedAt < REQUEST_TIMEOUT_MS) {
-      if (completeEvent || errorEvent) {
-        completed = true;
+    while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
+      const std = await getStandard(token, standardId);
+      finalStatus = std.anchor_build_status;
+      const errorMsg = std.last_anchor_build_error || null;
+
+      console.log(`  ⏳ anchor_build_status=${finalStatus}${errorMsg ? ` error=${errorMsg.slice(0, 120)}` : ''}`);
+
+      if (finalStatus === 'done' || finalStatus === 'error') {
+        finished = true;
+        if (errorMsg) {
+          runLog.errors.push({ type: 'clean_error', message: errorMsg });
+        }
         break;
       }
-      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
     }
 
-    close();
-
-    if (!completed) {
-      console.log('  ⚠️ 清洗超时\n');
-      runLog.errors.push({ type: 'timeout', timeout_ms: REQUEST_TIMEOUT_MS });
-    } else if (errorEvent) {
-      console.log(`  ❌ 清洗出错: ${JSON.stringify(errorEvent.data)}\n`);
-      runLog.errors.push({ type: 'chat_error', event: errorEvent });
+    if (!finished) {
+      console.log('  ⚠️ 轮询超时\n');
+      runLog.errors.push({ type: 'timeout', timeout_ms: POLL_TIMEOUT_MS, last_status: finalStatus });
     } else {
-      console.log('  ✅ 清洗完成\n');
+      console.log(`  ✅ 清洗${finalStatus === 'done' ? '完成' : '失败'}（anchor_build_status=${finalStatus}）\n`);
     }
-    runLog.steps.push({
-      step: 'cleaning',
-      status: completed && !errorEvent ? 'ok' : (errorEvent ? 'error' : 'timeout'),
-      tool_calls: runLog.toolCalls.length,
-      chat_request_id: chatRequestId,
-    });
+    runLog.steps.push({ step: 'poll_status', status: finished ? finalStatus : 'timeout', standard_id: standardId });
 
-    // ---- Step 5: Save results ----
-    console.log('[5/5] 保存运行记录...');
+    // ---- Save results ----
+    console.log('保存运行记录...');
     runLog.finishedAt = new Date().toISOString();
-    runLog.completed = completed && !errorEvent;
+    runLog.completed = finalStatus === 'done';
+    runLog.standard_id = standardId;
 
     const trajectoryFile = path.join(RUN_DIR, 'trajectory.json');
     fs.writeFileSync(trajectoryFile, JSON.stringify(runLog, null, 2));
@@ -413,12 +298,12 @@ async function main() {
     const summary = {
       run_id: RUN_ID,
       document_id: DOCUMENT_ID,
-      expert_id: EXPERT_ID,
       standard_id: standardId,
       started_at: runLog.startedAt,
       finished_at: runLog.finishedAt,
       completed: runLog.completed,
-      tool_calls: runLog.toolCalls.length,
+      anchor_build_status: finalStatus,
+      trigger_accepted: triggerResult.accepted,
       errors: runLog.errors.length,
     };
     const summaryFile = path.join(RUN_DIR, 'summary.json');
@@ -426,14 +311,15 @@ async function main() {
 
     console.log(`  📁 轨迹文件: ${trajectoryFile}\n`);
     console.log('=== 运行摘要 ===');
+    console.log(`标准: ${standardId}`);
+    console.log(`触发受理: ${triggerResult.accepted}`);
+    console.log(`最终状态: ${finalStatus}`);
     console.log(`完成: ${summary.completed}`);
-    console.log(`工具调用: ${summary.tool_calls} 次`);
     console.log(`错误: ${summary.errors} 次`);
-    if (runLog.toolCalls.length > 0) {
-      console.log('\n工具调用序列:');
-      runLog.toolCalls.forEach((tc, i) => {
-        console.log(`  ${i + 1}. ${tc.event} ${tc.tool_name}`);
-      });
+
+    // 非零退出码表示清洗失败
+    if (!summary.completed) {
+      process.exitCode = 1;
     }
   } catch (err) {
     console.error(`❌ 失败: ${err.message}`);

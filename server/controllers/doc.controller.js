@@ -742,7 +742,11 @@ class DocController {
 
   /**
    * G2: 按 outline_id 读 section 文本
-   * GET /api/docs/outlines/:outlineId/section
+   * GET /api/docs/outlines/:outlineId/section?page=0&max_page_chars=4000
+   *
+   * R16-2：按 chunk 翻页（page 参数，0 起，每页 1 个 chunk）。
+   * 返回 page_has_more / page_next_offset / chunk_id / chunk_seq / from_line / to_line / overlap_lines。
+   * 超大 chunk 按行二次切分，保证单页 ≤ max_page_chars（默认 4000，低于摘要阈值 5000）。
    */
   async getSectionByOutline(ctx) {
     try {
@@ -757,7 +761,15 @@ class DocController {
       const canRead = await this.docAccessService.canRead(locator.revision.document_id, userId);
       if (!canRead) ctx.throw(403, 'Access denied');
 
-      const outline = await this.documentReadService.getSectionByOutlineId(outlineId);
+      const rawPage = ctx.query.page !== undefined ? parseInt(ctx.query.page, 10) : 0;
+      const rawMaxPageChars = ctx.query.max_page_chars !== undefined ? parseInt(ctx.query.max_page_chars, 10) : 4000;
+      const page = Number.isFinite(rawPage) && rawPage >= 0 ? rawPage : 0;
+      const maxPageChars = Number.isFinite(rawMaxPageChars) && rawMaxPageChars > 0 ? rawMaxPageChars : 4000;
+
+      const outline = await this.documentReadService.getSectionByOutlineId(outlineId, {
+        page,
+        max_page_chars: maxPageChars,
+      });
       ctx.success(outline);
     } catch (error) {
       logger.error('[Doc] getSectionByOutline error:', error);
@@ -767,9 +779,10 @@ class DocController {
 
   /**
    * G3: 按任意 revision_id 读全文
-   * GET /api/docs/revisions/:revisionId/content?max_chars=20000
+   * GET /api/docs/revisions/:revisionId/content?max_chars=20000&offset_chars=0
    *
    * R2-7：支持 max_chars 截断参数，默认 20000
+   * R16-2：支持 offset_chars 翻页参数，配合返回 content_has_more 逐页读完长文
    */
   async getRevisionContent(ctx) {
     try {
@@ -783,6 +796,8 @@ class DocController {
         : 20000;
       // R4-4：非数字输入（如 ?max_chars=abc）回落默认值
       const maxChars = Number.isFinite(rawMaxChars) ? rawMaxChars : 20000;
+      const rawOffset = ctx.query.offset_chars !== undefined ? parseInt(ctx.query.offset_chars, 10) : 0;
+      const offsetChars = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
 
       const revision = await this.db.getModel('document_revision').findByPk(revisionId, { raw: true });
       if (!revision) ctx.throw(404, 'Revision not found');
@@ -790,7 +805,10 @@ class DocController {
       const canRead = await this.docAccessService.canRead(revision.document_id, userId);
       if (!canRead) ctx.throw(403, 'Access denied');
 
-      const result = await this.documentReadService.getRevisionText(revisionId, { max_chars: maxChars });
+      const result = await this.documentReadService.getRevisionText(revisionId, {
+        max_chars: maxChars,
+        offset_chars: offsetChars,
+      });
       if (result.text === null && result.revision === null) {
         ctx.throw(404, 'Revision not found');
       }
@@ -798,6 +816,9 @@ class DocController {
         text: result.text,
         revision: result.revision,
         content_truncated: result.content_truncated,
+        content_offset: result.content_offset,
+        content_has_more: result.content_has_more,
+        content_total_chars: result.content_total_chars,
       });
     } catch (error) {
       logger.error('[Doc] getRevisionContent error:', error);

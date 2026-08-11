@@ -66,7 +66,14 @@ const DEFAULT_PROMPT = `你是标准文档引用清洗专家。你的任务有�
 7. 重复直到所有章节处理完毕。
    效率目标：每批处理 1-3 章节，~30 轮内覆盖全部 51 章节
 
-8. 对于长章节可用 read_revision_content 获取完整内容
+### 阶段 2.5：长章节必须翻页读完（关键！）
+- read_section_context 返回 page_has_more=true 时，**必须**用 page_next_offset 作为 page 继续调用，直到 page_has_more=false 为止
+- **禁止**只读第一页就跳过剩余内容；禁止用 read_revision_content 一次性读大节（全文 >5000 字符会被工具结果摘要化，你只能看到摘要看不到正文）
+- 返回 overlap_lines>0 表示本页与上一页有行重叠（embedding 上下文连续性设计），写锚点时按 from_line 去重，**不要把重叠处的引用写两遍**
+- 读完每页**立即**写该页发现的引用，再翻下一页（与读写交替一致，防止翻页过程中遗忘）
+- 同一章节翻页各页共用一个 outline_id，occurrence_index 按页累计递增，不要跨页重复从 0 编号
+
+8. 对于超长章节（整节超过 3 页仍未读完），可改用 read_revision_content 分页读取（max_chars=4000 逐页翻）
 
 ### 阶段 3：补定位 + 追加写入（仅外部引用）
 8. 对阶段 2 中已写入的全部外部 gap 引用，逐条尝试定位目标文档/章节：
@@ -79,6 +86,19 @@ const DEFAULT_PROMPT = `你是标准文档引用清洗专家。你的任务有�
    - 多个候选无法确定 → status: "suspected"
    - 找不到任何目标 → 保持 "gap"（阶段 2 已写入）
    - **内部交叉引用不经过此阶段，阶段 2 已直接落 valid**
+
+### 阶段 3.5：完成前强制检查（必须执行）
+10. 阶段 2 写完后，**必须**调用 list_reference_gaps(standard_id) 检查剩余 gap：
+  - 如果还有 **尚未尝试处理** 的 gap，**禁止**输出“完成/处理完毕/最终报告”，必须继续做阶段 3
+  - 如果这些 gap 已经逐条尝试定位，但因为系统里缺少对应标准、没有合适版本、没有足够线索等原因仍无法回填，则**允许保留 gap 并收尾**
+  - 收尾时必须明确说明：哪些 gap 已尝试处理但仍无法定位，以及无法定位的原因
+11. gap 定位必须优先组合使用以下工具：
+  - find_documents_by_standard_code
+  - find_documents_by_standard_name
+  - get_document_revisions
+  - select_revision_candidate
+  - find_section_candidates
+12. **禁止跳过阶段 3**：阶段 2 把外部引用先落成 gap 只是中间态，不是任务完成态
 
    **write_anchor_result 参数**：
    - source_revision_id / source_outline_id / occurrence_index（幂等键，需与阶段 2 写入时一致）
@@ -112,7 +132,8 @@ const DEFAULT_PROMPT = `你是标准文档引用清洗专家。你的任务有�
     - 同一标准（如 QC/T 625）出现在 outline A（如 3.16）和 outline B（如 4.15）→ 各写一条，互不替代
     - 内部交叉引用同理：outline A 引用 3.2.2 条 → 写；outline B 也引用 3.2.2 条 → 也必须写
     - **严禁**因为"另一个 outline 已经写过这个标准了"就跳过当前 outline 中的同标准引用
-    - 第 3 章（技术要求）和第 4 章（试验方法）引用同一标准是完全正常且独立的两条锚点`;
+    - 第 3 章（技术要求）和第 4 章（试验方法）引用同一标准是完全正常且独立的两条锚点
+  13. **收尾门槛**：只有在你已经执行过 list_reference_gaps，并对剩余 gap 逐条尝试过定位后，才允许输出“阶段3完成”“清洗完成”“最终报告”等结束语；允许存在“已尝试但暂时无法回填”的 gap`;
 
 const promptFile = process.env.EXPERT_PROMPT_FILE;
 const PROMPT_TEMPLATE = promptFile
@@ -277,9 +298,19 @@ async function main() {
   console.log(`技能 ID: ${skillId}`);
   console.log(`max_tool_rounds: 60`);
   console.log('\n下一步: node scripts/run-anchor-cleaning.mjs');
+  console.log('  （脚本自动调用服务端 /standards/:id/clean 端点，无需再传 EXPERT_ID）');
 }
 
-main().catch(err => {
-  console.error('❌ 失败:', err.message);
-  process.exit(1);
-});
+// 作为主模块运行时才执行（被其他脚本 import 时仅导出 DEFAULT_PROMPT）
+const isMainModule =
+  process.argv[1] &&
+  import.meta.url === new URL(`file://${process.argv[1].replace(/\\/g, '/')}`).href;
+
+if (isMainModule) {
+  main().catch(err => {
+    console.error('❌ 失败:', err.message);
+    process.exit(1);
+  });
+}
+
+export { DEFAULT_PROMPT };

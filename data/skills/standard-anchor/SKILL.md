@@ -15,8 +15,8 @@ user-invocable: false
 |------|------|----------|
 | `parse_anchor` | 解析锚点串 | `anchor` |
 | `list_revision_sections` | 按 revision_id 列出章节列表 | `revision_id` |
-| `read_section_context` | 读指定 section 正文及上下文 | `outline_id`, `context_window` |
-| `read_revision_content` | 读指定 revision 全文 | `revision_id` |
+| `read_section_context` | 读指定 section 正文及上下文（按 chunk 翻页） | `outline_id`, `context_window`, `page`, `max_page_chars` |
+| `read_revision_content` | 读指定 revision 全文（支持字符分页） | `revision_id`, `max_chars`, `offset_chars` |
 | `get_section_locator` | outline_id 反查 document/revision 定位 | `outline_id` |
 | `find_documents_by_standard_code` | 按标准编号查找已纳管标准 | `standard_code` |
 | `find_documents_by_standard_name` | 按标准名称查找已纳管标准 | `standard_name` |
@@ -46,11 +46,17 @@ user-invocable: false
 
 ## read_section_context
 
-调用 `GET /api/docs/outlines/:outline_id/section` 获取 section 文本，可选前后相邻 section 对象作为上下文（由 `context_window` 控制前后各取几个相邻 outline）。
+调用 `GET /api/docs/outlines/:outline_id/section?page=0&max_page_chars=4000` 获取 section 文本，可选前后相邻 section 对象作为上下文（由 `context_window` 控制前后各取几个相邻 outline）。
+
+**分页（R16-2，按 chunk 翻页）**：服务端把该 outline 下的 `document_chunks` 展平成页，每页 1 个 chunk（默认 ≤4000 字符，低于摘要阈值 5000）。返回的 `section.page_has_more=true` 时，必须用 `section.page_next_offset` 作为下次调用的 `page` 继续翻页，直到 `page_has_more=false`。翻页期间 `outline_id` 不变，`occurrence_index` 跨页累计递增。**禁止**只读第一页就跳过剩余内容——工具结果超过 5000 字符会被上下文管理摘要化，agent 只能看到摘要，必须用小页读完大节。
+
+返回还含 `chunk_id` / `chunk_seq` / `from_line` / `to_line` / `overlap_lines`：`overlap_lines>0` 表示本页与上一 chunk 有行重叠（embedding 上下文连续性设计），写锚点时按 `from_line` 去重，**不要把重叠处的引用写两遍**。
 
 ## read_revision_content
 
-调用 `GET /api/docs/revisions/:revision_id/content?max_chars=20000`，返回 revision 全文。默认截断 20000 字符，传 `max_chars=0` 不截断。
+调用 `GET /api/docs/revisions/:revision_id/content?max_chars=20000&offset_chars=0`，返回 revision 全文。默认截断 20000 字符，传 `max_chars=0` 不截断。
+
+**分页（R16-2）**：长文返回 `content_has_more=true` 时，用 `offset_chars` 继续翻页直到 `content_has_more=false`。清洗场景建议单页 `max_chars=4000`，避免工具结果超过 5000 字符摘要阈值被上下文管理摘要化。
 
 ## get_section_locator
 

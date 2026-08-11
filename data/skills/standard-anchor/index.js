@@ -119,19 +119,37 @@ async function listRevisionSections(params) {
 }
 
 /**
- * 读取指定 section 正文及上下文
+ * 读取指定 section 正文及上下文（R16-2：按 chunk 翻页）
+ *
+ * 修订说明（AUDIT-ROUND16 §3 根因 B）：JLY 664F 的 4/5/6 章是巨型单节
+ * （14k~18k 字符），整节读取会超过工具结果摘要阈值（5000 字符），agent 只
+ * 看到章节前部，尾部引用漏洗。因此改为按 chunk 翻页：服务端把该 outline
+ * 下的 document_chunks 展平成页，每页 1 个 chunk（≤4000 字符）。
+ *
+ * 翻页协议：返回 page_has_more=true 时，必须用 page_next_offset 作为 page
+ * 继续调用，直到 page_has_more=false，确保逐字通读整节。返回 chunk_id /
+ * chunk_seq / from_line / to_line / overlap_lines（与上一 chunk 的重叠行数，
+ * 该重叠是 embedding 上下文连续性设计，写锚点时按 from_line 去重，不要把
+ * 重叠处引用写两遍）。
  *
  * @param {object} params
  * @param {string} params.outline_id - 章节 ID
  * @param {number} [params.context_window=0] - 上下文窗口大小（前后各取几个相邻 outline）
+ * @param {number} [params.page=0] - chunk 页序号（0 起，翻页用，取上一页的 page_next_offset）
+ * @param {number} [params.max_page_chars=4000] - 单页最大字符数（默认 4000，低于摘要阈值 5000）
  * @returns {Promise<object>} { section, context_before, context_after }
+ *   section 含 original_text 分页切片 + page_has_more / page_next_offset / chunk 元信息
  */
 async function readSectionContext(params) {
-  const { outline_id, context_window = 0 } = params;
+  const { outline_id, context_window = 0, page = 0, max_page_chars = 4000 } = params;
   if (!outline_id) throw new Error('outline_id is required');
 
-  // 先获取 section 自身
-  const section = await apiGet(`/api/docs/outlines/${outline_id}/section`);
+  // 分页参数透传，避免工具结果超过摘要阈值被上下文管理摘要化
+  const pageParams = [];
+  if (page > 0) pageParams.push(`page=${page}`);
+  if (max_page_chars > 0) pageParams.push(`max_page_chars=${max_page_chars}`);
+  const qs = pageParams.length ? `?${pageParams.join('&')}` : '';
+  const section = await apiGet(`/api/docs/outlines/${outline_id}/section${qs}`);
   if (!section) throw new Error(`Section not found: ${outline_id}`);
 
   let context_before = [];
@@ -152,25 +170,61 @@ async function readSectionContext(params) {
   }
 
   return {
-    section,
-    context_before,
-    context_after,
+    section: {
+      id: section.id,
+      revision_id: section.revision_id,
+      parent_id: section.parent_id || null,
+      heading: section.heading || '',
+      level: section.level ?? null,
+      seq: section.seq ?? null,
+      original_text: section.original_text || '',
+      page_index: section.page_index ?? 0,
+      page_has_more: !!section.page_has_more,
+      page_next_offset: section.page_next_offset ?? null,
+      page_total_chars: section.page_total_chars ?? 0,
+      chunk_count: section.chunk_count ?? 0,
+      chunk_id: section.chunk_id || null,
+      chunk_seq: section.chunk_seq ?? null,
+      from_line: section.from_line ?? null,
+      to_line: section.to_line ?? null,
+      overlap_lines: section.overlap_lines ?? 0,
+      split_page: !!section.split_page,
+      sub_split: !!section.sub_split,
+    },
+    context_before: context_before.map(item => ({
+      id: item.id,
+      heading: item.heading || '',
+      level: item.level ?? null,
+      seq: item.seq ?? null,
+    })),
+    context_after: context_after.map(item => ({
+      id: item.id,
+      heading: item.heading || '',
+      level: item.level ?? null,
+      seq: item.seq ?? null,
+    })),
   };
 }
 
 /**
- * 读取指定 revision 的全文内容
+ * 读取指定 revision 的全文内容（R16-2：支持 offset_chars 翻页）
+ *
+ * 长文一次读不完时返回 content_has_more=true，agent 必须用 offset_chars
+ * 继续翻页直到 content_has_more=false。
  *
  * @param {object} params
  * @param {string} params.revision_id - 版本 ID
- * @returns {Promise<object>} { text, revision }
+ * @param {number} [params.max_chars=20000] - 单页最大字符数（0=不截断）
+ * @param {number} [params.offset_chars=0] - 起始字符偏移（翻页用，取上一页 content_offset + 本页长度）
+ * @returns {Promise<object>} { text, revision, content_truncated, content_offset, content_has_more, content_total_chars }
  */
 async function readRevisionContent(params) {
-  const { revision_id, max_chars = 20000 } = params;
+  const { revision_id, max_chars = 20000, offset_chars = 0 } = params;
   if (!revision_id) throw new Error('revision_id is required');
 
   // R3-4：始终透传 max_chars，服务端用 undefined 判断
-  const result = await apiGet(`/api/docs/revisions/${revision_id}/content?max_chars=${max_chars}`);
+  const qs = `max_chars=${max_chars}${offset_chars > 0 ? `&offset_chars=${offset_chars}` : ''}`;
+  const result = await apiGet(`/api/docs/revisions/${revision_id}/content?${qs}`);
   return result;
 }
 
@@ -352,23 +406,27 @@ function getTools() {
     },
     {
       name: 'read_section_context',
-      description: '读取指定 section 正文，可附带前后相邻 section 的上下文',
+      description: '读取指定 section 正文（按 chunk 翻页）。返回 page_has_more=true 时必须用 page_next_offset 作为 page 继续翻页，直到 page_has_more=false，确保整节逐字读完。每页 1 个 chunk，默认 ≤4000 字符（低于摘要阈值）。返回 overlap_lines 表示与上一 chunk 的行重叠，写锚点时按 from_line 去重。',
       parameters: {
         type: 'object',
         properties: {
           outline_id: { type: 'string', description: '章节 ID（document_outlines.id）' },
           context_window: { type: 'number', description: '上下文窗口大小，前后各取几个相邻 section（默认 0）' },
+          page: { type: 'number', description: 'chunk 页序号（0 起），翻页时传上一页的 page_next_offset（默认 0）' },
+          max_page_chars: { type: 'number', description: '单页最大字符数（默认 4000，不超过 4000 以免超过工具结果摘要阈值）' },
         },
         required: ['outline_id'],
       },
     },
     {
       name: 'read_revision_content',
-      description: '读取指定 revision 的全文文本内容',
+      description: '读取指定 revision 的全文文本内容（支持字符分页）。返回 content_has_more=true 时必须用 offset_chars 继续翻页直到 content_has_more=false。适合读取整个 revision 全文或跨章节查找引用。',
       parameters: {
         type: 'object',
         properties: {
           revision_id: { type: 'string', description: '版本 ID（document_revisions.id）' },
+          max_chars: { type: 'number', description: '单页最大字符数（默认 20000，0=不截断）' },
+          offset_chars: { type: 'number', description: '起始字符偏移，翻页用（默认 0）' },
         },
         required: ['revision_id'],
       },

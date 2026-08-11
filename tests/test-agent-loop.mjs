@@ -89,7 +89,8 @@ function createToolLoopExpertService() {
           return;
         }
 
-        options.onDelta('Final answer');
+        // 含 R16-3 完成信号，第 2 次调用后应判定任务完成
+        options.onDelta('任务完成 Final answer');
       },
     },
     toolManager: {
@@ -207,14 +208,14 @@ async function testRunExecutesToolsAndContinuesToNextRound() {
   assert.equal(executedToolInputs.length, 1);
   assert.equal(executedToolInputs[0].collectedToolCalls.length, 1);
   assert.equal(executedToolInputs[0].collectedToolCalls[0].function.name, 'demo_tool');
-  assert.equal(result.fullContent, 'Need toolFinal answer');
+  assert.equal(result.fullContent, 'Need tool任务完成 Final answer');
   assert.equal(result.allToolCalls.length, 1);
   assert.equal(result.allToolCalls[0].result.data.value, 42);
   assert.deepEqual(deltas.map(event => event.type), ['delta', 'tool_call', 'delta']);
   assert.equal(deltas[1].toolCalls[0].displayName, 'Tool: demo_tool');
   assert.equal(savedPayloads.length, 2);
   assert.equal(savedPayloads[0][2].messages.at(-1).role, 'tool');
-  assert.equal(savedPayloads[1][2].messages.at(-1).content, 'Final answer');
+  assert.equal(savedPayloads[1][2].messages.at(-1).content, '任务完成 Final answer');
 }
 
 async function testRunRecoversRetryableStreamFailure() {
@@ -287,7 +288,7 @@ async function testRunInjectsDocumentEvidenceBeforeNextRound() {
     }
 
     secondRoundMessages.push(...messages);
-    options.onDelta('Answer with evidence');
+    options.onDelta('任务完成 Answer with evidence');
   };
   expertService._consumeDocRetrievalResult = () => ({
     found: true,
@@ -310,7 +311,7 @@ async function testRunInjectsDocumentEvidenceBeforeNextRound() {
     tools: [{ type: 'function', function: { name: 'search_documents' } }],
   }));
 
-  assert.equal(result.fullContent, 'Answer with evidence');
+  assert.equal(result.fullContent, '任务完成 Answer with evidence');
   assert.equal(secondRoundMessages[0].role, 'system');
   assert.equal(secondRoundMessages[0].content, 'DOCUMENT EVIDENCE');
 }
@@ -334,7 +335,7 @@ async function testRunInjectsImageUserMessageBeforeNextRound() {
     }
 
     secondRoundMessages.push(...messages);
-    options.onDelta('Image analyzed');
+    options.onDelta('任务完成 Image analyzed');
   };
 
   const loop = createLoop({
@@ -359,13 +360,73 @@ async function testRunInjectsImageUserMessageBeforeNextRound() {
     tools: [{ type: 'function', function: { name: 'draw_image' } }],
   }));
 
-  assert.equal(result.fullContent, 'Image analyzed');
+  assert.equal(result.fullContent, '任务完成 Image analyzed');
   const syntheticMessage = secondRoundMessages.at(-1);
   assert.equal(syntheticMessage.role, 'user');
   assert.equal(syntheticMessage._synthetic, true);
   assert.equal(syntheticMessage.content[0].type, 'text');
   assert.equal(syntheticMessage.content[1].type, 'image_url');
   assert.equal(syntheticMessage.content[1].image_url.url, 'data:image/png;base64,aGVsbG8=');
+}
+
+async function testRunMergesAdjacentAssistantMessages() {
+  // R16-3: 已有工具调用后连续出现"无工具调用且无完成信号"的过渡文本轮时，
+  // 追加 assistant 前应合并到上一轮 assistant 消息，避免消息列表末尾出现
+  // 相邻 assistant（OpenAI 兼容 provider 报 400）。
+  let streamCalls = 0;
+  let lastPayload = null;
+  const expertService = createToolLoopExpertService();
+  expertService.llmClient.callStream = async (_modelConfig, messages, options) => {
+    streamCalls += 1;
+    if (streamCalls === 1) {
+      options.onToolCall([{
+        id: 'call_1',
+        type: 'function',
+        function: { name: 'demo_tool', arguments: '{}' },
+      }]);
+      return;
+    }
+    // 后续轮：过渡文本，不调用工具、不含完成信号
+    options.onDelta(`Transition text ${streamCalls}`);
+  };
+  expertService.expertConfig.expert.max_tool_rounds = 10;
+
+  const loop = createLoop({
+    execute_tools: async () => [{
+      success: true,
+      data: { value: 42 },
+      duration: 12,
+      toolCallId: 'call_1',
+      toolMessageId: 'tool_msg_1',
+    }],
+    save_llm_payload: (_user_id, _expert_id, payload) => {
+      lastPayload = JSON.parse(JSON.stringify(payload));
+    },
+  });
+
+  const result = await loop.run(expertService, createRunInput({
+    tools: [{ type: 'function', function: { name: 'demo_tool' } }],
+  }));
+
+  // 1 工具轮 + 4 轮过渡文本（consecutiveNoToolRounds 在判断后才递增，
+  // 第 4 轮进入时计数=3 触发 MAX_CONSECUTIVE_NO_TOOL_ROUNDS=3 强制结束）
+  assert.equal(result.llmCallsCount, 5);
+  assert.ok(lastPayload, '应有 payload 保存');
+
+  const msgs = lastPayload.messages;
+  // 相邻 assistant 必须合并：任何位置都不应有两条相邻的 assistant 消息
+  for (let i = 1; i < msgs.length; i++) {
+    assert.ok(
+      !(msgs[i].role === 'assistant' && msgs[i - 1].role === 'assistant'),
+      `不应存在相邻 assistant 消息 @${i - 1}-${i}`
+    );
+  }
+  // 尾部应是合并后的单条 assistant（含全部过渡文本）
+  assert.equal(msgs.at(-1).role, 'assistant');
+  assert.match(msgs.at(-1).content, /Transition text 2/);
+  assert.match(msgs.at(-1).content, /Transition text 3/);
+  assert.match(msgs.at(-1).content, /Transition text 4/);
+  assert.match(msgs.at(-1).content, /Transition text 5/);
 }
 
 async function main() {
@@ -375,6 +436,7 @@ async function main() {
   await testRunRecoversRetryableStreamFailure();
   await testRunInjectsDocumentEvidenceBeforeNextRound();
   await testRunInjectsImageUserMessageBeforeNextRound();
+  await testRunMergesAdjacentAssistantMessages();
 
   console.log('Agent loop tests passed.');
 }

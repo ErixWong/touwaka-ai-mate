@@ -8,10 +8,8 @@
  * 路由扁平化（R2-3）：合并原 list.js + get.js 为单文件，按 ctx.params.standardId 有无分流。
  */
 
-import jwt from 'jsonwebtoken';
 import StandardMgrService from '../service.js';
 import logger from '../../../../lib/logger.js';
-import { runAnchorCleaning } from './standards/clean.js';
 
 function getUserId(ctx) {
   return ctx.state.session?.id || null;
@@ -118,34 +116,20 @@ export async function post(ctx, deps) {
       logger.error(`[standard-mgr] backfill-onboard failed: ${err.message}`);
     });
 
-    // R13-3：纳管完成后异步触发锚点清洗（不阻塞主请求）
-    // 先获取原子锁；若已被其他请求抢占（如手动点击），跳过避免双发
+    // R13-3 + R17-1：纳管完成后异步触发锚点清洗（不阻塞主请求）
+    // 编排全部在 service.runCleaningPipeline 内完成（原子锁、清 auto、驱动 agent、置 done、重建、回填）
     const chatService = deps.request?.chatService;
     if (chatService && result.document_id && result.current_revision_id) {
-      if (await service.tryLockForCleaning(result.id)) {
-        // 生成长生命周期 token，防止工具回调 401
-        const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-        const taskToken = jwt.sign(
-          { userId, role: 'admin' },
-          jwtSecret,
-          { expiresIn: '4h' },
-        );
-        const taskSession = { ...ctx.state.session, accessToken: taskToken };
-
-        runAnchorCleaning({
-          chatService,
-          db: deps.db,
-          userId,
-          session: taskSession,
-          standardId: result.id,
-          documentId: result.document_id,
-          revisionId: result.current_revision_id,
-        }).catch(err => {
-          logger.error(`[standard-mgr] auto-clean-onboard failed for ${result.id}: ${err.message}`);
-        });
-      } else {
-        logger.info(`[standard-mgr] R13-3: 清洗已被抢占，跳过自动清洗 standard=${result.id}`);
-      }
+      service.runCleaningPipeline(result.id, {
+        session: ctx.state.session,
+        chatService,
+      }).then(pipeResult => {
+        if (!pipeResult.accepted) {
+          logger.info(`[standard-mgr] R13-3: 清洗已被抢占，跳过自动清洗 standard=${result.id}`);
+        }
+      }).catch(err => {
+        logger.error(`[standard-mgr] auto-clean-onboard failed for ${result.id}: ${err.message}`);
+      });
     } else {
       logger.warn(`[standard-mgr] R13-3: chatService 不可用或缺少 document/revision，跳过自动清洗 standard=${result.id}`);
     }
