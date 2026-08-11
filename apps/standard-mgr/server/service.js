@@ -1608,7 +1608,10 @@ class StandardMgrService {
         const rebuildResult = await this._rebuildAnchoredSectionsInTx(standardId, tx);
 
         // R3-4：miss 持久化 — 合并到 updateData
-        Object.assign(updateData, this._buildMissUpdateData(rebuildResult.misses));
+        // R4-x：needs_review 统一语义——存在 gap/suspected/invalid 引用或正文 miss 即亮
+        const missFields = this._buildMissUpdateData(rebuildResult.misses);
+        updateData.needs_review = await this._computeNeedsReview(standardId, tx, rebuildResult.misses);
+        updateData.last_anchor_build_error = missFields.last_anchor_build_error;
 
         await AppStandard.update(updateData, { where: { id: standardId }, transaction: tx });
         await tx.commit();
@@ -1625,7 +1628,7 @@ class StandardMgrService {
   }
 
   /**
-   * R3-4：构造 miss 持久化字段
+   * R3-4：构造 miss 持久化字段（仅 last_anchor_build_error；needs_review 由 _computeNeedsReview 统一计算）
    */
   _buildMissUpdateData(misses) {
     if (!misses || misses.length === 0) {
@@ -1642,13 +1645,35 @@ class StandardMgrService {
   }
 
   /**
+   * R4-x：统一计算 needs_review——存在 gap/suspected/invalid 引用或正文打标 miss 即亮。
+   * 消除 done 时（只看 miss）与后续写回（_refreshStandardCounts 看引用）两处语义打架。
+   */
+  async _computeNeedsReview(standardId, tx, misses) {
+    const missNeedsReview = misses && misses.length > 0 ? 1 : 0;
+    const RefAnchor = this._refAnchor();
+    const pendingCount = await RefAnchor.count({
+      where: {
+        standard_id: standardId,
+        status: [REF_STATUS.GAP, REF_STATUS.SUSPECTED, REF_STATUS.INVALID],
+      },
+      transaction: tx,
+    });
+    return (missNeedsReview === 1 || pendingCount > 0) ? 1 : 0;
+  }
+
+  /**
    * R3-4：持久化 miss 信息（供 rebuildAnchoredSections 独立调用使用）
+   * R4-x：needs_review 也按统一语义计算（不再只看 miss）
    */
   async _persistRebuildMisses(standardId, misses, tx) {
     const AppStandard = this._appStandard();
     const fields = this._buildMissUpdateData(misses);
     await AppStandard.update(
-      { ...fields, updated_at: new Date() },
+      {
+        needs_review: await this._computeNeedsReview(standardId, tx, misses),
+        last_anchor_build_error: fields.last_anchor_build_error,
+        updated_at: new Date(),
+      },
       { where: { id: standardId }, transaction: tx },
     );
   }

@@ -39,12 +39,17 @@
               <el-tag size="small" :type="data.statusTagType">
                 {{ $t(data.statusLabel) }}
               </el-tag>
-              <el-badge
+              <el-tooltip
                 v-if="data.needs_review"
-                value="!"
-                class="sm-item-badge"
-                type="warning"
-              />
+                :content="data.needs_review_tip || $t('apps.standardMgr.needsReviewFallback')"
+                placement="top"
+              >
+                <el-badge
+                  value="!"
+                  class="sm-item-badge"
+                  type="warning"
+                />
+              </el-tooltip>
               <el-tooltip
                 v-if="data.has_newer_version"
                 :content="$t('apps.standardMgr.newVersionHint')"
@@ -92,6 +97,7 @@ interface TreeNode {
   statusTagType?: string
   statusLabel?: string
   needs_review?: boolean
+  needs_review_tip?: string
   has_newer_version?: boolean
   children?: TreeNode[]
   count?: number
@@ -230,8 +236,20 @@ function buildStandardNode(std: StandardItem): TreeNode {
     statusTagType: statusTagType(std.anchor_build_status),
     statusLabel: statusLabel(std.anchor_build_status),
     needs_review: std.needs_review,
+    needs_review_tip: buildNeedsReviewTip(std),
     has_newer_version: hasNewerVersion(std),
   }
+}
+
+/** R4-x: 组装感叹号 tooltip 原因（缺口/存疑/无效计数 + 构建错误） */
+function buildNeedsReviewTip(std: StandardItem): string {
+  const t = i18n.global.t
+  const parts: string[] = []
+  if ((std.gap_reference_count || 0) > 0) parts.push(t('apps.standardMgr.needsReviewGap', { count: std.gap_reference_count }))
+  if ((std.suspected_reference_count || 0) > 0) parts.push(t('apps.standardMgr.needsReviewSuspected', { count: std.suspected_reference_count }))
+  if ((std.invalid_reference_count || 0) > 0) parts.push(t('apps.standardMgr.needsReviewInvalid', { count: std.invalid_reference_count }))
+  if (std.last_anchor_build_error) parts.push(t('apps.standardMgr.needsReviewBuildError', { error: std.last_anchor_build_error }))
+  return parts.length > 0 ? parts.join('；') : t('apps.standardMgr.needsReviewFallback')
 }
 
 function handleNodeClick(data: TreeNode) {
