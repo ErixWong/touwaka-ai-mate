@@ -854,22 +854,38 @@ class StandardMgrService {
   // ============================================================
 
   /**
-   * R3-2: 从 source_text 中提取标准编号（确定性正则）
+   * R3-2/R4-1: 从 source_text 中提取标准编号（确定性正则，双通道）
    *
-   * 匹配模式：GB|QC|ISO|JB|YC|TW[/:]?T?数字序列
-   * 示例：GB/T 19001, QC/T 636, ISO 9001, GBT2828, JB/T 12345
+   * 通道 1：已知标准化组织前缀（GB|QC|ISO|JB|YC|TW[/:]?T?数字序列）
+   *   - R4-1 补充 QJL/QJLY（Q/JL、Q/JLY 企业标准，注意是 QJL 不是 QJ）、
+   *     FMVSS/ECE（国际法规）、SAE/ASTM/DIN/JIS（国际标准）
+   *     ——此前企业标准系引用全部提取失败导致 gap 永不回填
+   *   - 模式中 `[A-Z]?` 支持"前缀后直接连字母再数字"的连写形态
+   *     （如 QJLJ160003、QJLYJ7111029），不影响 GB/T、QC/T 等原有形态
+   * 通道 2：通用形态兜底——大写前缀(1-6 字母) + 可选 [/或-]分段 + 数字主体(≥2 位)
+   *   - 覆盖 Q/JL J160003（斜杠在 Q 与 JL 之间，连续前缀 QJL 匹配不上）、
+   *     Q/JLYJ7210640（连写）、ECE R21.01 等白名单外形态
+   *   - 数字要求 ≥2 位，避免把 "E2 条款"、"附录表A.1" 等非编号误提取
+   * 示例：GB/T 19001, QC/T 636, ISO 9001, GBT2828, JB/T 12345, Q/JL J160003,
+   *       QJLJ160003, Q/JLYJ7210640, FMVSS 118, ECE R21.01
    * 年份后缀（-2000, .1-2012）由正则末尾 `[\d.\-]*` 覆盖。
    */
   _extractStandardCodes(text) {
     if (!text) return [];
     const codes = [];
-    // 支持的标准化组织前缀（含常见五类 + 行业前缀）
-    const prefix = '(?:GB|QC|ISO|JB|YC|TW|DB|CB|JT|JTJ|SY|SH|HG|NB|DL|SD|YD)';
-    // [/:]? 后接可选空格与可选 T，再接数字主体与可选版本/年份后缀
-    const re = new RegExp(`${prefix}[/:]?\\s*T?\\s*\\d+[\\d.\\-]*`, 'gi');
+    // 通道 1：支持的标准化组织前缀（含常见五类 + 行业前缀 + 企业/国际法规）
+    // 注意：企业标准代号是 QJL（Q/JL）/ QJLY（Q/JLY），不是 QJ
+    const prefix = '(?:GB|QC|ISO|JB|YC|TW|DB|CB|JT|JTJ|SY|SH|HG|NB|DL|SD|YD|QJLY|QJL|FMVSS|ECE|SAE|ASTM|DIN|JIS)';
+    // [/:]? 后接可选空格、可选单字母（连写形态）、可选 T，再接数字主体与可选版本/年份后缀
+    const re1 = new RegExp(`${prefix}[/:]?\\s*[A-Z]?\\s*T?\\s*\\d+[\\d.\\-]*`, 'gi');
     let m;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = re1.exec(text)) !== null) {
       codes.push(m[0]);
+    }
+    // 通道 2：通用形态兜底（去重合并）
+    const re2 = /[A-Z]{1,6}(?:[/-][A-Z]{1,4})?\s*[A-Z]?\d{2,}(?:[.\-]\d+)*[A-Z]?(?:[-–]\d{4})?/g;
+    while ((m = re2.exec(text)) !== null) {
+      if (!codes.includes(m[0])) codes.push(m[0]);
     }
     return codes;
   }
