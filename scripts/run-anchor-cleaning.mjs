@@ -27,7 +27,7 @@
  *   STANDARD_NAME     — 标准名称（纳管用，默认 auto-extract）
  *   STANDARD_TYPE     — 标准类型（默认 national）
  *   SKIP_ONBOARD      — 跳过纳管步骤（默认 false，设 1 跳过）
- *   POLL_TIMEOUT_MS   — 轮询超时（默认 900000，15 分钟，与服务端一致）
+ *   POLL_TIMEOUT_MS   — 轮询超时（默认 1800000，30 分钟，与服务端 CLEAN_TIMEOUT_MS 一致）
  *   POLL_INTERVAL_MS  — 轮询间隔（默认 5000，5 秒）
  */
 
@@ -46,7 +46,7 @@ const STANDARD_CODE = process.env.STANDARD_CODE || '';
 const STANDARD_NAME = process.env.STANDARD_NAME || '';
 const STANDARD_TYPE = process.env.STANDARD_TYPE || 'national';
 const SKIP_ONBOARD = process.env.SKIP_ONBOARD === '1';
-const POLL_TIMEOUT_MS = Number(process.env.POLL_TIMEOUT_MS || 900000);
+const POLL_TIMEOUT_MS = Number(process.env.POLL_TIMEOUT_MS || 1800000);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 5000);
 
 if (!DOCUMENT_ID) {

@@ -24,7 +24,8 @@ import jwt from 'jsonwebtoken';
 import DocAccessService from '../../../lib/doc-access-service.js';
 import { Op } from 'sequelize';
 
-const CLEAN_TIMEOUT_MS = 15 * 60 * 1000; // 15 分钟
+// R18-2: 清洗总超时 15→30 分钟（长标准 + 读写交替策略下 15 分钟偏紧）
+const CLEAN_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟
 const TASK_TOKEN_EXPIRY = '4h'; // 后台任务 token 有效期（需长于清洗超时）
 
 // ============================================================
@@ -2278,8 +2279,9 @@ function buildCleanMessage(documentId, revisionId, standardId) {
 ### 阶段 3：补定位
 6. 对已写入的外部 gap 引用，逐条定位目标文档/章节并回写
 
-### 阶段 3.5：完成前强制检查（必须执行）
-7. 阶段 2 写完后，**必须**调用 list_reference_gaps(standard_id) 检查剩余 gap：
+### 阶段 3.5：完成前 gap 检查（阶段 2 全部完成后执行一次，必须执行）
+7. **阶段 2 全部章节处理完毕后**，调用一次 list_reference_gaps(standard_id) 检查剩余 gap：
+  - **刚完成清洗时 gap 列表为空属正常**（阶段 2 尚未对任何 gap 做过定位尝试），不要因为"gap 为空"就反复调用或打转，直接进入阶段 3 补定位
   - 如果还有 **尚未尝试处理** 的 gap，**禁止**输出“完成/处理完毕/最终报告”，必须继续做阶段 3
   - 如果这些 gap 你已经逐条尝试定位，但因为系统内缺少对应标准、没有合适版本、没有足够线索等原因仍无法回填，则**允许保留 gap 并收尾**
   - 收尾时必须明确说明：哪些 gap 已尝试处理但仍无法定位，以及无法定位的原因
@@ -2293,6 +2295,7 @@ function buildCleanMessage(documentId, revisionId, standardId) {
 
 ⚠️ 关键约束：
 - source_outline_id 必须是 list_revision_sections 返回的 outline_id 的**逐字复制**
+- **禁止重复读取（关键！）**：某个 outline 的正文一旦已被 read_section_context 完整读过（page_has_more=false），**不得再次读取**同一 outline，除非是翻页续读。章节列表（list_revision_sections）每轮返回的内容相同，**不要反复调用它刷新列表**——只有第一次进入阶段 2 或需要确认章节 ID 时才调用。重复读取会把相同内容反复累积进上下文，导致请求超出模型窗口而失败（已发生：GB 11552 因前 5 轮重复读同一章节撑爆 128k 窗口）。
 - **跨 outline 独立**：每个 outline 是独立引用作用域，**禁止跨 outline 去重**。同一标准出现在 3.x 章和 4.x 章 → 各写一条，不要因为"另一个章节写过了"就跳过
 - **逐子节扫描**：read_section_context 返回的原文按 \`##\` 分界为独立子节，每个子节必须扫描
 - OCR 可能导致章节边界不准（如 3.15.1 的正文出现在 3.16 的 chunk 中），读到正文后以正文为准，不要因为 outline 标题对不上就跳过内容
