@@ -79,8 +79,6 @@ import MiniAppController from './controllers/mini-app.controller.js';
 import AppMarketController from './controllers/app-market.controller.js';
 import AppRegistryController from './controllers/app-registry.controller.js';
 import AppBackupController from './controllers/app-backup.controller.js';
-import InvoiceController from './controllers/invoice.controller.js';
-import ELSController from './controllers/els.controller.js';
 import AppRegistryService from './services/app-registry.service.js';
 
 // 路由
@@ -116,8 +114,6 @@ import appRegistryRoutes from './routes/app-registry.routes.js';
 import appBackupRoutes from './routes/app-backup.routes.js';
 import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
-import invoiceRoutes from './routes/invoice.routes.js';
-import elsRoutes from './routes/els.routes.js';
 import appClockRoutes from './routes/app-clock.routes.js';
 import { registerRouter } from './routes/route-registration.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
@@ -513,8 +509,6 @@ class ApiServer {
       appMarket: new AppMarketController(this.db, this.sharedRegistryService, null),
       appRegistry: new AppRegistryController(this.db, this.sharedRegistryService),
       appBackup: new AppBackupController(this.db),
-      invoice: new InvoiceController(this.db),
-      els: new ELSController(this.db),
     };
   }
 
@@ -728,14 +722,6 @@ class ApiServer {
     const mcpRouter = createMcpRoutes(this.db, authMiddleware, this.residentSkillManager);
     registerRouter(this.app, mcpRouter);
     logger.info('MCP routes registered (GET/POST /api/mcp/*)');
-
-    const invoiceRouter = invoiceRoutes(this.controllers.invoice);
-    registerRouter(this.app, invoiceRouter);
-    logger.info('Invoice routes registered (/api/invoice/*)');
-
-    const elsRouter = elsRoutes(this.controllers.els);
-    registerRouter(this.app, elsRouter);
-    logger.info('ELS routes registered (/api/els/*)');
 
     const appClockRouter = appClockRoutes(this.db);
     registerRouter(this.app, appClockRouter);

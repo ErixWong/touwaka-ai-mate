@@ -67,13 +67,13 @@ export interface InvoiceListParams {
 
 export function listInvoices(params: InvoiceListParams = {}) {
   return apiRequest<InvoiceListResult>(
-    apiClient.get('/invoice/list', { params })
+    apiClient.get('/apps/invoice-mgr/list', { params })
   )
 }
 
 export function getInvoiceDetail(rowId: string) {
   return apiRequest<InvoiceDetail>(
-    apiClient.get(`/invoice/${rowId}`)
+    apiClient.get(`/apps/invoice-mgr/records/${rowId}`)
   )
 }
 
@@ -99,7 +99,7 @@ export async function exportInvoices(params: InvoiceExportParams = {}) {
     queryParams.fields = queryParams.fields.join(',')
   }
 
-  const response = await apiClient.get('/invoice/export', {
+  const response = await apiClient.get('/apps/invoice-mgr/export', {
     params: queryParams,
     responseType: 'blob',
   })
@@ -142,18 +142,18 @@ export interface CreateInvoiceParams {
 
 export async function createInvoiceRecord(params: CreateInvoiceParams): Promise<MiniAppRecord> {
   return apiRequest<MiniAppRecord>(
-    apiClient.post('/invoice', params)
+    apiClient.post('/apps/invoice-mgr/records', params)
   )
 }
 
 export async function deleteInvoiceRecord(rowId: string): Promise<void> {
   return apiRequest<void>(
-    apiClient.delete(`/invoice/${rowId}`)
+    apiClient.delete(`/apps/invoice-mgr/records/${rowId}`)
   )
 }
 
 export async function reExtractInvoiceRecord(rowId: string): Promise<MiniAppRecord> {
   return apiRequest<MiniAppRecord>(
-    apiClient.post(`/invoice/${rowId}/re-extract`)
+    apiClient.post(`/apps/invoice-mgr/re-extract/${rowId}`)
   )
 }
