@@ -668,13 +668,20 @@ class StandardMgrService {
    * 按标准编号/名称查找标准
    *
    * R2-4 过渡策略：不过滤 enterprise_id
+   *
+   * R17-1：编号匹配改为归一化模糊匹配（先 LIKE 精确，再内存归一化兜底）。
+   *   根因：库内标准编号形态不统一（`QC-T 413` / `QC T 636-2000` / `QC/T 413-2002`），
+   *   锚点原文常用斜杠+年份（如 `QC/T 413-2002`），直接 LIKE 无法命中连字符形态。
+   *   归一化 = 去掉全部非字母数字 + 大写 → `QCT4132002` vs `QCT413` 前缀包含即命中。
    */
   async findStandards({ standard_code, standard_name }) {
     const AppStandard = this._appStandard();
 
     const where = { is_active: 1 };
+    let needNormFallback = false;
 
     if (standard_code) {
+      // 先按原始形态 LIKE（快路径，命中即返回）
       where.standard_code = { [Op.like]: `%${standard_code}%` };
     }
 
@@ -686,7 +693,24 @@ class StandardMgrService {
       throw new Error('At least one of standard_code or standard_name is required');
     }
 
-    return await AppStandard.findAll({ where, raw: true });
+    let standards = await AppStandard.findAll({ where, raw: true });
+
+    // 归一化兜底：编号查询在原始 LIKE 无命中时，用归一化编号做包含匹配
+    // （斜杠 / 连字符 - 空格 年份差异，如 QC/T 413-2002 vs QC-T 413）
+    if (standard_code && standards.length === 0) {
+      const normQuery = this._normalizeCode(standard_code);
+      if (normQuery) {
+        const all = await AppStandard.findAll({ where: { is_active: 1 }, raw: true });
+        standards = all.filter(s => {
+          const normCode = this._normalizeCode(s.standard_code);
+          if (!normCode) return false;
+          // 双向前缀包含：QCT4132002 包含 QCT413（锚点带年份） / QCT413 被包含（锚点不带年份）
+          return normCode.includes(normQuery) || normQuery.includes(normCode);
+        });
+      }
+    }
+
+    return standards;
   }
 
   /**
