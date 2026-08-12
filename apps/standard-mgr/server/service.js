@@ -162,6 +162,21 @@ function _normalizeSourceText(text) {
     .toLowerCase();
 }
 
+/**
+ * R17-2（A 方案）：ID 混淆字符归一化 —— 用于 LLM 抄写 ID 时的容错比较。
+ *
+ * base36 ID 中 0/o、1/i/l 视觉相似，LLM 生成工具参数时可能把 o 写成 0、i/l 写成 1。
+ * 归一化规则：0/o → '0'，1/i/l → '1'，其余字符原样（大小写不敏感，统一小写）。
+ * 例：mspo71uf0bzgnwlwvg5v → msp071uf0bzgnwlwvg5v（0/o 相同位归一后相等）
+ */
+function _normalizeConfusableId(id) {
+  if (!id) return '';
+  return String(id)
+    .toLowerCase()
+    .replace(/[0o]/g, '0')
+    .replace(/[1il]/g, '1');
+}
+
 class StandardMgrService {
   constructor(db) {
     this.db = db;
@@ -208,6 +223,46 @@ class StandardMgrService {
   // ============================================================
   // P1-2: writeAnchorResult — 唯一写入口
   // ============================================================
+
+  /**
+   * R17-2（A 方案）：ID 混淆字符容错解析。
+   *
+   * LLM 抄写 base36 ID 时可能把 o↔0、i↔1↔l 看混（如 mspo71... → msp071...）。
+   * 规则：
+   *   1. 精确查找优先（正常路径不受影响，杜绝误匹配）
+   *   2. 精确无命中才触发归一化比较（_normalizeConfusableId：0/o→0，1/i/l→1）
+   *   3. 恰好 1 个候选 → 采用并告警；多个候选 → 抛错拒绝猜测
+   *
+   * @param {object} model - Sequelize 模型（主键 id，含 id 字段）
+   * @param {string} id - 传入 ID
+   * @param {object} [opts] - { where: 附加过滤条件 }
+   * @returns {Promise<string|null>} 解析后的真实 ID；无匹配返回 null
+   */
+  async _resolveConfusableId(model, id, opts = {}) {
+    if (!id) return null;
+
+    // 1. 精确查找优先
+    const exact = await model.findByPk(id, { raw: true });
+    if (exact) return id;
+
+    // 2. 混淆归一化比较
+    const normInput = _normalizeConfusableId(id);
+    const all = await model.findAll({ where: opts.where || {}, raw: true });
+    const matches = all.filter(s => _normalizeConfusableId(s.id) === normInput);
+
+    if (matches.length === 1) {
+      logger.warn(
+        `[standard-mgr] ID 混淆容错: "${id}" → "${matches[0].id}" (o/0、i/1/l 归一化匹配)`
+      );
+      return matches[0].id;
+    }
+    if (matches.length > 1) {
+      throw new Error(
+        `Ambiguous id "${id}": matches ${matches.map(m => m.id).join(', ')}, refusing to guess`
+      );
+    }
+    return null;
+  }
 
   /**
    * R15-2：在同 outline 中查找语义匹配的已有记录。
@@ -277,7 +332,8 @@ class StandardMgrService {
    * @returns {Promise<object>} { ref_anchor, anchored_section, standard }
    */
   async writeAnchorResult(params) {
-    const {
+    // R17-2：用 let 解构，允许容错解析后重新赋值（standard_id/revision_id/outline_id）
+    let {
       standard_id,
       source_revision_id,
       source_outline_id,
@@ -313,8 +369,17 @@ class StandardMgrService {
       throw new Error(`Invalid source: ${source}`);
     }
 
-    // ---- 标准存在性校验 ----
+    // ---- 标准存在性校验（R17-2：混淆字符容错） ----
     const AppStandard = this._appStandard();
+
+    // R17-2（A 方案）：精确查找失败时，用 0/o、1/i/l 混淆归一化匹配库内标准 ID。
+    // 仅"精确无命中"才触发；多候选时拒绝猜测（抛错），绝不静默选一个。
+    const resolvedStandardId = await this._resolveConfusableId(
+      AppStandard, standard_id, { where: {} }
+    );
+    if (!resolvedStandardId) throw new Error(`Standard not found: ${standard_id}`);
+    standard_id = resolvedStandardId;
+
     const standard = await AppStandard.findByPk(standard_id, { raw: true });
     if (!standard) throw new Error(`Standard not found: ${standard_id}`);
 
@@ -330,11 +395,25 @@ class StandardMgrService {
     }
 
     // R15：source_outline_id 有效性校验 —— 防止 Agent 编造不存在的 ID
+    // R17-2：同样做混淆字符容错（o↔0、i↔1↔l）
     const DocOutline = this.db.getModel('document_outline');
-    const outlineExists = await DocOutline.findByPk(source_outline_id, { attributes: ['id'], raw: true });
-    if (!outlineExists) {
+    const resolvedOutlineId = await this._resolveConfusableId(
+      DocOutline, source_outline_id, { where: {} }
+    );
+    if (!resolvedOutlineId) {
       throw new Error(`source_outline_id "${source_outline_id}" 不存在，请从 list_revision_sections 返回值中逐字复制 outline_id，禁止自行编造`);
     }
+    source_outline_id = resolvedOutlineId;
+
+    // R17-2：source_revision_id 混淆字符容错（写入前解析为真实 ID）
+    const DocumentRevision = this.db.getModel('document_revision');
+    const resolvedRevisionId = await this._resolveConfusableId(
+      DocumentRevision, source_revision_id, { where: {} }
+    );
+    if (!resolvedRevisionId) {
+      throw new Error(`source_revision_id "${source_revision_id}" 不存在`);
+    }
+    source_revision_id = resolvedRevisionId;
 
     // ---- 事务写入 ----
     const tx = await this.db.sequelize.transaction();
@@ -1890,16 +1969,27 @@ class StandardMgrService {
       throw err;
     }
 
-    // ---- 2. 校验 document_id 唯一 ----
+    // ---- 2. 校验 document_id / revision 唯一性 ----
+    // R17-3（一文档多版本）：允许同一 document_id 纳管多个版本（revision_id 不同）。
+    // 仅拒绝「同 document_id + 同 revision_id」的完全重复纳管。
     const AppStandard = this._appStandard();
     const existing = await AppStandard.findOne({
       where: { document_id },
       raw: true,
     });
     if (existing) {
-      const err = new Error(`Document already onboarded as standard: ${existing.id} (${existing.standard_code} ${existing.standard_name})`);
-      err.status = 409;
-      throw err;
+      const duplicateWhere = { document_id };
+      if (revision_id) duplicateWhere.current_revision_id = revision_id;
+      const dupCheck = revision_id
+        ? await AppStandard.findOne({ where: duplicateWhere, raw: true })
+        : existing;
+      if (dupCheck) {
+        const err = new Error(
+          `Document already onboarded as standard: ${dupCheck.id} (${dupCheck.standard_code} ${dupCheck.standard_name})`
+        );
+        err.status = 409;
+        throw err;
+      }
     }
 
     // ---- 3. R9-2: 确定版本 —— 若指定 revision_id 则校验其属于该文档 ----

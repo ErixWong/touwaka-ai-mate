@@ -12,8 +12,7 @@ export default class app_standard extends Model {
     document_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "文档平台 documents.id，一份文档只纳管一次",
-      unique: "uk_app_standard_document"
+      comment: "文档平台 documents.id，一份文档只纳管一次"
     },
     standard_type: {
       type: DataTypes.STRING(20),
@@ -154,11 +153,12 @@ export default class app_standard extends Model {
         ]
       },
       {
-        name: "uk_app_standard_document",
+        name: "uk_app_standard_document_revision",
         unique: true,
         using: "BTREE",
         fields: [
           { name: "document_id" },
+          { name: "current_revision_id" },
         ]
       },
       {
@@ -187,6 +187,13 @@ export default class app_standard extends Model {
         using: "BTREE",
         fields: [
           { name: "current_revision_id" },
+        ]
+      },
+      {
+        name: "idx_document_id",
+        using: "BTREE",
+        fields: [
+          { name: "document_id" },
         ]
       },
     ]

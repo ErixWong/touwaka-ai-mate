@@ -172,7 +172,7 @@ const treeData = computed<TreeNode[]>(() => {
           label: t('apps.standardMgr.treeUnassignedEnterprise'),
           type: 'group',
           count: grp.items.length,
-          children: grp.items.map(buildStandardNode),
+          children: buildVersionedNodes(grp.items),
         })
       }
 
@@ -189,7 +189,7 @@ const treeData = computed<TreeNode[]>(() => {
           label: entName,
           type: 'group',
           count: items.length,
-          children: items.map(buildStandardNode),
+          children: buildVersionedNodes(items),
         })
       }
 
@@ -217,13 +217,64 @@ const treeData = computed<TreeNode[]>(() => {
         label: grp.label,
         type: 'group',
         count: grp.items.length,
-        children: grp.items.map(buildStandardNode),
+        children: buildVersionedNodes(grp.items),
       })
     }
   }
 
   return nodes
 })
+
+/**
+ * 版本化分组（树状展开）
+ *
+ * 规则（Eric 确认）：同一 `document_id` 下存在多条标准记录、且 `current_revision_id`
+ * 各不相同 → 说明是同一标准的不同版本（同一份文档多次修订），
+ * 打包成「版本组 → 各版本」两层树节点；否则保持原样平铺。
+ */
+function buildVersionedNodes(items: StandardItem[]): TreeNode[] {
+  const byDoc = new Map<string, StandardItem[]>()
+  const singles: StandardItem[] = []
+
+  for (const std of items) {
+    if (std.document_id) {
+      const arr = byDoc.get(std.document_id)
+      if (arr) {
+        arr.push(std)
+      } else {
+        byDoc.set(std.document_id, [std])
+      }
+    } else {
+      singles.push(std)
+    }
+  }
+
+  const nodes: TreeNode[] = []
+  for (const [docId, group] of byDoc) {
+    const revisionSet = new Set(group.map(g => g.current_revision_id))
+    if (group.length > 1 && revisionSet.size > 1) {
+      // 同一文档的多版本 → 版本组
+      const sorted = [...group].sort((a, b) => (b.standard_name || '').localeCompare(a.standard_name || ''))
+      const first = sorted[0]
+      nodes.push({
+        id: `version_${docId}`,
+        label: (first && (first.standard_code || first.standard_name)) || docId,
+        type: 'group',
+        count: group.length,
+        children: sorted.map(std => ({
+          ...buildStandardNode(std),
+          // 版本子节点用含年份的标准名作 label，便于区分版本
+          label: std.standard_name || std.standard_code || std.id,
+        })),
+      })
+    } else {
+      singles.push(...group)
+    }
+  }
+
+  nodes.push(...singles.map(buildStandardNode))
+  return nodes
+}
 
 function buildStandardNode(std: StandardItem): TreeNode {
   return {

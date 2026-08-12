@@ -3600,7 +3600,8 @@ const MIGRATIONS = [
           created_by VARCHAR(32) NULL COMMENT '创建人',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          UNIQUE KEY uk_app_standard_document (document_id),
+          UNIQUE KEY uk_app_standard_document_revision (document_id, current_revision_id),
+          INDEX idx_document_id (document_id),
           INDEX idx_standard_code (standard_code),
           INDEX idx_enterprise (enterprise_id),
           INDEX idx_build_status (anchor_build_status),
@@ -3608,6 +3609,22 @@ const MIGRATIONS = [
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='标准纳管主对象表'
       `);
       console.log('  ✓ Created app_standard table');
+    }
+  },
+
+  {
+    // R17-3（一文档多版本）：document_id 唯一索引 → (document_id, current_revision_id) 联合唯一
+    // 背景：与文档平台对齐——同一文档可对应多个版本（revision），每个版本一条标准记录。
+    // 唯一约束改为「同文档 + 同版本」粒度：同文档不同版本可共存，同版本不重复纳管。
+    // current_revision_id 为 NULL 时 MySQL 联合唯一不生效，与文档平台 NULL=版本未定 语义一致。
+    name: 'app_standard unique index to document+revision',
+    // check 目标：新联合唯一索引不存在时才需要迁移
+    check: async (conn) => await hasIndex(conn, 'app_standard', 'uk_app_standard_document_revision'),
+    migrate: async (conn) => {
+      await safeExecute(conn, 'ALTER TABLE app_standard DROP INDEX uk_app_standard_document');
+      await conn.execute('ALTER TABLE app_standard ADD UNIQUE KEY uk_app_standard_document_revision (document_id, current_revision_id)');
+      await safeExecute(conn, 'ALTER TABLE app_standard ADD INDEX idx_document_id (document_id)');
+      console.log('  ✓ Dropped uk_app_standard_document → added uk_app_standard_document_revision (document_id, current_revision_id)');
     }
   },
 
