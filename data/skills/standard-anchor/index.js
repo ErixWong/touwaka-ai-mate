@@ -283,11 +283,18 @@ async function getDocumentRevisions(params) {
 /**
  * 按版本线索筛选 revision 候选（纯函数，不发 IO）
  *
+ * 版本比较规则（P3 版本日期规则）：
+ * - 有 publish_date 的版本优先按日期比较；源文档 publish_date 已知时，
+ *   只保留 publish_date ≤ 源文档发布日期的版本（"最新版只采用比档期文档发布更早的版本"），
+ *   再取其中 publish_date 最晚者。
+ * - 没有任何 publish_date 时，回退 revision_no 降序（取第一个即最新）。
+ *
  * @param {object} params
- * @param {Array} params.revisions - 版本列表（含 revision_label）
+ * @param {Array} params.revisions - 版本列表（含 revision_label、publish_date）
  * @param {object} [params.hints] - 版本线索
  * @param {string} [params.hints.year] - 年份（如 "2016"）
  * @param {string} [params.hints.revision_label] - 精确 label
+ * @param {string} [params.hints.source_publish_date] - 源文档（引用方）发布日期，YYYY-MM-DD
  * @returns {object} { candidates, excluded, match_rule }
  */
 async function selectRevisionCandidate(params) {
@@ -297,8 +304,39 @@ async function selectRevisionCandidate(params) {
     throw new Error('revisions is required and must be an array');
   }
 
+  const hasPublishDates = revisions.some(r => r.publish_date != null && r.publish_date !== '');
+
+  // 无线索："使用最新版"场景 —— 日期优先，无日期回退 revision_no 降序
   if (!hints.year && !hints.revision_label) {
-    // 无线索：返回所有，按 revision_no 降序
+    let candidates = [...revisions];
+
+    if (hasPublishDates) {
+      // 过滤：只保留发布日 ≤ 源文档发布日的版本（源文档日期已知时）
+      const srcDate = hints.source_publish_date ? new Date(hints.source_publish_date).getTime() : null;
+      if (srcDate && !Number.isNaN(srcDate)) {
+        const before = candidates.filter(r => {
+          const d = r.publish_date ? new Date(r.publish_date).getTime() : null;
+          // 无日期的版本保留（回退策略），有日期的必须 ≤ 源文档日期
+          return d == null || Number.isNaN(d) || d <= srcDate;
+        });
+        // 若过滤后为空，说明所有版本都晚于源文档，保持原列表（由调用方判断）
+        if (before.length > 0) candidates = before;
+      }
+      // 按 publish_date 降序，无日期的排最后，再按 revision_no 降序兜底
+      candidates.sort((a, b) => {
+        const da = a.publish_date ? new Date(a.publish_date).getTime() : -Infinity;
+        const db = b.publish_date ? new Date(b.publish_date).getTime() : -Infinity;
+        if (db !== da) return db - da;
+        return (b.revision_no || 0) - (a.revision_no || 0);
+      });
+      return {
+        candidates,
+        excluded: [],
+        match_rule: srcDate ? 'no_hints:latest_by_publish_date_lte_source' : 'no_hints:latest_by_publish_date',
+      };
+    }
+
+    // 无日期：回退 revision_no 降序
     const sorted = [...revisions].sort((a, b) => (b.revision_no || 0) - (a.revision_no || 0));
     return {
       candidates: sorted,
@@ -321,8 +359,13 @@ async function selectRevisionCandidate(params) {
     candidates = revisions.filter(r => r.revision_label && r.revision_label.includes(hints.year));
     excluded = revisions.filter(r => !r.revision_label || !r.revision_label.includes(hints.year));
 
-    // 同年多版本按 revision_no 降序
-    candidates.sort((a, b) => (b.revision_no || 0) - (a.revision_no || 0));
+    // 同年多版本按 revision_no 降序（日期已知时按日期降序）
+    candidates.sort((a, b) => {
+      const da = a.publish_date ? new Date(a.publish_date).getTime() : -Infinity;
+      const db = b.publish_date ? new Date(b.publish_date).getTime() : -Infinity;
+      if (db !== da) return db - da;
+      return (b.revision_no || 0) - (a.revision_no || 0);
+    });
     matchRule = `year_hint:${hints.year}`;
   }
 
@@ -478,16 +521,17 @@ function getTools() {
     },
     {
       name: 'select_revision_candidate',
-      description: '按版本线索从候选 revision 中筛选最匹配的版本（纯函数，不发 IO）',
+      description: '按版本线索从候选 revision 中筛选最匹配的版本（纯函数，不发 IO）。无线索（"使用最新版"）时：有 publish_date 则按日期取最晚且不晚于源文档发布日的版本（可传 source_publish_date 过滤），无日期则按 revision_no 降序取第一个。',
       parameters: {
         type: 'object',
         properties: {
-          revisions: { type: 'array', items: { type: 'object' }, description: '版本列表（含 revision_label、revision_no）' },
+          revisions: { type: 'array', items: { type: 'object' }, description: '版本列表（含 revision_label、revision_no、publish_date）' },
           hints: {
             type: 'object',
             properties: {
               year: { type: 'string', description: '年份线索，如 "2016"' },
               revision_label: { type: 'string', description: '精确 label 匹配' },
+              source_publish_date: { type: 'string', description: '源文档（引用方）发布日期 YYYY-MM-DD；无线索时用于过滤 publish_date ≤ 该日期的版本' },
             },
           },
         },

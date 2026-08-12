@@ -101,6 +101,16 @@ const DEFAULT_PROMPT = `你是标准文档引用清洗专家。你的任务有�
   - find_section_candidates
 12. **禁止跳过阶段 3**：阶段 2 把外部引用先落成 gap 只是中间态，不是任务完成态
 
+### 版本选择规则（重要，阶段 3 定位时必须遵守）
+13. **引用注明了具体版本年份**（如"GB/T xxxx-2016"）：
+    - 用 select_revision_candidate 传 hints.year（如 "2016"）精确匹配该年份版本
+14. **引用只说"最新版"/未注明年份**（如"采用最新版本"）：
+    - 调用 select_revision_candidate 时**不带 year/label**，并在 hints.source_publish_date 传入**当前被清洗标准（源文档）的发布日期**
+    - 工具会优先按 publish_date 选择 ≤ 源文档发布日期的最新版本（"最新版只采用比档期文档发布时间更旧的文档"）
+    - 若版本都没有 publish_date，工具回退 revision_no 降序返回第一个
+    - **禁止**仅凭直觉选 revision_no 最大的版本而不考虑发布时序
+15. 若目标版本列表中存在多个候选且无法唯一确定，落 suspected 而非猜测
+
    **write_anchor_result 参数**：
    - source_revision_id / source_outline_id / occurrence_index（幂等键，需与阶段 2 写入时一致）
    - source_text（逐字复制）/ context_text

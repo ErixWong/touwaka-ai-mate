@@ -2402,6 +2402,13 @@ function buildCleanMessage(documentId, revisionId, standardId) {
   - find_section_candidates
 9. **禁止跳过阶段 3**：即使阶段 2 已经把所有外部引用先落成 gap，也不代表任务完成；gap 只是待回填中间态，不是最终完成态
 
+### 版本选择规则（阶段 3 定位时必须遵守）
+- 引用注明了具体版本年份（如 "GB/T xxxx-2016"）→ select_revision_candidate 传 hints.year（如 "2016"）精确匹配
+- 引用只说"最新版"/未注明年份 → 调用 select_revision_candidate 时**不带 year/label**，并在 hints.source_publish_date 传入**本标准（源文档）的发布日期**：
+  - 工具优先按 publish_date 选择 ≤ 源文档发布日的最新版本（"最新版只采用比档期文档发布更早的版本"）
+  - 若版本无 publish_date，工具回退 revision_no 降序返回第一个
+- **禁止**仅凭直觉选 revision_no 最大的版本而不考虑发布时序；多个候选无法唯一确定时落 suspected
+
 ⚠️ 关键约束：
 - source_outline_id 必须是 list_revision_sections 返回的 outline_id 的**逐字复制**
 - **禁止重复读取（关键！）**：某个 outline 的正文一旦已被 read_section_context 完整读过（page_has_more=false），**不得再次读取**同一 outline，除非是翻页续读。章节列表（list_revision_sections）每轮返回的内容相同，**不要反复调用它刷新列表**——只有第一次进入阶段 2 或需要确认章节 ID 时才调用。重复读取会把相同内容反复累积进上下文，导致请求超出模型窗口而失败（已发生：GB 11552 因前 5 轮重复读同一章节撑爆 128k 窗口）。
