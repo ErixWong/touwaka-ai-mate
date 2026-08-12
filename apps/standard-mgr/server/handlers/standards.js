@@ -180,3 +180,39 @@ export async function put(ctx, deps) {
     ctx.error(err.message, 400);
   }
 }
+
+/**
+ * DELETE /api/apps/standard-mgr/standards/:standardId — 删除标准
+ *
+ * R19: 删除标准及其全部引用锚点数据（app_standard_ref_anchor /
+ * app_standard_anchored_section / app_standard），文档平台内容不受影响。
+ * 清洗中（processing）禁止删除 → 409。
+ */
+async function del(ctx, deps) {
+  try {
+    if (!ctx.state.session?.isAdmin) {
+      ctx.error('需要管理员权限', 403);
+      return;
+    }
+
+    const service = new StandardMgrService(deps.db);
+    const { standardId } = ctx.params;
+    if (!standardId) {
+      ctx.error('standardId is required', 400);
+      return;
+    }
+
+    const result = await service.deleteStandard(standardId, { user_id: getUserId(ctx) });
+    if (!result) {
+      ctx.error('Standard not found', 404);
+      return;
+    }
+
+    ctx.success(result);
+  } catch (err) {
+    logger.error(`[standard-mgr] deleteStandard error: ${err.message}`);
+    ctx.error(err.message, err.status || 400);
+  }
+}
+
+export { del as delete };

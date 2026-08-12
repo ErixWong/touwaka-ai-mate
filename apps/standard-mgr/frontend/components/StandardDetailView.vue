@@ -29,9 +29,37 @@
         <el-button size="small" @click="openEditDialog">
           {{ $t('apps.standardMgr.editMetadata') }}
         </el-button>
+        <!-- R19: 删除标准（最右侧） -->
+        <el-button
+          type="danger"
+          plain
+          size="small"
+          :disabled="standard.anchor_build_status === 'processing'"
+          @click="showDeleteDialog = true"
+        >
+          {{ $t('apps.standardMgr.deleteStandard') }}
+        </el-button>
         <span v-if="rebuildError" class="sm-rebuild-error">{{ rebuildError }}</span>
       </div>
     </div>
+
+    <!-- R19: 删除确认对话框 -->
+    <el-dialog
+      v-if="standard"
+      v-model="showDeleteDialog"
+      :title="$t('apps.standardMgr.deleteConfirmTitle')"
+      width="440px"
+    >
+      <p class="sm-delete-warning">
+        {{ $t('apps.standardMgr.deleteConfirmMessage') }}
+      </p>
+      <template #footer>
+        <el-button @click="showDeleteDialog = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="danger" :loading="deleting" @click="handleDeleteStandard">
+          {{ $t('apps.standardMgr.deleteStandard') }}
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- R11-5: 元数据编辑对话框 -->
     <el-dialog
@@ -145,7 +173,24 @@ const emit = defineEmits<{
     standard_name?: string
     enterprise_id?: string | null
   }]
+  /** R19: 删除标准 */
+  deleteStandard: [standardId: string]
 }>()
+
+// ---- R19: 删除标准 ----
+const showDeleteDialog = ref(false)
+const deleting = ref(false)
+
+async function handleDeleteStandard() {
+  if (!props.standard) return
+  deleting.value = true
+  try {
+    emit('deleteStandard', props.standard.id)
+    showDeleteDialog.value = false
+  } finally {
+    deleting.value = false
+  }
+}
 
 // ---- R11-5: 元数据编辑 ----
 const showEditDialog = ref(false)

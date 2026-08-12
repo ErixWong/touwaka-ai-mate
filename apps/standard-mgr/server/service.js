@@ -2001,6 +2001,74 @@ class StandardMgrService {
   }
 
   // ============================================================
+  // R19: deleteStandard — 删除标准及其全部引用锚点数据
+  //
+  // 删除范围（仅标准域）：
+  //   - app_standard
+  //   - app_standard_ref_anchor（引用锚点）
+  //   - app_standard_anchored_section（带锚点副本）
+  //   - 相关清洗 topic 一并归档/删除（见下）
+  // 不删除文档平台内容（documents / document_revisions / document_outlines /
+  // document_chunks / embeddings），文档平台数据与标准域解耦，删除标准不影响它们。
+  //
+  // 保护：清洗中（processing）禁止删除，避免 agent 写入过程中被删产生孤儿数据。
+  // ============================================================
+
+  async deleteStandard(standardId, { user_id } = {}) {
+    const AppStandard = this._appStandard();
+    const RefAnchor = this._refAnchor();
+    const AnchoredSection = this._anchoredSection();
+
+    const standard = await AppStandard.findByPk(standardId, { raw: true });
+    if (!standard) return null;
+
+    // 清洗中禁止删除
+    if (standard.anchor_build_status === ANCHOR_BUILD_STATUS.PROCESSING) {
+      const err = new Error('标准正在清洗中，无法删除');
+      err.status = 409;
+      throw err;
+    }
+
+    const tx = await this.db.sequelize.transaction();
+    try {
+      // 1. 删除引用锚点
+      const anchorDeleted = await RefAnchor.destroy({
+        where: { standard_id: standardId },
+        transaction: tx,
+      });
+
+      // 2. 删除带锚点副本
+      const sectionDeleted = await AnchoredSection.destroy({
+        where: { standard_id: standardId },
+        transaction: tx,
+      });
+
+      // 3. 删除标准主记录
+      await AppStandard.destroy({
+        where: { id: standardId },
+        transaction: tx,
+      });
+
+      await tx.commit();
+
+      logger.info(
+        `[standard-mgr] deleteStandard: standard=${standardId} deleted ` +
+        `(ref_anchor=${anchorDeleted}, anchored_section=${sectionDeleted}) by user=${user_id || 'unknown'}`
+      );
+
+      return {
+        deleted: true,
+        standard_id: standardId,
+        deleted_anchors: anchorDeleted,
+        deleted_sections: sectionDeleted,
+      };
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
+  }
+
+  // ============================================================
   // R11: 企业花名册 CRUD
   // ============================================================
 

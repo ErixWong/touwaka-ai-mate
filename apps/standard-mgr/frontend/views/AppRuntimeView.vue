@@ -83,6 +83,7 @@
                     @rebuild="handleRebuild"
                     @select-anchor="handleSelectAnchor"
                     @edit-metadata="handleEditMetadata"
+                    @delete-standard="handleDeleteStandard"
                   />
                 </div>
 
@@ -96,6 +97,7 @@
                     @anchor-click="handleSelectAnchor"
                     @jump-to-anchor="handleJumpToAnchor"
                     @fix-anchor="handleOpenFixDialog"
+                    @jump-to-section="handleJumpToSection"
                   />
                 </div>
               </div>
@@ -196,6 +198,18 @@ function handleAnchorClick(anchorId: string) {
   store.selectedAnchorId = anchorId
 }
 
+/** R19: 锚点面板章节标题点击 → 中间预览跳转到该章节 */
+async function handleJumpToSection(outlineId: string) {
+  await nextTick()
+  await new Promise(r => requestAnimationFrame(r))
+  const el = document.querySelector(`[data-outline-id="${outlineId}"]`)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    el.classList.add('anchor-highlight')
+    setTimeout(() => el.classList.remove('anchor-highlight'), 2000)
+  }
+}
+
 function handleSelectAnchor(anchorId: string) {
   store.selectedAnchorId = anchorId
   // 定位到锚点标记的具体位置（📌），而非整个章节
@@ -290,6 +304,16 @@ async function handleEditMetadata(
   data: { standard_type?: string; standard_code?: string; standard_name?: string; enterprise_id?: string | null },
 ) {
   await store.updateStandardMeta(standardId, data)
+}
+
+/** R19: 删除标准 — 委托 store（含关闭页签 + 刷新列表） */
+async function handleDeleteStandard(standardId: string) {
+  try {
+    await store.removeStandard(standardId)
+  } catch (err: any) {
+    // 错误已在 store 内 toast
+    console.error('[standard-mgr] delete failed:', err)
+  }
 }
 </script>
 

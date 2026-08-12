@@ -249,6 +249,15 @@ export async function updateStandard(
   return apiRequest<StandardItem>(apiClient.put(`${PREFIX}/standards/${standardId}`, data))
 }
 
+/** R19: 删除标准（含全部引用锚点，不影响文档平台内容） */
+export async function deleteStandard(
+  standardId: string,
+): Promise<{ deleted: boolean; standard_id: string; deleted_anchors: number; deleted_sections: number }> {
+  return apiRequest<{ deleted: boolean; standard_id: string; deleted_anchors: number; deleted_sections: number }>(
+    apiClient.delete(`${PREFIX}/standards/${standardId}`),
+  )
+}
+
 /** 获取带锚点副本列表 */
 export async function listAnchoredSections(standardId: string): Promise<AnchoredSection[]> {
   return apiRequest<AnchoredSection[]>(

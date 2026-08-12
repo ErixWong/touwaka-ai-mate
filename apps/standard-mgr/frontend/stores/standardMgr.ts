@@ -23,6 +23,7 @@ import {
   startCleaning,
   writeAnchorResult,
   updateStandard,
+  deleteStandard,
   listEnterprises,
   type StandardItem,
   type StandardType,
@@ -271,6 +272,32 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     }
   }
 
+  /** R19: 删除标准（含全部锚点）。成功后关闭相关页签并刷新列表 */
+  async function removeStandard(standardId: string) {
+    try {
+      await deleteStandard(standardId)
+      useToastStore().success(i18n.global.t('apps.standardMgr.deleteStandardSuccess'))
+
+      // 关闭所有引用该标准的页签
+      const tabs = openTabs.value.filter(t => t.standard_id === standardId)
+      for (const tab of tabs) {
+        closeTab(tab.tab_id)
+      }
+      // 清理缓存
+      delete tabCaches.value[standardId]
+      // 刷新列表
+      await fetchStandards()
+    } catch (err: any) {
+      const msg = err?.message
+      if (msg && msg.includes('正在清洗')) {
+        useToastStore().error(i18n.global.t('apps.standardMgr.deleteForbiddenWhileProcessing'))
+      } else {
+        useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.deleteStandardFailed'))
+      }
+      throw err
+    }
+  }
+
   /** R9-1: 选择标准 → 始终开新页签 + 加载数据 */
   async function selectStandard(standardId: string) {
     openTab(standardId, { allowDuplicate: true })
@@ -452,6 +479,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     fetchStandards,
     fetchEnterprises,
     updateStandardMeta,
+    removeStandard,
     selectStandard,
     fetchGaps,
     triggerRebuild,

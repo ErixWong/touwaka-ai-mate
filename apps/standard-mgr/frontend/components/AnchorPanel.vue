@@ -28,90 +28,29 @@
         </el-button-group>
       </div>
 
-      <!-- R8-2: 全量章节目录树 -->
+      <!-- R19: 多级分级目录树（支持章节标题点击跳转 + 筛选后隐藏空章节） -->
       <div class="sm-anchor-tree">
-      <div v-for="section in sortedSections" :key="section.outline_id" class="sm-tree-chapter" :class="{ dimmed: isChapterDimmed(section.outline_id) }">
-        <div class="sm-tree-chapter-header" @click="toggleChapter(section.outline_id)">
-          <el-icon class="sm-tree-arrow" :class="{ expanded: expandedChapters.has(section.outline_id) }">
-            <ArrowRight />
-          </el-icon>
-          <span class="sm-tree-chapter-title">{{ section.title || `${section.seq}` }}</span>
-          <el-tag v-if="getSectionTotalAnchors(section.outline_id) > 0" size="small" type="info" class="sm-tree-chapter-badge">
-            {{ getSectionTotalAnchors(section.outline_id) }}
-          </el-tag>
-        </div>
-
-        <div v-show="expandedChapters.has(section.outline_id)" class="sm-tree-chapter-body">
-          <!-- 无锚点章节 -->
-          <div v-if="getSectionAnchors(section.outline_id).length === 0" class="sm-tree-empty-chapter">
-            {{ $t('apps.standardMgr.chapterEmpty') }}
-          </div>
-
-          <!-- 锚点条目：点击条目本身 → 滚动中间栏到该锚点所在章节 -->
-          <div
-            v-for="anchor in getSectionAnchors(section.outline_id)"
-            :key="anchor.id"
-            class="sm-tree-anchor-item"
-            :class="{
-              active: anchor.id === selectedAnchorId,
-              'status-valid': anchor.status === 'valid',
-              'status-gap': anchor.status === 'gap',
-              'status-suspected': anchor.status === 'suspected',
-              'status-invalid': anchor.status === 'invalid',
-            }"
-            @click="handleItemClick(anchor)"
-          >
-            <div class="sm-tree-anchor-top">
-              <el-tag :type="anchorStatusTag(anchor.status)" size="small">
-                {{ $t(anchorStatusLabel(anchor.status)) }}
-              </el-tag>
-              <span class="sm-tree-anchor-text">{{ anchor.source_text?.slice(0, 60) }}{{ (anchor.source_text?.length || 0) > 60 ? '...' : '' }}</span>
-            </div>
-            <div class="sm-tree-anchor-actions">
-              <el-tooltip
-                v-if="!canJump(anchor)"
-                :content="$t('apps.standardMgr.anchorNoMarker')"
-                placement="top"
-              >
-                <el-button size="small" disabled>
-                  {{ $t('apps.standardMgr.jumpToAnchor') }}
-                </el-button>
-              </el-tooltip>
-              <el-tooltip
-                v-else-if="!hasMarker(anchor)"
-                :content="$t('apps.standardMgr.anchorNoSourceMarker')"
-                placement="top"
-              >
-                <el-button
-                  size="small"
-                  type="primary"
-                  link
-                  @click.stop="handleJump(anchor)"
-                >
-                  {{ $t('apps.standardMgr.jumpToAnchor') }}
-                </el-button>
-              </el-tooltip>
-              <el-button
-                v-else
-                size="small"
-                type="primary"
-                link
-                @click.stop="handleJump(anchor)"
-              >
-                {{ $t('apps.standardMgr.jumpToAnchor') }}
-              </el-button>
-              <el-button
-                size="small"
-                link
-                @click.stop="openDetail(anchor)"
-              >
-                {{ $t('apps.standardMgr.detailView') }}
-              </el-button>
-            </div>
-          </div>
-        </div>
+        <TreeNodeView
+          v-for="node in visibleTree"
+          :key="node.outline_id + '-' + node.seq"
+          :node="node"
+          :depth="0"
+          :expanded-nodes="expandedNodes"
+          :filter-active="filterStatus !== 'all'"
+          :selected-anchor-id="selectedAnchorId"
+          :anchor-status-tag="anchorStatusTag"
+          :anchor-status-label="anchorStatusLabel"
+          :can-jump="canJump"
+          :has-marker="hasMarker"
+          :get-anchors="getSectionAnchors"
+          :get-total="getSectionTotalAnchors"
+          @toggle="toggleNode"
+          @jump-to-section="handleJumpToSection"
+          @anchor-click="handleItemClick"
+          @jump-to-anchor="handleJump"
+          @open-detail="openDetail"
+        />
       </div>
-    </div>
     </div>
 
     <!-- R8-2: 锚点详情弹窗 -->
@@ -173,10 +112,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { ArrowRight, CopyDocument } from '@element-plus/icons-vue'
+import { ref, computed, watch } from 'vue'
+import { CopyDocument } from '@element-plus/icons-vue'
 import { i18n } from '@/i18n'
 import { useToastStore } from '@/stores/toast'
+import TreeNodeView from './TreeNodeView.vue'
 import type { RefAnchor, RefStatus, AnchoredSection } from '../api/standard-mgr'
 
 const props = defineProps<{
@@ -192,60 +132,127 @@ const emit = defineEmits<{
   /** R9-1: 跳转——传完整 anchor 供上层查找目标 */
   jumpToAnchor: [anchor: RefAnchor]
   fixAnchor: [anchor: RefAnchor]
+  /** R19: 章节标题点击 → 中间预览跳转到该章节 */
+  jumpToSection: [outlineId: string]
 }>()
 
-// ==================== 展开/收起 ====================
+// ==================== 多级目录树构建（R19） ====================
 
-const expandedChapters = ref(new Set<string>())
-const filterStatus = ref<string>('all')
-
-// 初始化展开所有含锚点章节
-const initExpand = () => {
-  const anchorOutlineIds = new Set(props.anchors.map(a => a.source_outline_id))
-  expandedChapters.value = new Set(anchorOutlineIds)
+/** 章节节点 */
+interface SectionNode {
+  outline_id: string
+  seq: number
+  title: string
+  /** 去掉数字前缀后的标题，如 "5.2.1 外观检查" → "外观检查" */
+  displayTitle: string
+  /** 数字层级：5 → 1 级；5.2 → 2 级；无数字前缀 → 0（顶层） */
+  level: number
+  children: SectionNode[]
 }
-initExpand()
 
-// R9-4: 筛选选项
-const statusCounts = computed(() => {
-  const counts: Record<string, number> = { all: props.anchors.length }
-  for (const a of props.anchors) {
-    counts[a.status] = (counts[a.status] || 0) + 1
+/** 解析标题开头的数字前缀："5.2.1 外观检查" → { parts: [5,2,1], prefix: '5.2.1' } */
+function parseSectionNumber(title: string): { parts: number[]; prefix: string } | null {
+  const m = title.match(/^(\d+(?:\.\d+)*)\s*(.*)$/)
+  if (!m) return null
+  const prefix = m[1] ?? ''
+  return { parts: prefix.split('.').map(Number), prefix }
+}
+
+/** 按数字前缀把扁平章节列表构建成多级树（保持文档 seq 顺序） */
+function buildSectionTree(sections: AnchoredSection[]): SectionNode[] {
+  const roots: SectionNode[] = []
+  const byKey = new Map<string, SectionNode>()
+
+  for (const s of sections) {
+    const parsed = parseSectionNumber(s.title || '')
+    const node: SectionNode = {
+      outline_id: s.outline_id,
+      seq: s.seq,
+      title: s.title || '',
+      displayTitle: s.title || `#${s.seq}`,
+      level: parsed ? parsed.parts.length : 0,
+      children: [],
+    }
+
+    if (!parsed) {
+      roots.push(node)
+      continue
+    }
+    if (parsed.parts.length === 1) {
+      roots.push(node)
+      byKey.set(parsed.prefix, node)
+      continue
+    }
+    // 多级：尝试挂到父级；父级缺失时降级为顶层
+    const parentKey = parsed.parts.slice(0, -1).join('.')
+    const parent = byKey.get(parentKey)
+    if (parent) {
+      parent.children.push(node)
+    } else {
+      roots.push(node)
+    }
+    byKey.set(parsed.prefix, node)
   }
-  return counts
-})
-
-const statusFilters = computed(() => {
-  const statuses = ['valid', 'suspected', 'gap', 'invalid'] as const
-  return [
-    { value: 'all', label: i18n.global.t('common.all'), count: statusCounts.value.all },
-    ...statuses.map(s => ({
-      value: s,
-      label: i18n.global.t(anchorStatusLabel(s)),
-      count: statusCounts.value[s] || 0,
-    })),
-  ]
-})
-
-function toggleChapter(outlineId: string) {
-  if (expandedChapters.value.has(outlineId)) {
-    expandedChapters.value.delete(outlineId)
-  } else {
-    expandedChapters.value.add(outlineId)
-  }
+  return roots
 }
 
-function collapseAll() { expandedChapters.value = new Set() }
-function expandAll() {
-  expandedChapters.value = new Set(props.sections.map(s => s.outline_id))
-}
+const treeRoots = computed(() => buildSectionTree(sortedSections.value))
 
-// ==================== 章节排序 ====================
-
-/** R8-2: 全量章节按 seq 升序 */
+/** 按 seq 升序的原始章节列表（树构建输入） */
 const sortedSections = computed(() => {
   return [...props.sections].sort((a, b) => a.seq - b.seq)
 })
+
+// ==================== 展开/收起（多级） ====================
+
+const expandedNodes = ref(new Set<string>())
+const filterStatus = ref<string>('all')
+
+function isExpanded(outlineId: string): boolean {
+  return expandedNodes.value.has(outlineId)
+}
+
+function toggleNode(outlineId: string) {
+  const next = new Set(expandedNodes.value)
+  if (next.has(outlineId)) next.delete(outlineId)
+  else next.add(outlineId)
+  expandedNodes.value = next
+}
+
+/** 初始化展开：展开所有含锚点章节的祖先链 + 自身 */
+const initExpand = () => {
+  const next = new Set<string>()
+  const walk = (nodes: SectionNode[], ancestors: string[]) => {
+    for (const node of nodes) {
+      if ((anchorsByOutline.value[node.outline_id] || []).length > 0) {
+        for (const a of ancestors) next.add(a)
+        next.add(node.outline_id)
+      }
+      walk(node.children, [...ancestors, node.outline_id])
+    }
+  }
+  walk(treeRoots.value, [])
+  expandedNodes.value = next
+}
+
+// 数据变化后重新构建展开状态
+watch(() => [props.sections, props.anchors], () => {
+  if (expandedNodes.value.size === 0 && filterStatus.value === 'all') return
+  initExpand()
+})
+
+function collapseAll() { expandedNodes.value = new Set() }
+function expandAll() {
+  const next = new Set<string>()
+  const walk = (nodes: SectionNode[]) => {
+    for (const node of nodes) {
+      next.add(node.outline_id)
+      walk(node.children)
+    }
+  }
+  walk(treeRoots.value)
+  expandedNodes.value = next
+}
 
 // ==================== 锚点分组 ====================
 
@@ -275,11 +282,74 @@ function getSectionTotalAnchors(outlineId: string): number {
   return (anchorsByOutline.value[outlineId] || []).length
 }
 
-/** R9-4: 筛选后章节是否完全无匹配（用于灰态） */
-function isChapterDimmed(outlineId: string): boolean {
-  return filterStatus.value !== 'all'
-    && getSectionTotalAnchors(outlineId) > 0
-    && getSectionAnchorCount(outlineId) === 0
+// ==================== 筛选生效（R19） ====================
+
+/**
+ * 筛选状态下判断节点是否可见：
+ * 自身有匹配锚点，或有可见子节点 → 可见；否则整棵子树隐藏
+ */
+function nodeVisible(node: SectionNode): boolean {
+  if (getSectionAnchorCount(node.outline_id) > 0) return true
+  return node.children.some(child => nodeVisible(child))
+}
+
+/** 可见树：筛选时过滤掉无匹配章节（含其子树） */
+const visibleTree = computed<SectionNode[]>(() => {
+  if (filterStatus.value === 'all') return treeRoots.value
+  const filterNodes = (nodes: SectionNode[]): SectionNode[] => {
+    const out: SectionNode[] = []
+    for (const node of nodes) {
+      const visibleChildren = filterNodes(node.children)
+      if (getSectionAnchorCount(node.outline_id) > 0 || visibleChildren.length > 0) {
+        out.push({ ...node, children: visibleChildren })
+      }
+    }
+    return out
+  }
+  return filterNodes(treeRoots.value)
+})
+
+// 切换筛选时：自动展开有匹配锚点章节的祖先链，确保结果可见
+watch(filterStatus, () => {
+  if (filterStatus.value === 'all') return
+  const next = new Set(expandedNodes.value)
+  const walk = (nodes: SectionNode[], ancestors: string[]) => {
+    for (const node of nodes) {
+      if (getSectionAnchorCount(node.outline_id) > 0) {
+        for (const a of ancestors) next.add(a)
+        next.add(node.outline_id)
+      }
+      walk(node.children, [...ancestors, node.outline_id])
+    }
+  }
+  walk(treeRoots.value, [])
+  expandedNodes.value = next
+})
+
+// R9-4: 筛选选项
+const statusCounts = computed(() => {
+  const counts: Record<string, number> = { all: props.anchors.length }
+  for (const a of props.anchors) {
+    counts[a.status] = (counts[a.status] || 0) + 1
+  }
+  return counts
+})
+
+const statusFilters = computed(() => {
+  const statuses = ['valid', 'suspected', 'gap', 'invalid'] as const
+  return [
+    { value: 'all', label: i18n.global.t('common.all'), count: statusCounts.value.all },
+    ...statuses.map(s => ({
+      value: s,
+      label: i18n.global.t(anchorStatusLabel(s)),
+      count: statusCounts.value[s] || 0,
+    })),
+  ]
+})
+
+/** R19: 章节标题点击 → 中间预览跳转到该章节 */
+function handleJumpToSection(outlineId: string) {
+  emit('jumpToSection', outlineId)
 }
 
 // ==================== 标记检测 ====================
@@ -294,8 +364,8 @@ function hasMarker(anchor: RefAnchor): boolean {
 
 // ==================== 条目点击：选中 + 通知上层滚动到对应章节 ====================
 
-function handleItemClick(anchor: RefAnchor) {
-  emit('anchorClick', anchor.id)
+function handleItemClick(anchorId: string) {
+  emit('anchorClick', anchorId)
 }
 
 // ==================== 跳转：始终打开目标文档新页签 ====================
@@ -352,6 +422,9 @@ function anchorStatusLabel(status: RefStatus): string {
   }
   return map[status] || 'apps.standardMgr.anchorInvalid'
 }
+
+// 所有依赖（treeRoots/anchorsByOutline 等）定义完成后，再执行初始展开
+initExpand()
 </script>
 
 <style scoped>
@@ -370,40 +443,6 @@ function anchorStatusLabel(status: RefStatus): string {
 .sm-filter-group { display: flex; flex-wrap: wrap; }
 
 .sm-anchor-tree { max-height: calc(100vh - 260px); overflow-y: auto; }
-
-.sm-tree-chapter { margin-bottom: 2px; }
-.sm-tree-chapter.dimmed .sm-tree-chapter-header { opacity: 0.5; }
-.sm-tree-chapter-header {
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 6px; cursor: pointer; border-radius: 4px;
-  background: #f5f7fa; transition: background .2s;
-}
-.sm-tree-chapter-header:hover { background: #e8eaed; }
-.sm-tree-arrow { transition: transform .2s; font-size: 12px; }
-.sm-tree-arrow.expanded { transform: rotate(90deg); }
-.sm-tree-chapter-title { font-weight: 600; font-size: 13px; flex: 1; }
-.sm-tree-chapter-badge { flex-shrink: 0; }
-.sm-tree-chapter-body { padding-left: 8px; }
-
-.sm-tree-empty-chapter {
-  padding: 8px 12px; color: #c0c4cc; font-size: 12px; font-style: italic;
-}
-
-.sm-tree-anchor-item {
-  padding: 8px 10px; margin: 4px 0; border-radius: 4px;
-  border-left: 3px solid #dcdfe6; background: #fff;
-  transition: border-color .2s;
-}
-.sm-tree-anchor-item:hover { background: #f5f7fa; }
-.sm-tree-anchor-item.active { background: #ecf5ff; }
-.sm-tree-anchor-item.status-valid { border-left-color: #67c23a; }
-.sm-tree-anchor-item.status-gap { border-left-color: #f56c6c; }
-.sm-tree-anchor-item.status-suspected { border-left-color: #e6a23c; }
-.sm-tree-anchor-item.status-invalid { border-left-color: #909399; }
-
-.sm-tree-anchor-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.sm-tree-anchor-text { font-size: 13px; color: #303133; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sm-tree-anchor-actions { display: flex; gap: 4px; }
 
 .sm-context-text { font-size: 12px; color: #606266; white-space: pre-wrap; max-height: 120px; overflow-y: auto; }
 </style>
