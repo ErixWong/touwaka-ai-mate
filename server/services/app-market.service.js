@@ -106,9 +106,9 @@ class AppMarketService {
     return {
       registry_url: config.registry_url || 'https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/master/apps',
       registry_branch: config.registry_branch || 'master',
-      auto_check_updates: config.auto_check_updates !== 'false',
+      auto_check_updates: config.auto_check_updates !== false && config.auto_check_updates !== 'false',
       check_interval_hours: parseInt(config.check_interval_hours) || 24,
-      offline_mode: config.offline_mode === 'true',
+      offline_mode: config.offline_mode === true || config.offline_mode === 'true',
       cache_ttl_hours: parseInt(config.cache_ttl_hours) || 168,
       last_check_at: config.last_check_at || null
     };
@@ -543,8 +543,16 @@ class AppMarketService {
     
     // 3. 删除目录
     try {
-      await fs.rm(appDir, { recursive: true, force: true });
-      logger.info(`Rolled back app directory for ${appId}`);
+      // 开发保护：设置 APP_MARKET_PRESERVE_DIR=true 时保留目录（避免误删本地源码）
+      if (process.env.APP_MARKET_PRESERVE_DIR === 'true') {
+        const backupDir = `${appDir}.rollback-bak`;
+        await fs.rm(backupDir, { recursive: true, force: true });
+        await fs.rename(appDir, backupDir);
+        logger.info(`Rollback preserved app directory for ${appId} -> ${backupDir}`);
+      } else {
+        await fs.rm(appDir, { recursive: true, force: true });
+        logger.info(`Rolled back app directory for ${appId}`);
+      }
     } catch (err) {
       logger.warn(`Failed to rollback app directory for ${appId}:`, err);
     }

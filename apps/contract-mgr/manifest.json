@@ -61,49 +61,172 @@
       "name": "app_contract_mgr_rows",
       "type": "primary",
       "fields": [
-        { "name": "contract_number", "type": "VARCHAR(64)", "label": "合同编号", "required": true, "source": "contract_number" },
-        { "name": "party_a", "type": "VARCHAR(128)", "label": "甲方", "required": true, "source": "party_a" },
-        { "name": "party_b", "type": "VARCHAR(128)", "label": "乙方", "required": true, "source": "party_b" },
-        { "name": "parent_company", "type": "VARCHAR(128)", "label": "上级公司", "source": "parent_company" },
-        { "name": "contract_amount", "type": "DECIMAL(15,2)", "label": "合同金额", "required": true, "source": "contract_amount" },
-        { "name": "contract_date", "type": "DATE", "label": "签订日期", "required": true, "source": "contract_date" }
+        {
+          "name": "contract_number",
+          "type": "VARCHAR(64)",
+          "label": "合同编号",
+          "required": true,
+          "source": "contract_number"
+        },
+        {
+          "name": "party_a",
+          "type": "VARCHAR(128)",
+          "label": "甲方",
+          "required": true,
+          "source": "party_a"
+        },
+        {
+          "name": "party_b",
+          "type": "VARCHAR(128)",
+          "label": "乙方",
+          "required": true,
+          "source": "party_b"
+        },
+        {
+          "name": "parent_company",
+          "type": "VARCHAR(128)",
+          "label": "上级公司",
+          "source": "parent_company"
+        },
+        {
+          "name": "contract_amount",
+          "type": "DECIMAL(15,2)",
+          "label": "合同金额",
+          "required": true,
+          "source": "contract_amount"
+        },
+        {
+          "name": "contract_date",
+          "type": "DATE",
+          "label": "签订日期",
+          "required": true,
+          "source": "contract_date"
+        }
       ],
-      "indexes": ["contract_number", "party_a", "party_b", "parent_company", "contract_amount", "contract_date"]
+      "indexes": [
+        "contract_number",
+        "party_a",
+        "party_b",
+        "parent_company",
+        "contract_amount",
+        "contract_date"
+      ]
     },
     {
       "name": "app_contract_mgr_content",
       "type": "content",
       "fields": [
-        { "name": "process_step", "type": "VARCHAR(32)", "label": "处理步骤" },
-        { "name": "file_id", "type": "VARCHAR(32)", "label": "文件ID" },
-        { "name": "ocr_task_id", "type": "VARCHAR(128)", "label": "OCR任务ID" },
-        { "name": "ocr_text", "type": "LONGTEXT" },
-        { "name": "ocr_service", "type": "VARCHAR(64)" },
-        { "name": "ocr_at", "type": "DATETIME" },
-        { "name": "filtered_text", "type": "LONGTEXT" },
-        { "name": "filter_at", "type": "DATETIME" },
-        { "name": "sections", "type": "JSON" },
-        { "name": "extract_prompt", "type": "TEXT" },
-        { "name": "extract_json", "type": "LONGTEXT" },
-        { "name": "extract_model", "type": "VARCHAR(64)" },
-        { "name": "extract_temperature", "type": "DECIMAL(3,2)" },
-        { "name": "extract_at", "type": "DATETIME" }
+        {
+          "name": "process_step",
+          "type": "VARCHAR(32)",
+          "label": "处理步骤"
+        },
+        {
+          "name": "file_id",
+          "type": "VARCHAR(32)",
+          "label": "文件ID"
+        },
+        {
+          "name": "ocr_task_id",
+          "type": "VARCHAR(128)",
+          "label": "OCR任务ID"
+        },
+        {
+          "name": "ocr_text",
+          "type": "LONGTEXT"
+        },
+        {
+          "name": "ocr_service",
+          "type": "VARCHAR(64)"
+        },
+        {
+          "name": "ocr_at",
+          "type": "DATETIME"
+        },
+        {
+          "name": "filtered_text",
+          "type": "LONGTEXT"
+        },
+        {
+          "name": "filter_at",
+          "type": "DATETIME"
+        },
+        {
+          "name": "sections",
+          "type": "JSON"
+        },
+        {
+          "name": "extract_prompt",
+          "type": "TEXT"
+        },
+        {
+          "name": "extract_json",
+          "type": "LONGTEXT"
+        },
+        {
+          "name": "extract_model",
+          "type": "VARCHAR(64)"
+        },
+        {
+          "name": "extract_temperature",
+          "type": "DECIMAL(3,2)"
+        },
+        {
+          "name": "extract_at",
+          "type": "DATETIME"
+        }
       ]
     },
     {
       "name": "app_contract_mgr_compares",
       "type": "compare",
       "fields": [
-        { "name": "target_row_id", "type": "VARCHAR(32)", "label": "对比合同ID", "required": true },
-        { "name": "compare_result", "type": "JSON", "label": "比对结果" },
-        { "name": "summary_identical", "type": "INT", "label": "一致" },
-        { "name": "summary_modified", "type": "INT", "label": "修改" },
-        { "name": "summary_added", "type": "INT", "label": "新增" },
-        { "name": "summary_removed", "type": "INT", "label": "删除" },
-        { "name": "model_name", "type": "VARCHAR(64)", "label": "模型" },
-        { "name": "duration_ms", "type": "INT", "label": "耗时(ms)" }
+        {
+          "name": "target_row_id",
+          "type": "VARCHAR(32)",
+          "label": "对比合同ID",
+          "required": true
+        },
+        {
+          "name": "compare_result",
+          "type": "JSON",
+          "label": "比对结果"
+        },
+        {
+          "name": "summary_identical",
+          "type": "INT",
+          "label": "一致"
+        },
+        {
+          "name": "summary_modified",
+          "type": "INT",
+          "label": "修改"
+        },
+        {
+          "name": "summary_added",
+          "type": "INT",
+          "label": "新增"
+        },
+        {
+          "name": "summary_removed",
+          "type": "INT",
+          "label": "删除"
+        },
+        {
+          "name": "model_name",
+          "type": "VARCHAR(64)",
+          "label": "模型"
+        },
+        {
+          "name": "duration_ms",
+          "type": "INT",
+          "label": "耗时(ms)"
+        }
       ],
-      "indexes": ["target_row_id", "summary_modified"]
+      "indexes": [
+        "target_row_id",
+        "summary_modified"
+      ]
     }
   ],
   "migrations": {
@@ -145,12 +268,23 @@
     "step_resources": {
       "pending_ocr": {
         "type": "mcp",
-        "mcp": { "server": "markitdown", "tool": "submit_conversion_task", "params_mapping": { "content": "file.base64", "filename": "file.name" } },
+        "mcp": {
+          "server": "markitdown",
+          "tool": "create_task",
+          "params_mapping": {
+            "file_base64": "file.base64",
+            "file_name": "file.name"
+          }
+        },
         "timeout_ms": 1200000
       },
       "ocr_processing": {
         "type": "mcp",
-        "mcp": { "server": "markitdown", "tool": "get_task", "hide_params_mapping": true },
+        "mcp": {
+          "server": "markitdown",
+          "tool": "get_task_status",
+          "hide_params_mapping": true
+        },
         "judge_model_id": null,
         "judge_temperature": 0.1,
         "timeout_ms": 600000
@@ -364,14 +498,45 @@
   "runtime": {
     "frontend": {
       "entry": "frontend/views/AppRuntimeView.vue"
-    }
+    },
+    "tick": "tick/index.js"
   },
   "apis": [
-    { "path": "/records", "methods": ["GET"], "handler": "server/controllers/records.js" },
-    { "path": "/records/:recordId", "methods": ["GET"], "handler": "server/controllers/records.js" },
-    { "path": "/status-summary", "methods": ["GET"], "handler": "server/controllers/records.js" },
-    { "path": "/records/:recordId/confirm", "methods": ["POST"], "handler": "server/controllers/records.js" },
-    { "path": "/records/:recordId/retry", "methods": ["POST"], "handler": "server/controllers/records.js" }
+    {
+      "path": "/records",
+      "methods": [
+        "GET"
+      ],
+      "handler": "server/controllers/records.js"
+    },
+    {
+      "path": "/records/:recordId",
+      "methods": [
+        "GET"
+      ],
+      "handler": "server/controllers/records.js"
+    },
+    {
+      "path": "/status-summary",
+      "methods": [
+        "GET"
+      ],
+      "handler": "server/controllers/records.js"
+    },
+    {
+      "path": "/records/:recordId/confirm",
+      "methods": [
+        "POST"
+      ],
+      "handler": "server/controllers/records.js"
+    },
+    {
+      "path": "/records/:recordId/retry",
+      "methods": [
+        "POST"
+      ],
+      "handler": "server/controllers/records.js"
+    }
   ],
   "visibility": "all"
 }

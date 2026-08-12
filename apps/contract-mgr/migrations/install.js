@@ -50,19 +50,33 @@ export default {
     `);
     console.log('  ✓ Created app_contract_mgr_content table');
 
-    await sequelize.query(`
-      ALTER TABLE app_contract_mgr_rows
-      ADD CONSTRAINT fk_app_contract_mgr_rows_row_id
-      FOREIGN KEY (row_id) REFERENCES app_contract_mgr_records(id) ON DELETE CASCADE
-    `);
-    console.log('  ✓ Added FK for app_contract_mgr_rows');
+    // 幂等添加外键：约束已存在则跳过（upgrade-database.js 可能已建表）
+    const fkExists = async (table, constraint) => {
+      const [rows] = await sequelize.query(
+        `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?`,
+        { replacements: [table, constraint], type: sequelize.QueryTypes.SELECT }
+      );
+      return rows.cnt > 0;
+    };
 
-    await sequelize.query(`
-      ALTER TABLE app_contract_mgr_content
-      ADD CONSTRAINT fk_app_contract_mgr_content_row_id
-      FOREIGN KEY (row_id) REFERENCES app_contract_mgr_records(id) ON DELETE CASCADE
-    `);
-    console.log('  ✓ Added FK for app_contract_mgr_content');
+    if (!(await fkExists('app_contract_mgr_rows', 'fk_app_contract_mgr_rows_row_id'))) {
+      await sequelize.query(`
+        ALTER TABLE app_contract_mgr_rows
+        ADD CONSTRAINT fk_app_contract_mgr_rows_row_id
+        FOREIGN KEY (row_id) REFERENCES app_contract_mgr_records(id) ON DELETE CASCADE
+      `);
+    }
+    console.log('  ✓ FK ensured for app_contract_mgr_rows');
+
+    if (!(await fkExists('app_contract_mgr_content', 'fk_app_contract_mgr_content_row_id'))) {
+      await sequelize.query(`
+        ALTER TABLE app_contract_mgr_content
+        ADD CONSTRAINT fk_app_contract_mgr_content_row_id
+        FOREIGN KEY (row_id) REFERENCES app_contract_mgr_records(id) ON DELETE CASCADE
+      `);
+    }
+    console.log('  ✓ FK ensured for app_contract_mgr_content');
 
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS app_contract_mgr_compares (
@@ -85,17 +99,21 @@ export default {
     `);
     console.log('  ✓ Created app_contract_mgr_compares table');
 
-    await sequelize.query(`
-      ALTER TABLE app_contract_mgr_compares
-      ADD CONSTRAINT fk_app_contract_mgr_compares_row_id
-      FOREIGN KEY (row_id) REFERENCES app_contract_mgr_records(id) ON DELETE CASCADE
-    `);
-    await sequelize.query(`
-      ALTER TABLE app_contract_mgr_compares
-      ADD CONSTRAINT fk_app_contract_mgr_compares_target_row_id
-      FOREIGN KEY (target_row_id) REFERENCES app_contract_mgr_records(id) ON DELETE CASCADE
-    `);
-    console.log('  ✓ Added FKs for app_contract_mgr_compares');
+    if (!(await fkExists('app_contract_mgr_compares', 'fk_app_contract_mgr_compares_row_id'))) {
+      await sequelize.query(`
+        ALTER TABLE app_contract_mgr_compares
+        ADD CONSTRAINT fk_app_contract_mgr_compares_row_id
+        FOREIGN KEY (row_id) REFERENCES app_contract_mgr_records(id) ON DELETE CASCADE
+      `);
+    }
+    if (!(await fkExists('app_contract_mgr_compares', 'fk_app_contract_mgr_compares_target_row_id'))) {
+      await sequelize.query(`
+        ALTER TABLE app_contract_mgr_compares
+        ADD CONSTRAINT fk_app_contract_mgr_compares_target_row_id
+        FOREIGN KEY (target_row_id) REFERENCES app_contract_mgr_records(id) ON DELETE CASCADE
+      `);
+    }
+    console.log('  ✓ FKs ensured for app_contract_mgr_compares');
   },
 
   async down(sequelize) {

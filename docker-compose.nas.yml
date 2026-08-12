@@ -1,0 +1,82 @@
+# Touwaka Mate 部署配置（NAS 定制版）
+# 基于 docker-compose.standalone.yml 改造：
+# 1. 复用现有 mariadb 容器（erixProd 网络，DB_HOST=mariadb）
+# 2. 端口局域网可访问（3000:3000，非 127.0.0.1）
+# 3. 数据目录持久化（/app/data bind mount，容器重建不丢数据）
+# 4. 首次启动自动装依赖 + 构建前端（耗时较长）
+
+services:
+  app:
+    image: nikolaik/python-nodejs:python3.12-nodejs20-bullseye
+    container_name: touwaka-mate
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - API_PORT=3000
+      - API_BASE=http://localhost:3000
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_NAME=${DB_NAME:-touwaka_mate}
+      - DB_USER=${DB_USER:-touwaka}
+      - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      - DATA_BASE_PATH=/app/data
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - APP_MARKET_PRESERVE_DIR=true
+    volumes:
+      - ./:/app
+      - node_modules:/app/node_modules
+      - frontend_node_modules:/app/frontend/node_modules
+      - pip_cache:/root/.cache/pip
+      - /docker/touwaka/data:/app/data
+    working_dir: /app
+    command:
+      - bash
+      - -c
+      - |
+        if [ ! -f /root/.cache/pip/.installed ]; then
+          echo 'Installing Python packages...'
+          pip install --no-cache-dir -r /app/requirements.txt
+          touch /root/.cache/pip/.installed
+        fi
+
+        if [ ! -d /app/node_modules ] || [ ! -f /app/node_modules/.package-lock.json ]; then
+          echo 'Installing Node.js dependencies...'
+          cd /app && npm ci --only=production
+          npm install -g pptxgenjs
+        fi
+
+        if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ]; then
+          echo 'Building frontend...'
+          cd /app/frontend
+          npm ci --include=dev
+          NODE_OPTIONS="--max-old-space-size=4096" npx vite build
+        fi
+
+        cd /app
+        echo 'Starting application...'
+        node server/index.js
+    networks:
+      - erixProd
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+networks:
+  erixProd:
+    external: true
+
+volumes:
+  node_modules:
+    driver: local
+  frontend_node_modules:
+    driver: local
+  pip_cache:
+    driver: local

@@ -1,4 +1,4 @@
-import ContractService from '../../../../server/services/contract.service.js';
+import ContractService from '../services/contract.service.js';
 import logger from '../../../../lib/logger.js';
 
 function getSession(ctx) {

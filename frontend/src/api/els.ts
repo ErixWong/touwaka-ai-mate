@@ -189,31 +189,31 @@ export interface ELSCheckinResponse {
 }
 
 export function getELSDashboard() {
-  return apiRequest<ELSDashboard>(apiClient.get('/els/dashboard'))
+  return apiRequest<ELSDashboard>(apiClient.get('/apps/els/dashboard'))
 }
 
 export function getELSLibraries() {
-  return apiRequest<ELSLibraryListResponse>(apiClient.get('/els/libraries'))
+  return apiRequest<ELSLibraryListResponse>(apiClient.get('/apps/els/libraries'))
 }
 
 export function selectELSLibrary(libraryId: string) {
   return apiRequest<{ selected_library_id: string; selected_library_name: string }>(
-    apiClient.post('/els/libraries/select', { library_id: libraryId }),
+    apiClient.post('/apps/els/libraries/select', { library_id: libraryId }),
   )
 }
 
 export function getELSLibraryMaterials(libraryId: string) {
-  return apiRequest<ELSLibraryMaterialsResponse>(apiClient.get(`/els/libraries/${libraryId}/materials`))
+  return apiRequest<ELSLibraryMaterialsResponse>(apiClient.get(`/apps/els/libraries/${libraryId}/materials`))
 }
 
 export function getELSRecommendedMaterials(libraryId?: string) {
   return apiRequest<{ items: Array<ELSMaterialDetail & { estimated_minutes?: number }> }>(
-    apiClient.get('/els/materials/recommended', { params: libraryId ? { library_id: libraryId } : {} }),
+    apiClient.get('/apps/els/materials/recommended', { params: libraryId ? { library_id: libraryId } : {} }),
   )
 }
 
 export function getELSMaterial(materialId: string) {
-  return apiRequest<ELSMaterialDetail>(apiClient.get(`/els/materials/${materialId}`))
+  return apiRequest<ELSMaterialDetail>(apiClient.get(`/apps/els/materials/${materialId}`))
 }
 
 export function createELSMaterial(payload: {
@@ -224,7 +224,7 @@ export function createELSMaterial(payload: {
   language: string
   tags?: string[]
 }) {
-  return apiRequest(apiClient.post('/els/materials', payload))
+  return apiRequest(apiClient.post('/apps/els/materials', payload))
 }
 
 export function updateELSMaterial(materialId: string, payload: {
@@ -233,16 +233,16 @@ export function updateELSMaterial(materialId: string, payload: {
   content?: string
   tags?: string[]
 }) {
-  return apiRequest(apiClient.put(`/els/materials/${materialId}`, payload))
+  return apiRequest(apiClient.put(`/apps/els/materials/${materialId}`, payload))
 }
 
 export function getELSNotebooks() {
-  return apiRequest<ELSNotebookListResponse>(apiClient.get('/els/notebooks'))
+  return apiRequest<ELSNotebookListResponse>(apiClient.get('/apps/els/notebooks'))
 }
 
 export function selectELSNotebook(notebookId: string) {
   return apiRequest<{ selected_notebook_id: string; selected_notebook_name: string }>(
-    apiClient.post('/els/notebooks/select', { notebook_id: notebookId }),
+    apiClient.post('/apps/els/notebooks/select', { notebook_id: notebookId }),
   )
 }
 
@@ -253,19 +253,19 @@ export function collectELSWord(payload: {
   offset_start?: number
   offset_end?: number
 }) {
-  return apiRequest<ELSWordCollectResponse>(apiClient.post('/els/words', payload))
+  return apiRequest<ELSWordCollectResponse>(apiClient.post('/apps/els/words', payload))
 }
 
 export function getELSMaterialQuiz(materialId: string) {
-  return apiRequest<ELSQuizResponse>(apiClient.get(`/els/materials/${materialId}/quiz`))
+  return apiRequest<ELSQuizResponse>(apiClient.get(`/apps/els/materials/${materialId}/quiz`))
 }
 
 export function submitELSMaterialQuiz(materialId: string, answers: Array<{ question_id: string; answer: string }>) {
-  return apiRequest<ELSQuizSubmitResponse>(apiClient.post(`/els/materials/${materialId}/quiz/submit`, { answers }))
+  return apiRequest<ELSQuizSubmitResponse>(apiClient.post(`/apps/els/materials/${materialId}/quiz/submit`, { answers }))
 }
 
 export function getELSReviews(params: { bucket: 'today' | 'new' | 'wrong'; notebook_id: string; size?: number }) {
-  return apiRequest<ELSReviewResponse>(apiClient.get('/els/reviews', { params }))
+  return apiRequest<ELSReviewResponse>(apiClient.get('/apps/els/reviews', { params }))
 }
 
 export function submitELSReviews(payload: {
@@ -279,9 +279,9 @@ export function submitELSReviews(payload: {
     self_rating: 'easy' | 'normal' | 'hard' | 'forgot'
   }>
 }) {
-  return apiRequest<ELSReviewSubmitResponse>(apiClient.post('/els/reviews/submit', payload))
+  return apiRequest<ELSReviewSubmitResponse>(apiClient.post('/apps/els/reviews/submit', payload))
 }
 
 export function getELSCheckin() {
-  return apiRequest<ELSCheckinResponse>(apiClient.get('/els/checkin'))
+  return apiRequest<ELSCheckinResponse>(apiClient.get('/apps/els/checkin'))
 }
