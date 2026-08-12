@@ -25,9 +25,9 @@
         >
           {{ rebuildLoading ? $t('apps.standardMgr.rebuilding') : rebuildLabel }}
         </el-button>
-        <!-- R11-5: 编辑元数据 -->
-        <el-button size="small" @click="openEditDialog">
-          {{ $t('apps.standardMgr.editMetadata') }}
+        <!-- R19-2: 基础信息（查看 + 编辑） -->
+        <el-button size="small" @click="openBasicInfoDialog">
+          {{ $t('apps.standardMgr.basicInfo') }}
         </el-button>
         <!-- R19: 删除标准（最右侧） -->
         <el-button
@@ -61,15 +61,45 @@
       </template>
     </el-dialog>
 
-    <!-- R11-5: 元数据编辑对话框 -->
+    <!-- R19-2: 基础信息对话框（查看模式 → 点击编辑切换为表单） -->
     <el-dialog
       v-if="standard"
       v-model="showEditDialog"
-      :title="$t('apps.standardMgr.editMetadataTitle')"
-      width="480px"
+      :title="$t('apps.standardMgr.basicInfoTitle')"
+      width="520px"
       destroy-on-close
+      @open="resetBasicInfoDialog"
     >
-      <el-form label-width="100px" @submit.prevent="handleSaveMetadata">
+      <!-- 查看模式 -->
+      <template v-if="!editingBasicInfo">
+        <el-descriptions :column="1" border>
+          <el-descriptions-item :label="$t('apps.standardMgr.typeLabel')">
+            {{ typeLabelOf(standard.standard_type) }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="$t('apps.standardMgr.codeLabel')">
+            {{ standard.standard_code }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="$t('apps.standardMgr.nameLabel')">
+            {{ standard.standard_name }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="$t('apps.standardMgr.enterpriseLabel')">
+            {{ enterpriseNameOf(standard.enterprise_id) || '—' }}
+          </el-descriptions-item>
+          <el-descriptions-item :label="$t('apps.standardMgr.docIdLabel')">
+            <code class="sm-id-mono">{{ standard.document_id || '—' }}</code>
+          </el-descriptions-item>
+          <el-descriptions-item :label="$t('apps.standardMgr.versionNoLabel')">
+            <template v-if="standard.current_revision_label || standard.current_revision_id">
+              <span v-if="standard.current_revision_label" class="sm-revision-label">{{ standard.current_revision_label }}</span>
+              <code class="sm-id-mono">{{ standard.current_revision_id || '—' }}</code>
+            </template>
+            <template v-else>—</template>
+          </el-descriptions-item>
+        </el-descriptions>
+      </template>
+
+      <!-- 编辑模式 -->
+      <el-form v-else label-width="100px" @submit.prevent="handleSaveMetadata">
         <el-form-item :label="$t('apps.standardMgr.typeLabel')">
           <el-select v-model="editForm.standard_type" style="width: 100%">
             <el-option
@@ -102,9 +132,20 @@
           </el-select>
         </el-form-item>
       </el-form>
+
       <template #footer>
-        <el-button @click="showEditDialog = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="handleSaveMetadata">{{ $t('common.save') }}</el-button>
+        <!-- 查看模式：编辑 / 关闭 -->
+        <template v-if="!editingBasicInfo">
+          <el-button type="primary" @click="editingBasicInfo = true">
+            {{ $t('apps.standardMgr.editBasicInfo') }}
+          </el-button>
+          <el-button @click="showEditDialog = false">{{ $t('common.close') }}</el-button>
+        </template>
+        <!-- 编辑模式：保存 / 取消 -->
+        <template v-else>
+          <el-button @click="editingBasicInfo = false">{{ $t('common.cancel') }}</el-button>
+          <el-button type="primary" @click="handleSaveMetadata">{{ $t('common.save') }}</el-button>
+        </template>
       </template>
     </el-dialog>
 
@@ -192,8 +233,9 @@ async function handleDeleteStandard() {
   }
 }
 
-// ---- R11-5: 元数据编辑 ----
+// ---- R19-2: 基础信息（查看 + 编辑） ----
 const showEditDialog = ref(false)
+const editingBasicInfo = ref(false)
 const editForm = reactive<{
   standard_type: StandardType
   standard_code: string
@@ -213,13 +255,31 @@ const standardTypeOptions = [
   { value: 'international' as StandardType, label: i18n.global.t('apps.standardMgr.treeInternational') },
 ]
 
-function openEditDialog() {
+/** 标准类型 → 显示名 */
+function typeLabelOf(type: StandardType | '' | undefined): string {
+  const opt = standardTypeOptions.find(o => o.value === type)
+  return opt ? opt.label : (type || '—')
+}
+
+/** 企业 ID → 企业名 */
+function enterpriseNameOf(id: string | null | undefined): string {
+  if (!id) return ''
+  const ent = props.enterprises?.find(e => e.id === id)
+  return ent ? ent.name : ''
+}
+
+function openBasicInfoDialog() {
   if (!props.standard) return
+  showEditDialog.value = true
+}
+
+function resetBasicInfoDialog() {
+  if (!props.standard) return
+  editingBasicInfo.value = false
   editForm.standard_type = props.standard.standard_type || ''
   editForm.standard_code = props.standard.standard_code
   editForm.standard_name = props.standard.standard_name
   editForm.enterprise_id = props.standard.enterprise_id
-  showEditDialog.value = true
 }
 
 function handleSaveMetadata() {

@@ -72,6 +72,10 @@ export interface StandardItem {
   last_manual_fix_by: string | null
   /** R2-8: 文档平台当前版本 ID，用于检测是否有新版本待清洗 */
   document_current_revision_id: string | null
+  /** 基础信息展示：文档标题（documents.title） */
+  document_title?: string | null
+  /** 基础信息展示：当前版本标签（document_revisions.revision_label，如 2022①/2022） */
+  current_revision_label?: string | null
   created_at: string
   updated_at: string
 }

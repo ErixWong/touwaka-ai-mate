@@ -731,13 +731,26 @@ class StandardMgrService {
       raw: true,
     });
 
-    // R2-8: 附上文档的 current_revision_id
+    // R2-8: 附上文档的 current_revision_id + 标题 + 版本标签（基础信息展示用）
     if (standard && standard.document_id) {
       const doc = await Document.findByPk(standard.document_id, {
-        attributes: ['current_revision_id'],
+        attributes: ['current_revision_id', 'title'],
         raw: true,
       });
       standard.document_current_revision_id = doc ? doc.current_revision_id : null;
+      standard.document_title = doc ? doc.title : null;
+
+      // 附加当前版本标签（revision_label），基础信息展示"版本编号"用
+      if (doc && doc.current_revision_id) {
+        const DocRevision = this.db.getModel('document_revision');
+        const rev = await DocRevision.findByPk(doc.current_revision_id, {
+          attributes: ['revision_label'],
+          raw: true,
+        });
+        standard.current_revision_label = rev ? rev.revision_label : null;
+      } else {
+        standard.current_revision_label = null;
+      }
     }
 
     return standard;

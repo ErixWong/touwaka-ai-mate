@@ -1489,12 +1489,15 @@ export default {
       treeInternational: '国际标准',
       treeUnassignedEnterprise: '未归属企业',
       treeNodeCount: '{count}',
-      // R19: 编辑基础信息（原"编辑元数据"，label 用独立的 typeLabel/codeLabel/nameLabel）
-      editMetadata: '编辑基础信息',
-      editMetadataTitle: '编辑基础信息',
+      // R19-2: 基础信息（查看 + 编辑；原"编辑元数据"）
+      basicInfo: '基础信息',
+      basicInfoTitle: '基础信息',
+      editBasicInfo: '编辑',
       typeLabel: '标准类型',
       codeLabel: '标准编号',
       nameLabel: '标准名称',
+      docIdLabel: '文档编号',
+      versionNoLabel: '版本编号',
       // R19: 删除标准
       deleteStandard: '删除',
       deleteConfirmTitle: '删除标准',

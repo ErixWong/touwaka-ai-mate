@@ -1547,12 +1547,15 @@ export default {
       treeInternational: 'International',
       treeUnassignedEnterprise: 'Unassigned Enterprise',
       treeNodeCount: '{count}',
-      // R19: Edit basic info (was "Edit Metadata"; labels use dedicated typeLabel/codeLabel/nameLabel)
-      editMetadata: 'Edit Basic Info',
-      editMetadataTitle: 'Edit Basic Info',
+      // R19-2: Basic info (view + edit; was "Edit Metadata")
+      basicInfo: 'Basic Info',
+      basicInfoTitle: 'Basic Info',
+      editBasicInfo: 'Edit',
       typeLabel: 'Type',
       codeLabel: 'Code',
       nameLabel: 'Name',
+      docIdLabel: 'Document ID',
+      versionNoLabel: 'Revision',
       // R19: Delete standard
       deleteStandard: 'Delete',
       deleteConfirmTitle: 'Delete Standard',
