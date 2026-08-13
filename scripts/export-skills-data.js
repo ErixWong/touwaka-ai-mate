@@ -5,6 +5,7 @@
 
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import { isRetiredSkill } from '../lib/retired-skills.js';
 dotenv.config();
 
 const DB_CONFIG = {
@@ -36,6 +37,10 @@ async function exportData() {
     `);
     
     // 导出参数
+    const activeSkills = skills.filter(skill => !isRetiredSkill(skill));
+    const activeSkillIds = new Set(activeSkills.map(skill => skill.id));
+    const activeTools = tools.filter(tool => activeSkillIds.has(tool.skill_id));
+
     const [params] = await conn.execute(`
       SELECT id, skill_id, param_name, param_value, is_secret, allow_user_override, description
       FROM skill_parameters
@@ -44,7 +49,7 @@ async function exportData() {
     
     const exportData = {
       exportedAt: new Date().toISOString(),
-      skills: skills.map(s => ({
+      skills: activeSkills.map(s => ({
         ...s,
         is_active: !!s.is_active?.[0],
         tags: typeof s.tags === 'string' ? JSON.parse(s.tags) : s.tags,
@@ -52,12 +57,12 @@ async function exportData() {
         disable_model_invocation: !!s.disable_model_invocation,
         user_invocable: !!s.user_invocable,
       })),
-      tools: tools.map(t => ({
+      tools: activeTools.map(t => ({
         ...t,
         is_resident: !!t.is_resident?.[0],
         parameters: typeof t.parameters === 'string' ? JSON.parse(t.parameters) : t.parameters,
       })),
-      parameters: params.map(p => ({
+      parameters: params.filter(p => activeSkillIds.has(p.skill_id)).map(p => ({
           ...p,
           is_secret: !!p.is_secret,
           allow_user_override: !!p.allow_user_override,

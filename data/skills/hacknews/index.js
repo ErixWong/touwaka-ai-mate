@@ -201,4 +201,23 @@ function getTools() {
   ];
 }
 
-module.exports = { execute, getTools };
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'hacknews',
+      name: 'hacknews',
+      description: 'Hacker News story retrieval and search',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['web', 'news'],
+      scenarios: [
+        { id: 'news_research', description: 'Retrieve and search Hacker News stories', tools: ['stories'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
+module.exports = { execute, getTools, getSkillDefinition };

@@ -8,10 +8,11 @@
 
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
-import { parseSkillMd } from '../../lib/skill-parser.js';
 import fsOriginal from 'fs';
 import path from 'path';
 import { getSkillPath, getSkillsPath } from '../../lib/paths.js';
+import { isRetiredSkill } from '../../lib/retired-skills.js';
+import SkillRegistrationService from '../services/skill-registration.service.js';
 
 class SkillController {
   constructor(db) {
@@ -20,6 +21,7 @@ class SkillController {
     this.SkillTool = db.getModel('skill_tool');
     this.SkillParameter = db.getModel('skill_parameter');
     this.UserSkillParameter = db.getModel('user_skill_parameter');
+    this.skillRegistrationService = new SkillRegistrationService(db);
   }
 
   /**
@@ -35,7 +37,7 @@ class SkillController {
         where.is_active = is_active === true || is_active === 'true' || is_active === '1' || is_active === 1;
       }
 
-      const skills = await this.Skill.findAll({
+      const skills = (await this.Skill.findAll({
         where,
         attributes: [
           'id', 'name', 'mark', 'description', 'version', 'author', 'tags',
@@ -45,7 +47,7 @@ class SkillController {
         ],
         order: [['created_at', 'DESC']],
         raw: true,
-      });
+      })).filter(skill => !isRetiredSkill(skill));
 
       // 获取每个技能的工具数量
       const skillIds = skills.map(s => s.id);
@@ -125,6 +127,11 @@ class SkillController {
       }
 
       // 获取工具清单
+      if (isRetiredSkill(skill)) {
+        ctx.error('Skill is retired', 410);
+        return;
+      }
+
       const tools = await this.SkillTool.findAll({
         where: { skill_id: skill.id },
         raw: true,
@@ -411,6 +418,46 @@ class SkillController {
    */
   async register(ctx) {
     try {
+      const {
+        source_path,
+        name: providedName,
+        description: providedDescription,
+      } = ctx.request.body || {};
+
+      if (!source_path) {
+        ctx.error('source_path is required', 400);
+        return;
+      }
+
+      const pathValidation = this.#validateSkillSourcePath(source_path);
+      if (!pathValidation.valid) {
+        ctx.error(pathValidation.error || 'Invalid skill path', 400);
+        return;
+      }
+
+      const result = await this.skillRegistrationService.register({
+        sourcePath: source_path,
+        fullPath: pathValidation.fullPath,
+        providedName,
+        providedDescription,
+      });
+
+      ctx.success({
+        ...result,
+        message: `Skill "${result.name}" ${result.action} with ${result.tools_registered} tools`,
+      });
+    } catch (error) {
+      logger.error('Register skill error:', error);
+      ctx.error('Skill registration failed: ' + error.message, 500);
+    }
+  }
+
+  // Legacy implementation retained temporarily for rollback comparison.
+  /*
+   * Retained in source history during the migration window only. It is not
+   * executable; all callers must use SkillRegistrationService.
+  async registerLegacy(ctx) {
+    try {
       const { source_path, name: provided_name, description: provided_desc, tools: provided_tools } = ctx.request.body;
 
       logger.info('[SkillController] register() called with:', {
@@ -445,7 +492,13 @@ class SkillController {
       }
 
       const skill_md = fsOriginal.readFileSync(skill_md_path, 'utf-8');
-      const skill_info = parseSkillMd(skill_md);
+      const skill_info = {
+        name: provided_name || path.basename(full_path),
+        description: provided_desc || '',
+        version: '1.0.0',
+        author: '',
+        tags: [],
+      };
       const skill_name = provided_name || skill_info.name || path.basename(full_path);
       const skill_desc = provided_desc || skill_info.description || '';
 
@@ -647,6 +700,8 @@ class SkillController {
     }
   }
 
+  */
+
   /**
    * 分配技能给专家
    * POST /api/skills/assign
@@ -677,6 +732,11 @@ class SkillController {
         }
       }
       const actual_skill_id = skill?.id || skill_id;
+
+      if (isRetiredSkill(skill) || isRetiredSkill(skill_id)) {
+        ctx.error('Skill is retired', 410);
+        return;
+      }
 
       // 查找专家
       const Expert = this.db.getModel('expert');
@@ -1172,31 +1232,50 @@ class SkillController {
       const items = fsOriginal.readdirSync(skillsDir, { withFileTypes: true });
       const directories = [];
 
+      // 列表接口只读取已注册的静态信息；不要为获取描述而执行技能入口代码。
+      let registeredSkills = [];
+      if (typeof this.Skill.findAll === 'function') {
+        try {
+          registeredSkills = await this.Skill.findAll({
+            attributes: ['name', 'description', 'source_path'],
+            raw: true,
+          });
+        } catch (error) {
+          logger.warn(`Failed to load registered skill metadata: ${error.message}`);
+        }
+      }
+      const registeredByPath = new Map(
+        registeredSkills.map(skill => [String(skill.source_path || '').replace(/\\/g, '/'), skill])
+      );
+
       // 遍历目录
       for (const item of items) {
         if (!item.isDirectory()) continue;
 
         const dirName = item.name;
         const dirPath = path.join(skillsDir, dirName);
-          const relativePath = `skills/${dirName}`;
-
-        // 尝试读取 SKILL.md 获取描述
-        let description = '';
-        const skillMdPath = path.join(dirPath, 'SKILL.md');
-        if (fsOriginal.existsSync(skillMdPath)) {
-          try {
-            const skillMd = fsOriginal.readFileSync(skillMdPath, 'utf-8');
-            const skillInfo = parseSkillMd(skillMd);
-            description = skillInfo.description || '';
-          } catch (e) {
-            logger.warn(`Failed to parse SKILL.md for ${dirName}:`, e.message);
+        const relativePath = `skills/${dirName}`;
+        const entrypoint = ['index.js', 'index.py'].find(fileName => (
+          fsOriginal.existsSync(path.join(dirPath, fileName))
+        )) || null;
+        const statusPath = path.join(dirPath, 'STATUS.md');
+        let lifecycle_status = 'active';
+        if (fsOriginal.existsSync(statusPath)) {
+          const status = fsOriginal.readFileSync(statusPath, 'utf8');
+          if (/^Status:\s*frozen draft\.?\s*$/im.test(status)) {
+            lifecycle_status = 'frozen';
           }
         }
+        const registered = registeredByPath.get(relativePath);
 
         directories.push({
           name: dirName,
           path: relativePath,
-          description,
+          description: registered?.description || '',
+          descriptor_status: entrypoint ? 'ready' : 'unavailable',
+          lifecycle_status,
+          runtime: entrypoint?.endsWith('.py') ? 'python' : entrypoint ? 'node' : null,
+          entrypoint,
         });
       }
 
@@ -1242,19 +1321,24 @@ class SkillController {
       // 创建目录结构
       fsOriginal.mkdirSync(newDirPath, { recursive: true });
 
-      // 创建默认的 SKILL.md 文件
-      const skillMdContent = `# ${name}
+      // 新目录直接生成 SkillDefinition v1 入口，不再生成 SKILL.md 作为注册依据。
+      const skillDefinition = {
+        schema_version: 1,
+        skill: {
+          id: name,
+          name,
+          description: typeof description === 'string' ? description : '新技能描述',
+          version: '1.0.0',
+          runtime: 'node',
+          entrypoint: 'index.js',
+          tags: [],
+          scenarios: [],
+        },
+        tools: [],
+      };
+      const indexJsContent = `function getSkillDefinition() {\n  return ${JSON.stringify(skillDefinition, null, 2)};\n}\n\nmodule.exports = { getSkillDefinition };\n`;
 
-${description || '新技能描述'}
-
-## 版本
-1.0.0
-
-## 工具列表
-<!-- 在此定义工具 -->
-`;
-
-      fsOriginal.writeFileSync(path.join(newDirPath, 'SKILL.md'), skillMdContent, 'utf-8');
+      fsOriginal.writeFileSync(path.join(newDirPath, 'index.js'), indexJsContent, 'utf-8');
 
       ctx.success({
         name,

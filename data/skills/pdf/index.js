@@ -1095,4 +1095,23 @@ function getTools() {
   ];
 }
 
-module.exports = { execute, getTools };
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'pdf',
+      name: 'pdf',
+      description: 'PDF reading, writing, rendering and form operations',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['document', 'pdf'],
+      scenarios: [
+        { id: 'pdf_workflow', description: 'Read, create and transform PDF files', tools: ['read', 'write'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
+module.exports = { execute, getTools, getSkillDefinition };

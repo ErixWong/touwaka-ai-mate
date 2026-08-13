@@ -2691,4 +2691,23 @@ function getTools() {
   ];
 }
 
-module.exports = { execute, getTools };
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'pptx',
+      name: 'pptx',
+      description: 'PowerPoint presentation file and slide operations',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['document', 'presentation'],
+      scenarios: [
+        { id: 'presentation_workflow', description: 'Read, create and edit presentations', tools: ['file', 'slide', 'object', 'master'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
+module.exports = { execute, getTools, getSkillDefinition };

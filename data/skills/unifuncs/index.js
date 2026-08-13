@@ -174,9 +174,29 @@ function getTools() {
   ];
 }
 
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'unifuncs',
+      name: 'unifuncs',
+      description: 'Unifuncs web content extraction integration',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['web', 'content'],
+      scenarios: [
+        { id: 'web_content_extraction', description: 'Extract content from web pages', tools: ['read_web_page'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
 module.exports = {
   execute,
   getTools,
+  getSkillDefinition,
   readWebPage,
   name: 'unifuncs',
   description: 'Unifuncs API 服务集成，提供网页内容提取等多种能力',

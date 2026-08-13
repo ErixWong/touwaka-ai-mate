@@ -247,10 +247,30 @@ function getTools() {
   ];
 }
 
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'searxng',
+      name: 'searxng',
+      description: 'Web search through SearXNG',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['web', 'search'],
+      scenarios: [
+        { id: 'web_search', description: 'Search the web through SearXNG', tools: ['web_search'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
 // Export for skill-runner
 module.exports = {
   execute,
   getTools,
+  getSkillDefinition,
   searchSearxng,
   formatResultsTable,
 };

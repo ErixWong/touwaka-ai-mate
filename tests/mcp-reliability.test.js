@@ -5,21 +5,25 @@ import os from 'node:os';
 import path from 'node:path';
 
 import ToolManager from '../lib/tool-manager.js';
+import CapabilityRegistry, { CAPABILITY_KINDS } from '../lib/capability-registry.js';
 import StatelessHTTPTransport from '../lib/mcp-stateless-http.js';
 import { __testing as mcpClientTesting } from '../data/skills/mcp-client/index.js';
 
-function createToolManager() {
+function createToolManager(residentSkillManager) {
   return {
+    residentSkillManager,
+    capabilityRegistry: new CapabilityRegistry(),
     mcpToolRegistry: new Map(),
     getMcpToolDefinitions: ToolManager.prototype.getMcpToolDefinitions,
     getToolInfo: ToolManager.prototype.getToolInfo,
+    getCapabilityPermissionDenied: ToolManager.prototype.getCapabilityPermissionDenied,
+    getUserRole: ToolManager.prototype.getUserRole,
     executeMcpTool: ToolManager.prototype.executeMcpTool,
   };
 }
 
 test('ToolManager maps MCP tool definitions using resident payload contract', async () => {
-  const originalResidentSkillManager = global.residentSkillManager;
-  global.residentSkillManager = {
+  const residentSkillManager = {
     async invokeByName() {
       return {
         tools: [
@@ -40,8 +44,7 @@ test('ToolManager maps MCP tool definitions using resident payload contract', as
     },
   };
 
-  try {
-    const toolManager = createToolManager();
+  const toolManager = createToolManager(residentSkillManager);
     const definitions = await toolManager.getMcpToolDefinitions({ userId: 'user-1' });
 
     assert.equal(definitions.length, 1);
@@ -51,27 +54,27 @@ test('ToolManager maps MCP tool definitions using resident payload contract', as
     const info = toolManager.getToolInfo('mcp_github_search_repositories');
     assert.equal(info.serverName, 'github');
     assert.equal(info.toolName, 'search_repositories');
-  } finally {
-    global.residentSkillManager = originalResidentSkillManager;
-  }
 });
 
 test('ToolManager sends snake_case params when invoking MCP tools', async () => {
-  const originalResidentSkillManager = global.residentSkillManager;
   let capturedPayload = null;
 
-  global.residentSkillManager = {
+  const residentSkillManager = {
     async invokeByName(skillName, toolName, payload, userContext) {
       capturedPayload = { skillName, toolName, payload, userContext };
       return { ok: true };
     },
   };
 
-  try {
-    const toolManager = createToolManager();
+  const toolManager = createToolManager(residentSkillManager);
     toolManager.mcpToolRegistry.set('mcp_alpha_echo', {
       serverName: 'alpha',
       toolName: 'echo',
+    });
+    toolManager.capabilityRegistry.register({
+      id: 'mcp_alpha_echo',
+      kind: CAPABILITY_KINDS.MCP,
+      definition: { type: 'function', function: { name: 'mcp_alpha_echo' } },
     });
 
     const result = await toolManager.executeMcpTool(
@@ -96,9 +99,27 @@ test('ToolManager sends snake_case params when invoking MCP tools', async () => 
         workingDirectory: '/data/work/user-1/task-1',
       },
     });
-  } finally {
-    global.residentSkillManager = originalResidentSkillManager;
-  }
+});
+
+test('ToolManager rejects unregistered MCP ids instead of parsing them', async () => {
+  let invokeCount = 0;
+  const toolManager = createToolManager({
+    async invokeByName() {
+      invokeCount += 1;
+      return { ok: true };
+    },
+  });
+
+  const result = await toolManager.executeMcpTool(
+    'mcp_alpha_unregistered_tool',
+    {},
+    { userId: 'user-1' },
+    'MCP/alpha/unregistered_tool',
+  );
+
+  assert.equal(result.success, false);
+  assert.equal(result.error, 'MCP capability not registered: mcp_alpha_unregistered_tool');
+  assert.equal(invokeCount, 0);
 });
 
 test('connectServer rolls back state when tool caching fails after connect', async () => {

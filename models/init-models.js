@@ -79,6 +79,13 @@ import _user_profile from  "./user_profile.js";
 import _user_role from  "./user_role.js";
 import _user_skill_parameter from  "./user_skill_parameter.js";
 import _user from  "./user.js";
+import _app_els_library from  "./app_els_library.js";
+import _app_els_material from  "./app_els_material.js";
+import _app_els_notebook from  "./app_els_notebook.js";
+import _app_els_user_preference from  "./app_els_user_preference.js";
+import _app_els_user_review from  "./app_els_user_review.js";
+import _app_els_user_study_day from  "./app_els_user_study_day.js";
+import _app_els_user_word from  "./app_els_user_word.js";
 
 export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
@@ -392,6 +399,13 @@ export default function initModels(sequelize) {
   user_skill_parameter.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(user_skill_parameter, { as: "user_skill_parameters", foreignKey: "user_id"});
 
+  const app_els_library = _app_els_library.init(sequelize, DataTypes);
+  const app_els_material = _app_els_material.init(sequelize, DataTypes);
+  const app_els_notebook = _app_els_notebook.init(sequelize, DataTypes);
+  const app_els_user_preference = _app_els_user_preference.init(sequelize, DataTypes);
+  const app_els_user_review = _app_els_user_review.init(sequelize, DataTypes);
+  const app_els_user_study_day = _app_els_user_study_day.init(sequelize, DataTypes);
+  const app_els_user_word = _app_els_user_word.init(sequelize, DataTypes);
   return {
     ai_model,
     app_action_log,
@@ -471,6 +485,13 @@ export default function initModels(sequelize) {
     user_profile,
     user_role,
     user_skill_parameter,
+    app_els_library,
+    app_els_material,
+    app_els_notebook,
+    app_els_user_preference,
+    app_els_user_review,
+    app_els_user_study_day,
+    app_els_user_word,
     user,
   };
 }

@@ -1022,6 +1022,47 @@ async function main() {
   log('Ready, waiting for commands on stdin');
 }
 
+// Static control descriptor. The actual MCP server tools remain dynamic and
+// are returned by the resident process through the list_tools action.
+export function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'mcp-client',
+      name: 'mcp-client',
+      description: 'Resident MCP client and dynamic MCP tool bridge',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['mcp', 'resident', 'dynamic'],
+      scenarios: [
+        { id: 'mcp_control', description: 'Discover and invoke dynamic MCP server tools', tools: ['invoke'] },
+      ],
+    },
+    tools: [
+      {
+        name: 'invoke',
+        description: 'Invoke an MCP client control action',
+        parameters: {
+          type: 'object',
+          properties: {
+            action: {
+              type: 'string',
+              enum: ['list_tools', 'call_tool', 'list_servers', 'connect_server', 'disconnect_server', 'refresh_tools', 'init'],
+            },
+            server: { type: 'string' },
+            tool: { type: 'string' },
+            arguments: { type: 'object' },
+          },
+          required: ['action'],
+        },
+        script_path: 'index.js',
+        is_resident: true,
+      },
+    ],
+  };
+}
+
 export const __testing = {
   resetState() {
     connections.clear();

@@ -313,7 +313,8 @@
   "runtime": {
     "frontend": {
       "entry": "frontend/views/AppRuntimeView.vue"
-    }
+    },
+    "tick": "tick/index.js"
   },
   "views": {
     "list": {

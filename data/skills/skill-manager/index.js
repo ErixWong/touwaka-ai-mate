@@ -126,15 +126,11 @@ async function details(params) {
  * 注册技能（从本地目录）
  */
 async function register(params) {
-  let { source_path, name, description, tools } = params;
+  let { source_path, name, description } = params;
   
   if (!source_path) {
     throw new Error('source_path 不能为空');
   }
-  if (!tools || !Array.isArray(tools) || tools.length === 0) {
-    throw new Error('tools 参数是必需的。请先读取 SKILL.md，理解工具定义后传入 tools 数组。');
-  }
-
   // 规范化 source_path：提取技能目录名
   // 支持多种格式：skills/pdf, data/skills/pdf, pdf
   // 最终只保留技能目录名（如 pdf）
@@ -153,7 +149,6 @@ async function register(params) {
     source_path,
     name,
     description,
-    tools,
   });
 }
 
@@ -256,9 +251,9 @@ function getTools() {
           source_path: { type: 'string', description: '技能目录路径' },
           name: { type: 'string', description: '技能名称' },
           description: { type: 'string', description: '技能描述' },
-          tools: { type: 'array', description: '工具定义数组' }
+          tools: { type: 'array', description: '兼容旧版客户端的工具定义（注册时由技能入口自动生成）' }
         },
-        required: ['source_path', 'tools']
+        required: ['source_path']
       }
     },
     {
@@ -287,10 +282,30 @@ function getTools() {
   ];
 }
 
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'skill-manager',
+      name: 'skill-manager',
+      description: 'Skill discovery, registration and lifecycle management',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['skill', 'management'],
+      scenarios: [
+        { id: 'skill_lifecycle', description: 'Discover, register and manage skills', tools: ['list', 'details', 'register', 'delete', 'toggle'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
 // Export for skill-runner
 module.exports = {
   execute,
   getTools,
+  getSkillDefinition,
   name: 'skill-manager',
   description: '技能管理工具：注册、删除、查询技能（通过 API 调用）',
 };

@@ -1,4 +1,4 @@
-import ContractV2Service from '../../../../server/services/contract-v2.service.js';
+import ContractV2Service from '../services/contract-v2.service.js';
 import logger from '../../../../lib/logger.js';
 
 // Handler 元数据：声明具名参数路径

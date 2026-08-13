@@ -170,4 +170,31 @@ describe('round01 context compression foundations', () => {
     expect(calls.filter(call => call[0] === 'updateTopicMessageCount')).to.have.length(2);
     expect(calls.some(call => call[0] === 'commit')).to.equal(true);
   });
+
+  it('MemorySystem throttles legacy check after below-min result but not force', async () => {
+    let legacyQueries = 0;
+    const db = {
+      getUnarchivedMessages: async () => {
+        legacyQueries++;
+        return [];
+      },
+    };
+    const memorySystem = new MemorySystem(db, 'expert_1', {}, { legacyCheckIntervalMs: 60000 });
+
+    const first = await memorySystem.compressContext('user_1', { minMessages: 5 });
+    const second = await memorySystem.compressContext('user_1', { minMessages: 5 });
+
+    expect(first.success).to.equal(false);
+    expect(second.success).to.equal(false);
+    expect(legacyQueries).to.equal(1);
+
+    // force 压缩不受闸门限制
+    await memorySystem.compressContext('user_1', { minMessages: 5, force: true });
+    expect(legacyQueries).to.equal(2);
+
+    // 间隔期过后恢复检查
+    memorySystem._legacyCheckState.get('expert_1:user_1').lastCheck = Date.now() - 120000;
+    await memorySystem.compressContext('user_1', { minMessages: 5 });
+    expect(legacyQueries).to.equal(3);
+  });
 });

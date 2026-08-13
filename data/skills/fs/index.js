@@ -967,4 +967,23 @@ function getTools() {
   ];
 }
 
-module.exports = { execute, getTools };
+function getSkillDefinition() {
+  return {
+    schema_version: 1,
+    skill: {
+      id: 'fs',
+      name: 'fs',
+      description: 'Filesystem reading, search and mutation tools',
+      version: '1.0.0',
+      runtime: 'node',
+      entrypoint: 'index.js',
+      tags: ['filesystem'],
+      scenarios: [
+        { id: 'workspace_file_operations', description: 'Read, search and mutate workspace files', tools: ['read_file', 'list_files', 'grep', 'write_file', 'replace_in_file', 'edit_lines', 'action', 'info'] },
+      ],
+    },
+    tools: getTools(),
+  };
+}
+
+module.exports = { execute, getTools, getSkillDefinition };

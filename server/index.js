@@ -40,6 +40,7 @@ import { createDocumentEmbeddingTask } from '../lib/document-embedding-worker.js
 import { createTopicArchiverTask } from '../lib/topic-archiver.js';
 import { createAutonomousTaskExecutor } from '../lib/autonomous-task-executor.js';
 import ResidentSkillManager from '../lib/resident-skill-manager.js';
+import ResidentCapabilityExecutor from '../lib/resident-capability-executor.js';
 import InternalLLMService from '../lib/internal-llm-service.js';
 import SkillLoader from '../lib/skill-loader.js';
 import AppClock from '../lib/app-clock.js';
@@ -78,8 +79,6 @@ import MiniAppController from './controllers/mini-app.controller.js';
 import AppMarketController from './controllers/app-market.controller.js';
 import AppRegistryController from './controllers/app-registry.controller.js';
 import AppBackupController from './controllers/app-backup.controller.js';
-import InvoiceController from './controllers/invoice.controller.js';
-import ELSController from './controllers/els.controller.js';
 import AppRegistryService from './services/app-registry.service.js';
 
 // 路由
@@ -115,8 +114,6 @@ import appRegistryRoutes from './routes/app-registry.routes.js';
 import appBackupRoutes from './routes/app-backup.routes.js';
 import { createInvitationRoutes } from './routes/invitation.routes.js';
 import createMcpRoutes from './routes/mcp.routes.js';
-import invoiceRoutes from './routes/invoice.routes.js';
-import elsRoutes from './routes/els.routes.js';
 import appClockRoutes from './routes/app-clock.routes.js';
 import { registerRouter } from './routes/route-registration.js';
 import TokenCleanupJob from './jobs/token-cleanup.js';
@@ -260,6 +257,7 @@ class ApiServer {
     this.chatService = null;
     this.scheduler = null;
     this.residentSkillManager = null;
+    this.residentCapabilityExecutor = null;
     this.mcpToolCaller = null;
     this.tokenCleanupJob = null;
     this.appClock = null;
@@ -380,6 +378,10 @@ class ApiServer {
     // 初始化驻留式技能管理器
     this.residentSkillManager = new ResidentSkillManager(this.db);
     await this.residentSkillManager.initialize();
+    this.residentCapabilityExecutor = new ResidentCapabilityExecutor(this.db, {
+      residentSkillManager: this.residentSkillManager,
+    });
+    await this.residentCapabilityExecutor.initialize();
     this.chatService.setResidentSkillManager(this.residentSkillManager);
     this.mcpToolCaller = new McpToolCaller(this.db, {
       residentSkillManager: this.residentSkillManager,
@@ -402,6 +404,7 @@ class ApiServer {
       maxConsecutiveFailures: parseInt(process.env.APP_CLOCK_MAX_FAILURES, 10) || 3,
       failureCooldownMs: parseInt(process.env.APP_CLOCK_FAILURE_COOLDOWN_MS, 10) || 120000,
       residentSkillManager: this.residentSkillManager,
+      residentCapabilityExecutor: this.residentCapabilityExecutor,
       mcpToolCaller: this.mcpToolCaller,
       skillLoader: new SkillLoader(this.db),
     });
@@ -520,6 +523,7 @@ class ApiServer {
       internal: new InternalController(this.db, {
         expertConnections: streamController.expertConnections, // 传递 SSE 连接池
         chatService: this.chatService, // 传递 ChatService 用于触发专家响应
+        residentCapabilityExecutor: this.residentCapabilityExecutor,
       }),
       internalDocs: new InternalDocsController(this.db),
       attachment: new AttachmentController(this.db),
@@ -527,8 +531,6 @@ class ApiServer {
       appMarket: new AppMarketController(this.db, this.sharedRegistryService, null),
       appRegistry: new AppRegistryController(this.db, this.sharedRegistryService),
       appBackup: new AppBackupController(this.db),
-      invoice: new InvoiceController(this.db),
-      els: new ELSController(this.db),
     };
   }
 
@@ -675,6 +677,7 @@ class ApiServer {
     this.controllers.internal.setExpertConnections(this.controllers.stream.expertConnections);
     // 将 ResidentSkillManager 共享给 InternalController
     this.controllers.internal.setResidentSkillManager(this.residentSkillManager);
+    this.controllers.internal.setResidentCapabilityExecutor(this.residentCapabilityExecutor);
     // 将 ResidentSkillManager 共享给 DebugController
     this.controllers.debug.setResidentSkillManager(this.residentSkillManager);
     // 将 Scheduler 共享给 DebugController
@@ -742,14 +745,6 @@ class ApiServer {
     const mcpRouter = createMcpRoutes(this.db, authMiddleware, this.residentSkillManager);
     registerRouter(this.app, mcpRouter);
     logger.info('MCP routes registered (GET/POST /api/mcp/*)');
-
-    const invoiceRouter = invoiceRoutes(this.controllers.invoice);
-    registerRouter(this.app, invoiceRouter);
-    logger.info('Invoice routes registered (/api/invoice/*)');
-
-    const elsRouter = elsRoutes(this.controllers.els);
-    registerRouter(this.app, elsRouter);
-    logger.info('ELS routes registered (/api/els/*)');
 
     const appClockRouter = appClockRoutes(this.db);
     registerRouter(this.app, appClockRouter);
