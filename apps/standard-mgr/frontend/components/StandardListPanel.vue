@@ -50,13 +50,6 @@
                   type="warning"
                 />
               </el-tooltip>
-              <el-tooltip
-                v-if="data.has_newer_version"
-                :content="$t('apps.standardMgr.newVersionHint')"
-                placement="top"
-              >
-                <el-tag size="small" type="warning" class="sm-version-hint">{{ $t('apps.standardMgr.newVersionTag') }}</el-tag>
-              </el-tooltip>
             </div>
           </div>
         </template>
@@ -98,7 +91,6 @@ interface TreeNode {
   statusLabel?: string
   needs_review?: boolean
   needs_review_tip?: string
-  has_newer_version?: boolean
   children?: TreeNode[]
   count?: number
 }
@@ -288,7 +280,6 @@ function buildStandardNode(std: StandardItem): TreeNode {
     statusLabel: statusLabel(std.anchor_build_status),
     needs_review: std.needs_review,
     needs_review_tip: buildNeedsReviewTip(std),
-    has_newer_version: hasNewerVersion(std),
   }
 }
 
@@ -307,12 +298,6 @@ function handleNodeClick(data: TreeNode) {
   if (data.type === 'standard' && data.standard_id) {
     emit('select', data.standard_id)
   }
-}
-
-/** R2-8: 检测平台是否有比已清洗版本更新的版本 */
-function hasNewerVersion(item: StandardItem): boolean {
-  if (!item.document_current_revision_id || !item.current_revision_id) return false
-  return item.document_current_revision_id !== item.current_revision_id
 }
 
 function statusTagType(status: AnchorBuildStatus): 'success' | 'warning' | 'danger' | 'info' | '' {

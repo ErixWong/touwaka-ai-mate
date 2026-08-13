@@ -740,10 +740,12 @@ class StandardMgrService {
       standard.document_current_revision_id = doc ? doc.current_revision_id : null;
       standard.document_title = doc ? doc.title : null;
 
-      // 附加当前版本标签（revision_label），基础信息展示"版本编号"用
-      if (doc && doc.current_revision_id) {
+      // R17-3: 当前版本标签（revision_label）基于标准的 current_revision_id
+      // （一文档多版本：标准可能纳管了历史版本，如 2018，不能用文档平台最新版 2021 的 label）
+      const labelRevisionId = standard.current_revision_id || (doc ? doc.current_revision_id : null);
+      if (labelRevisionId) {
         const DocRevision = this.db.getModel('document_revision');
-        const rev = await DocRevision.findByPk(doc.current_revision_id, {
+        const rev = await DocRevision.findByPk(labelRevisionId, {
           attributes: ['revision_label'],
           raw: true,
         });
@@ -899,22 +901,29 @@ class StandardMgrService {
     const DocOutline = this.db.getModel('document_outline');
     const Document = this.db.getModel('document');
 
-    // 1. 获取标准 → 文档 → 当前 revision
+    // 1. 获取标准 → 版本（优先标准纳管的 current_revision_id，R17-3 一文档多版本）
     const standard = await AppStandard.findByPk(standardId, {
-      attributes: ['id', 'document_id'],
+      attributes: ['id', 'document_id', 'current_revision_id'],
       raw: true,
     });
     if (!standard || !standard.document_id) return [];
 
-    const doc = await Document.findByPk(standard.document_id, {
-      attributes: ['id', 'current_revision_id'],
-      raw: true,
-    });
-    if (!doc || !doc.current_revision_id) return [];
+    // R17-3: 标准可能纳管了文档的某个历史版本（如 2018），
+    // 锚点/副本都基于标准的 current_revision_id 提取；
+    // 文档的 current_revision_id 只是平台最新版，二者不同（一文档多版本）。
+    let revisionId = standard.current_revision_id;
+    if (!revisionId) {
+      const doc = await Document.findByPk(standard.document_id, {
+        attributes: ['id', 'current_revision_id'],
+        raw: true,
+      });
+      revisionId = doc ? doc.current_revision_id : null;
+    }
+    if (!revisionId) return [];
 
     // 2. 获取该 revision 的全部 outline，按 seq 排序
     const allOutlines = await DocOutline.findAll({
-      where: { revision_id: doc.current_revision_id },
+      where: { revision_id: revisionId },
       attributes: ['id', 'revision_id', 'title', 'description', 'seq', 'original_text', 'text_hash'],
       order: [['seq', 'ASC']],
       raw: true,
@@ -1181,56 +1190,32 @@ class StandardMgrService {
               continue;
             }
 
-            // ── 5. 日期规则校验（仅 new_revision 触发时） ──
-            if (trigger === 'new_revision') {
-              const DocumentRevision = this.db.getModel('document_revision');
-              const sourceRevision = standard.current_revision_id
-                ? await DocumentRevision.findByPk(standard.current_revision_id, {
-                    attributes: ['publish_date'],
-                    raw: true,
-                  })
-                : null;
+            // ── 5. 日期规则校验（回填策略：被引用文档最新版发布时间必须早于引用文档） ──
+            // 依据：X-2024 只能引用 A-2021，不能引用 A-2026（A-2026 比 X-2024 新，X 发布时它还不存在）。
+            // 仅当双方都有 publish_date 时校验；缺发布日期不阻断回填（保守兼容旧数据）。
+            const DocumentRevision = this.db.getModel('document_revision');
+            const sourceRevision = standard.current_revision_id
+              ? await DocumentRevision.findByPk(standard.current_revision_id, {
+                  attributes: ['publish_date'],
+                  raw: true,
+                })
+              : null;
+            const newRevision = await DocumentRevision.findByPk(candidateDoc.current_revision_id, {
+              attributes: ['publish_date'],
+              raw: true,
+            });
+            const aDate = sourceRevision ? sourceRevision.publish_date : null;
+            const bDate = newRevision ? newRevision.publish_date : null;
 
-              const newRevision = await DocumentRevision.findByPk(candidateDoc.current_revision_id, {
-                attributes: ['publish_date'],
-                raw: true,
+            if (aDate && bDate && bDate > aDate) {
+              skipped++;
+              await this._updateGapRetry(gap);
+              details.push({
+                gap_id: gap.id,
+                result: 'skipped',
+                reason: `B.publish_date(${bDate}) > A.publish_date(${aDate})`,
               });
-
-              if (sourceRevision && newRevision) {
-                const aDate = sourceRevision.publish_date;
-                const bDate = newRevision.publish_date;
-
-                if (!aDate || !bDate) {
-                  await RefAnchor.update(
-                    {
-                      status: REF_STATUS.SUSPECTED,
-                      status_reason: '回填时缺少发布日期，无法自动判定版本关系',
-                      retry_count: (gap.retry_count || 0) + 1,
-                      last_retry_at: new Date(),
-                      updated_at: new Date(),
-                    },
-                    { where: { id: gap.id } },
-                  );
-                  skipped++;
-                  details.push({
-                    gap_id: gap.id,
-                    result: 'suspected',
-                    reason: 'Missing publish_date for date rule',
-                  });
-                  continue;
-                }
-
-                if (bDate > aDate) {
-                  skipped++;
-                  await this._updateGapRetry(gap);
-                  details.push({
-                    gap_id: gap.id,
-                    result: 'skipped',
-                    reason: `B.publish_date(${bDate}) > A.publish_date(${aDate})`,
-                  });
-                  continue;
-                }
-              }
+              continue;
             }
 
             // ── 6. 写回 valid 记录 ──
@@ -1265,6 +1250,89 @@ class StandardMgrService {
               reason: gapErr.message,
             });
             await this._updateGapRetry(gap);
+          }
+        }
+
+        // ── 3.5 已回填记录版本升级：候选文档出现更新版本时，升级 auto_backfill 记录 ──
+        // 场景：X-2024 引用 A（未指明版本）→ 上传 A-2018 回填 gap → 再上传 A-2021 时，
+        //       把 X 中已回填指向 A-2018 的记录升级为 A-2021（满足日期规则的前提下）。
+        if (candidateDoc && candidateDoc.current_revision_id) {
+          const backfilled = await RefAnchor.findAll({
+            where: {
+              standard_id: standard.id,
+              source: REF_SOURCE.AUTO_BACKFILL,
+              status: REF_STATUS.VALID,
+              target_document_id: candidateDoc.id,
+            },
+            raw: true,
+          });
+
+          if (backfilled.length > 0) {
+            const DocumentRevision = this.db.getModel('document_revision');
+            const newRev = await DocumentRevision.findByPk(candidateDoc.current_revision_id, {
+              attributes: ['publish_date'],
+              raw: true,
+            });
+            const bDate = newRev ? newRev.publish_date : null;
+            const srcRev = standard.current_revision_id
+              ? await DocumentRevision.findByPk(standard.current_revision_id, {
+                  attributes: ['publish_date'],
+                  raw: true,
+                })
+              : null;
+            const aDate = srcRev ? srcRev.publish_date : null;
+
+            for (const rec of backfilled) {
+              try {
+                // 已指向候选最新版 → 无需升级
+                if (rec.target_revision_id === candidateDoc.current_revision_id) continue;
+
+                // 候选新版本必须晚于记录当前指向的版本（确实有更新版本）
+                const oldRev = rec.target_revision_id
+                  ? await DocumentRevision.findByPk(rec.target_revision_id, {
+                      attributes: ['publish_date'],
+                      raw: true,
+                    })
+                  : null;
+                const oldDate = oldRev ? oldRev.publish_date : null;
+                if (!bDate || !oldDate || bDate <= oldDate) continue;
+
+                // 日期规则：被引用最新版必须早于引用文档（bDate <= aDate）
+                if (aDate && bDate > aDate) {
+                  skipped++;
+                  details.push({
+                    anchor_id: rec.id,
+                    result: 'upgrade_skipped',
+                    reason: `A.latest(${bDate}) > X(${aDate})`,
+                  });
+                  continue;
+                }
+
+                // 升级 target_revision_id 到候选最新版
+                await RefAnchor.update(
+                  {
+                    target_revision_id: candidateDoc.current_revision_id,
+                    status_reason: `backfill upgraded to latest revision on ${trigger}`,
+                    updated_at: new Date(),
+                  },
+                  { where: { id: rec.id } },
+                );
+                filled++;
+                details.push({
+                  anchor_id: rec.id,
+                  result: 'upgraded',
+                  target_revision_id: candidateDoc.current_revision_id,
+                });
+              } catch (upErr) {
+                errors++;
+                logger.error(`[standard-mgr][backfill] Error upgrading anchor ${rec.id}: ${upErr.message}`);
+                details.push({
+                  anchor_id: rec.id,
+                  result: 'error',
+                  reason: upErr.message,
+                });
+              }
+            }
           }
         }
       }

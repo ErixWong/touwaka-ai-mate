@@ -1449,6 +1449,8 @@ export default {
       searchDocsPlaceholder: '搜索文档标题或编号...',
       noDocFound: '未找到匹配的文档',
       alreadyOnboarded: '已纳管',
+      partiallyOnboarded: '已有版本被纳管',
+      revisionAlreadyOnboarded: '该版本已纳管，请选择其他版本',
       revisionLabel: '版本',
       noRevisions: '该文档暂无版本',
       currentRevision: '当前版本',

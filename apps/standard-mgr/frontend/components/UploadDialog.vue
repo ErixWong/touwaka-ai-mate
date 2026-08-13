@@ -28,15 +28,15 @@
               v-for="doc in searchResults"
               :key="doc.id"
               class="sm-doc-item"
-              :class="{ onboarded: onboardedDocIds.has(doc.id) }"
               @click="selectPlatformDoc(doc)"
             >
               <div class="sm-doc-item-title">{{ doc.title }}</div>
               <div class="sm-doc-item-meta">
                 <el-tag size="small" type="info">{{ doc.doc_type || 'standard' }}</el-tag>
                 <span class="sm-doc-item-id">{{ doc.id }}</span>
-                <el-tag v-if="onboardedDocIds.has(doc.id)" size="small" type="success">
-                  {{ $t('apps.standardMgr.alreadyOnboarded') }}
+                <!-- R17-3: 仅提示已有版本被纳管，不禁用整条文档（其他版本仍可纳管） -->
+                <el-tag v-if="isDocPartiallyOnboarded(doc.id)" size="small" type="warning">
+                  {{ $t('apps.standardMgr.partiallyOnboarded') }}
                 </el-tag>
               </div>
             </div>
@@ -62,13 +62,17 @@
                 v-for="rev in revisions"
                 :key="rev.id"
                 class="sm-revision-item"
-                :class="{ current: rev.is_current }"
+                :class="{ current: rev.is_current, onboarded: isRevOnboarded(rev.id) }"
               >
-                <el-radio :value="rev.id">
+                <!-- R17-3: 仅 doc+rev 组合已纳管的版本才禁用 -->
+                <el-radio :value="rev.id" :disabled="isRevOnboarded(rev.id)">
                   <span class="sm-rev-label">{{ rev.revision_label || `v${rev.revision_no}` }}</span>
                   <code class="sm-id-mono">{{ rev.id }}</code>
                   <el-tag v-if="rev.is_current" size="small" type="success" class="sm-rev-current-tag">
                     {{ $t('apps.standardMgr.currentRevision') }}
+                  </el-tag>
+                  <el-tag v-if="isRevOnboarded(rev.id)" size="small" type="info" class="sm-rev-current-tag">
+                    {{ $t('apps.standardMgr.alreadyOnboarded') }}
                   </el-tag>
                 </el-radio>
               </div>
@@ -251,7 +255,12 @@
         <el-button v-if="platformStep === 'search'" type="primary" :disabled="!selectedDoc" @click="goToRevisionSelect">
           {{ $t('apps.standardMgr.nextStep') }}
         </el-button>
-        <el-button v-if="platformStep === 'revision'" type="primary" :disabled="!selectedRevisionId" @click="goToPlatformForm">
+        <el-button
+          v-if="platformStep === 'revision'"
+          type="primary"
+          :disabled="!selectedRevisionId || (selectedRevisionId ? isRevOnboarded(selectedRevisionId) : false)"
+          @click="goToPlatformForm"
+        >
           {{ $t('apps.standardMgr.nextStep') }}
         </el-button>
         <el-button v-if="platformStep === 'form'" type="primary" :disabled="!canSubmitPlatform" :loading="submitting" @click="handlePlatformSubmit">
@@ -305,7 +314,8 @@ const emit = defineEmits<{
 }>()
 
 const props = defineProps<{
-  onboardedDocIds?: Set<string>
+  /** 已纳管 (document_id, revision_id) 组合键集合，key = `${docId}::${revId}` */
+  onboardedRevKeys?: Set<string>
 }>()
 
 const dialogVisible = ref(true)
@@ -320,7 +330,22 @@ const searchKeyword = ref('')
 const docSearchLoading = ref(false)
 const searchResults = ref<DocumentInfo[]>([])
 const selectedDoc = ref<DocumentInfo | null>(null)
-const onboardedDocIds = computed(() => props.onboardedDocIds || new Set<string>())
+const onboardedRevKeys = computed(() => props.onboardedRevKeys || new Set<string>())
+
+/** R17-3: 组合键——只有 doc + rev 都相同才算已纳管 */
+function revKey(docId: string, revId: string) {
+  return `${docId}::${revId}`
+}
+
+/** 该文档是否有任意版本已被纳管（用于文档列表提示，不禁用整条） */
+function isDocPartiallyOnboarded(docId: string) {
+  return [...onboardedRevKeys.value].some(k => k.startsWith(`${docId}::`))
+}
+
+/** 该 revision 是否已被纳管 */
+function isRevOnboarded(revId: string) {
+  return selectedDoc.value ? onboardedRevKeys.value.has(revKey(selectedDoc.value.id, revId)) : false
+}
 
 // R9-2: 版本选择
 const revisionLoading = ref(false)
@@ -401,7 +426,7 @@ async function handleSearch() {
 watch(activeMode, (mode) => { if (mode === 'platform') handleSearch() }, { immediate: true })
 
 function selectPlatformDoc(doc: DocumentInfo) {
-  if (onboardedDocIds.value.has(doc.id)) return
+  // R17-3: 不禁用整条文档——同一文档其他版本仍可纳管，进入版本列表后精确禁用已纳管版本
   selectedDoc.value = doc
   form.value.standard_code = doc.title
   form.value.standard_name = doc.title
@@ -415,12 +440,17 @@ async function goToRevisionSelect() {
   selectedRevisionId.value = null
   try {
     revisions.value = await getDocumentRevisions(selectedDoc.value.id)
-    // 默认选中当前版本
-    const current = revisions.value.find(r => (r as any).is_current)
-    if (current) selectedRevisionId.value = current.id
-    else {
-      const first = revisions.value[0]
-      if (first) selectedRevisionId.value = first.id
+    // R17-3: 默认选中第一个未被纳管的版本；全部已纳管则不预选（下一步按钮会禁用）
+    const firstUnonboarded = revisions.value.find(r => !isRevOnboarded(r.id))
+    if (firstUnonboarded) {
+      selectedRevisionId.value = firstUnonboarded.id
+    } else {
+      const current = revisions.value.find(r => (r as any).is_current)
+      if (current) selectedRevisionId.value = current.id
+      else {
+        const first = revisions.value[0]
+        if (first) selectedRevisionId.value = first.id
+      }
     }
   } catch {
     useToastStore().error(i18n.global.t('apps.standardMgr.loadRevisionsFailed'))
@@ -434,6 +464,12 @@ async function goToRevisionSelect() {
 /** R11-3: 选版本后调 classify-preview 推断归属 + 加载企业列表 */
 async function goToPlatformForm() {
   if (!selectedRevisionId.value || !selectedDoc.value) return
+
+  // R17-3: 双保险——选中的版本若已纳管则阻止进入下一步
+  if (isRevOnboarded(selectedRevisionId.value)) {
+    useToastStore().warning(i18n.global.t('apps.standardMgr.revisionAlreadyOnboarded'))
+    return
+  }
 
   // 并行加载企业列表和推断
   classifying.value = true
@@ -472,6 +508,11 @@ async function goToPlatformForm() {
 
 async function handlePlatformSubmit() {
   if (!selectedDoc.value) return
+  // R17-3: 双保险——提交前再次校验版本未被纳管
+  if (selectedRevisionId.value && isRevOnboarded(selectedRevisionId.value)) {
+    useToastStore().warning(i18n.global.t('apps.standardMgr.revisionAlreadyOnboarded'))
+    return
+  }
   submitting.value = true
   try {
     await createStandard({
@@ -612,6 +653,7 @@ async function handleUploadSubmit() {
 .sm-revision-group { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .sm-revision-item { padding: 6px 0; }
 .sm-revision-item.current { font-weight: 500; }
+.sm-revision-item.onboarded { opacity: .55; }
 .sm-rev-label { margin: 0 8px 0 4px; }
 .sm-rev-current-tag { margin-left: 8px; }
 .sm-upload-progress { padding: 20px; min-height: 150px; }

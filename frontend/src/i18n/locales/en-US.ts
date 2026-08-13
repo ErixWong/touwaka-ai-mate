@@ -1507,6 +1507,8 @@ export default {
       searchDocsPlaceholder: 'Search document title or code...',
       noDocFound: 'No matching documents found',
       alreadyOnboarded: 'Already Onboarded',
+      partiallyOnboarded: 'Some revisions onboarded',
+      revisionAlreadyOnboarded: 'This revision is already onboarded, choose another one',
       revisionLabel: 'Revision',
       noRevisions: 'No revisions for this document',
       currentRevision: 'Current',

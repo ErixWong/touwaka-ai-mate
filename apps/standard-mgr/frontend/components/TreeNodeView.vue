@@ -166,7 +166,22 @@ const isExpanded = computed(() => props.expandedNodes.has(props.node.outline_id)
 
 const anchors = computed(() => props.getAnchors(props.node.outline_id))
 
-const total = computed(() => props.getTotal(props.node.outline_id))
+/**
+ * 章节徽标总数 = 自身锚点 + 全部子孙章节锚点。
+ * 父章节（如"6 零部件标识构成"）显示整棵子树的锚点总数，
+ * 而不只是挂在自己 outline 上的那部分。
+ */
+const total = computed(() => {
+  let count = props.getTotal(props.node.outline_id)
+  const walk = (nodes: SectionNode[]) => {
+    for (const n of nodes) {
+      count += props.getTotal(n.outline_id)
+      walk(n.children)
+    }
+  }
+  walk(props.node.children)
+  return count
+})
 
 /** 是否有可展开内容（子章节或有锚点） */
 const hasExpandable = computed(() => props.node.children.length > 0 || total.value > 0)

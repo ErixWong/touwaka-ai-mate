@@ -142,7 +142,7 @@
     <!-- 上传/纳管对话框 -->
     <UploadDialog
       v-if="showUploadDialog"
-      :onboarded-doc-ids="onboardedDocIds"
+      :onboarded-rev-keys="onboardedRevKeys"
       @close="showUploadDialog = false"
       @onboarded="handleOnboarded"
     />
@@ -182,8 +182,15 @@ const showRightPanel = ref(true)
 const showUploadDialog = ref(false)
 const fixDialogTarget = ref<RefAnchor | null>(null)
 
-/** R8-1: 已纳管文档 ID 集合，传给 UploadDialog 标记可纳管/不可纳管 */
-const onboardedDocIds = computed(() => new Set(store.standards.map(s => s.document_id).filter(Boolean)))
+/** R8-1: 已纳管 (document_id, revision_id) 组合键集合，传给 UploadDialog 精确标记已纳管版本。
+ * 同一文档可纳管多个版本（R17-3 一文档多版本），仅当 doc+rev 都相同才算重复纳管。 */
+const onboardedRevKeys = computed(() => {
+  const set = new Set<string>()
+  for (const s of store.standards) {
+    if (s.document_id && s.current_revision_id) set.add(`${s.document_id}::${s.current_revision_id}`)
+  }
+  return set
+})
 
 onMounted(() => {
   store.fetchStandards()
