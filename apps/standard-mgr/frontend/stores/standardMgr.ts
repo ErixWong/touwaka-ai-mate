@@ -335,6 +335,19 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     await Promise.all(fetchTasks)
   }
 
+  /** R21: 强制刷新锚点数据（新建/修改锚点后调用，绕开缓存） */
+  async function refreshAnchors(standardId: string) {
+    const cache = ensureCache(standardId)
+    await Promise.all([
+      listAnchoredSections(standardId).then(s => { cache.sections = s }).catch(() => {
+        cache.sections = []
+      }),
+      listRefAnchors(standardId, { limit: 500 }).then(a => { cache.anchors = a }).catch(err => {
+        useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadAnchorsFailed'))
+      }),
+    ])
+  }
+
   async function fetchStandardDetail(standardId: string) {
     try {
       const cache = ensureCache(standardId)
@@ -439,7 +452,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
       useToastStore().success(i18n.global.t('apps.standardMgr.manualFixSuccess'))
       const stdId = activeStandardId.value || data.standard_id
       if (stdId) {
-        await loadTabData(stdId)
+        await refreshAnchors(stdId)
       }
     } catch (err: any) {
       useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.manualFixFailed'))
@@ -489,5 +502,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     closeTab,
     switchTab,
     loadTabData,
+    // R21: 手动锚点
+    refreshAnchors,
   }
 })

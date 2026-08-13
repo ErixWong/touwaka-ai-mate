@@ -3,6 +3,10 @@
     <div class="sm-anchor-header">
       <h3>{{ $t('apps.standardMgr.anchors') }}</h3>
       <span class="sm-anchor-count">{{ $t('apps.standardMgr.anchorsCount', { count: anchors.length }) }}</span>
+      <el-button size="small" type="primary" class="sm-create-anchor-btn" @click="$emit('create')">
+        <el-icon style="margin-right: 2px"><Plus /></el-icon>
+        {{ $t('apps.standardMgr.createAnchor') }}
+      </el-button>
       <el-button-group class="sm-toggle-all">
         <el-button size="small" @click="collapseAll">{{ $t('apps.standardMgr.collapseAll') }}</el-button>
         <el-button size="small" @click="expandAll">{{ $t('apps.standardMgr.expandAll') }}</el-button>
@@ -113,7 +117,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { CopyDocument } from '@element-plus/icons-vue'
+import { CopyDocument, Plus } from '@element-plus/icons-vue'
 import { i18n } from '@/i18n'
 import { useToastStore } from '@/stores/toast'
 import TreeNodeView from './TreeNodeView.vue'
@@ -134,6 +138,8 @@ const emit = defineEmits<{
   fixAnchor: [anchor: RefAnchor]
   /** R19: 章节标题点击 → 中间预览跳转到该章节 */
   jumpToSection: [outlineId: string]
+  /** R21: 新建锚点 */
+  create: []
 }>()
 
 // ==================== 多级目录树构建（R19） ====================
@@ -435,7 +441,8 @@ initExpand()
 }
 .sm-anchor-header h3 { margin: 0; font-size: 16px; }
 .sm-anchor-count { color: #909399; font-size: 13px; }
-.sm-toggle-all { margin-left: auto; }
+.sm-create-anchor-btn { margin-left: auto; }
+.sm-toggle-all { margin-left: 0; }
 .sm-anchor-empty { padding: 20px 0; }
 
 /* R9-4: 筛选 chips */

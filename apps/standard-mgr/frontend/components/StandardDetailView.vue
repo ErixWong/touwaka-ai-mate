@@ -154,8 +154,22 @@
       <el-skeleton :rows="8" animated />
     </div>
 
-    <!-- 正文内容 -->
-    <div v-else class="sm-detail-content">
+    <!-- 正文内容（standard 非空时渲染） -->
+    <div
+      v-else
+      class="sm-detail-content"
+      :class="{ 'sm-picking': picking }"
+      @mouseup="handleBodyMouseUp"
+    >
+      <!-- 框选模式提示条 -->
+      <div v-if="picking" class="sm-pick-hint" @click.stop>
+        <el-icon class="sm-pick-icon"><Pointer /></el-icon>
+        <span>{{ $t('apps.standardMgr.createAnchorPickHint') }}</span>
+        <el-button size="small" text @click="$emit('cancelPick')">
+          {{ $t('apps.standardMgr.cancelPick') }}
+        </el-button>
+      </div>
+
       <div v-if="sections.length === 0" class="sm-no-sections">
         <el-empty :description="$t('apps.standardMgr.notCleaned')" :image-size="80">
           <template v-if="standard.anchor_build_status === 'pending'">
@@ -186,6 +200,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
+import { Pointer } from '@element-plus/icons-vue'
 import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 import { renderAnchoredText } from '../utils/anchor-render'
 import type { StandardItem, AnchoredSection, RefAnchor, AnchorBuildStatus, StandardType, EnterpriseItem } from '../api/standard-mgr'
@@ -201,6 +216,8 @@ const props = defineProps<{
   rebuildError: string | null
   /** R11-5: 企业列表（用于编辑元数据时选择企业） */
   enterprises?: EnterpriseItem[]
+  /** R21: 框选模式——正文中划选文字创建锚点 */
+  picking?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -216,7 +233,40 @@ const emit = defineEmits<{
   }]
   /** R19: 删除标准 */
   deleteStandard: [standardId: string]
+  /** R21: 框选完成——把选中文字 + 所在章节交给父级 */
+  pick: [{ source_text: string; outline_id: string }]
+  /** R21: 取消框选 */
+  cancelPick: []
 }>()
+
+// ---- R21: 框选模式 ----
+function handleBodyMouseUp(e: MouseEvent) {
+  if (!props.picking) return
+  const sel = window.getSelection()
+  const text = (sel?.toString() || '').trim()
+  if (!text) return
+  // 定位所在章节：从选区锚点向上找 data-outline-id
+  const anchorNode = sel?.anchorNode as Node | null
+  const sectionEl = findOutlineElement(anchorNode)
+  const outlineId = sectionEl?.dataset?.outlineId
+  if (!sectionEl || !outlineId) return
+  // 防止跨章节选择：focusNode 也在同一章节才接受
+  const focusNode = sel?.focusNode as Node | null
+  const focusSectionEl = findOutlineElement(focusNode)
+  if (!focusSectionEl || focusSectionEl.dataset.outlineId !== outlineId) return
+  emit('pick', { source_text: text, outline_id: outlineId })
+  window.getSelection()?.removeAllRanges()
+}
+
+function findOutlineElement(node: Node | null): HTMLElement | null {
+  let el = node?.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node?.parentElement || null
+  while (el && el !== document.body) {
+    if (el.dataset?.outlineId) return el
+    el = el.parentElement
+  }
+  return null
+}
+
 
 // ---- R19: 删除标准 ----
 const showDeleteDialog = ref(false)
@@ -410,6 +460,30 @@ const rebuildLabel = computed(() => {
 .sm-detail-content {
   flex: 1;
   overflow-y: auto;
+}
+
+/* R21: 框选模式 */
+.sm-pick-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px dashed #2563eb;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 13px;
+}
+.sm-pick-icon {
+  font-size: 16px;
+}
+.sm-picking .sm-section-block {
+  cursor: crosshair;
+}
+.sm-picking .sm-section-block:hover {
+  outline: 1px dashed #2563eb;
+  outline-offset: 2px;
 }
 
 .sm-no-sections {

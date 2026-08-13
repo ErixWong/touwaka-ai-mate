@@ -81,11 +81,14 @@
                     :rebuild-loading="store.rebuildLoading"
                     :rebuild-error="store.rebuildError"
                     :enterprises="store.enterprises"
+                    :picking="pickingMode"
                     @anchor-click="handleAnchorClick"
                     @rebuild="handleRebuild"
                     @select-anchor="handleSelectAnchor"
                     @edit-metadata="handleEditMetadata"
                     @delete-standard="handleDeleteStandard"
+                    @pick="handlePicked"
+                    @cancel-pick="handleCancelPick"
                   />
                 </div>
 
@@ -100,6 +103,7 @@
                     @jump-to-anchor="handleJumpToAnchor"
                     @fix-anchor="handleOpenFixDialog"
                     @jump-to-section="handleJumpToSection"
+                    @create="handleStartCreateAnchor"
                   />
                 </div>
               </div>
@@ -158,6 +162,19 @@
       @fixed="handleFixComplete"
     />
 
+    <!-- R21: 新建锚点对话框 -->
+    <CreateAnchorDialog
+      v-if="showCreateAnchorDialog"
+      :standard-id="store.activeStandardId || ''"
+      :revision-id="store.standardDetail?.current_revision_id || ''"
+      :sections="store.anchoredSections"
+      :anchors="store.refAnchors"
+      :prefill="createAnchorPrefill"
+      @close="handleCloseCreateAnchor"
+      @pick="handleDialogPick"
+      @created="handleAnchorCreated"
+    />
+
     <!-- 设置对话框（仅管理员） -->
     <AdminConfigDialog
       v-if="showConfigDialog && isAdmin"
@@ -182,6 +199,7 @@ import UploadDialog from '../components/UploadDialog.vue'
 import ManualFixDialog from '../components/ManualFixDialog.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import AdminConfigDialog from '../components/AdminConfigDialog.vue'
+import CreateAnchorDialog from '../components/CreateAnchorDialog.vue'
 import { getConfig, type StandardMgrConfig } from '../api/standard-mgr'
 import type { RefAnchor } from '../api/standard-mgr'
 
@@ -196,6 +214,55 @@ const showLeftPanel = ref(true)
 const showRightPanel = ref(true)
 const showUploadDialog = ref(false)
 const fixDialogTarget = ref<RefAnchor | null>(null)
+
+/** R21: 新建锚点——框选模式 + 对话框状态 */
+const pickingMode = ref(false)
+const showCreateAnchorDialog = ref(false)
+const createAnchorPrefill = ref<{ source_text: string; section_id: string } | null>(null)
+
+/** 打开新建锚点：先进入框选模式，让用户在正文中划选 */
+function handleStartCreateAnchor() {
+  const stdId = store.activeStandardId
+  if (!stdId) return
+  createAnchorPrefill.value = null
+  pickingMode.value = true
+}
+
+/** 框选完成：退出框选，打开对话框预填 */
+function handlePicked(payload: { source_text: string; outline_id: string }) {
+  pickingMode.value = false
+  createAnchorPrefill.value = {
+    source_text: payload.source_text,
+    section_id: payload.outline_id,
+  }
+  showCreateAnchorDialog.value = true
+}
+
+/** 取消框选 */
+function handleCancelPick() {
+  pickingMode.value = false
+}
+
+/** 对话框内点"选取"→ 重新进入框选（关闭对话框先） */
+function handleDialogPick() {
+  showCreateAnchorDialog.value = false
+  pickingMode.value = true
+}
+
+/** 关闭对话框（未保存） */
+function handleCloseCreateAnchor() {
+  showCreateAnchorDialog.value = false
+  createAnchorPrefill.value = null
+  pickingMode.value = false
+}
+
+/** 保存成功：强制刷新锚点列表（绕开缓存，新锚点立即显示） */
+function handleAnchorCreated() {
+  const stdId = store.activeStandardId
+  if (stdId) {
+    store.refreshAnchors(stdId)
+  }
+}
 
 /** 设置对话框状态 */
 const showConfigDialog = ref(false)
