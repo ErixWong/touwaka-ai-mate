@@ -1567,6 +1567,20 @@ export default {
       deleteForbiddenWhileProcessing: 'Cannot delete while cleaning is in progress',
       // R8-4 Multi-tab
       noDetailOpen: 'Select a standard to view details',
+      // R20: App settings (LLM model config)
+      configButton: 'Settings',
+      configTooltip: 'Model Config',
+      configTitle: 'Model Config',
+      configLLMModel: 'LLM Model',
+      configLLMPlaceholder: 'Select LLM model',
+      configUseDefault: '(Use expert default model)',
+      configTemperature: 'Temperature',
+      configHelpText: 'When no model is selected, cleaning uses the expert\'s bound default model; otherwise the selected model is used.',
+      configLoadFailed: 'Failed to load config',
+      configSaved: 'Config saved',
+      configSaveFailed: 'Failed to save config',
+      cancel: 'Cancel',
+      save: 'Save',
     },
 
     treeFilter: {

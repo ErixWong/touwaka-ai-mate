@@ -1633,7 +1633,19 @@ class StandardMgrService {
     );
     const taskSession = { ...session, accessToken: taskToken };
 
-    // 4. 异步执行清洗，不阻塞响应
+    // 4. 读取应用级 LLM 模型配置（未配置则为 null，走专家默认模型）
+    let appModelId = null;
+    try {
+      const config = await this.getAppConfig();
+      appModelId = config?.llm_model_id || null;
+      if (appModelId) {
+        logger.info(`[standard-mgr] 使用应用配置模型: ${appModelId} (standard=${standardId})`);
+      }
+    } catch (err) {
+      logger.warn(`[standard-mgr] 读取应用配置失败，使用专家默认模型: ${err.message}`);
+    }
+
+    // 5. 异步执行清洗，不阻塞响应
     this._runCleaningAsync({
       chatService,
       userId,
@@ -1641,6 +1653,7 @@ class StandardMgrService {
       standardId,
       documentId,
       revisionId,
+      modelId: appModelId,
     }).catch(err => {
       logger.error(`[standard-mgr] runCleaningPipeline async error for ${standardId}: ${err.message}`);
     });
@@ -1649,9 +1662,25 @@ class StandardMgrService {
   }
 
   /**
+   * 读取 standard-mgr 应用级配置（mini_apps.config）
+   */
+  async getAppConfig() {
+    try {
+      const app = await this.db.getOne(`
+        SELECT config FROM mini_apps WHERE id = 'standard-mgr'
+      `);
+      if (!app || !app.config) return {};
+      return typeof app.config === 'string' ? JSON.parse(app.config) : app.config;
+    } catch (err) {
+      logger.warn(`[standard-mgr] getAppConfig error: ${err.message}`);
+      return {};
+    }
+  }
+
+  /**
    * 异步清洗会话（内部实现，编排在 runCleaningPipeline 中声明）
    */
-  async _runCleaningAsync({ chatService, userId, session, standardId, documentId, revisionId }) {
+  async _runCleaningAsync({ chatService, userId, session, standardId, documentId, revisionId, modelId = null }) {
     let expertId = null;
 
     try {
@@ -1692,6 +1721,8 @@ class StandardMgrService {
             expert_id: expertId,
             content,
             session,
+            // R20: 应用级配置模型覆盖专家默认模型（null 时由 chatService 回退）
+            model_id: modelId || undefined,
           },
           // onDelta — 清洗不需要实时推送
           () => {},

@@ -2,9 +2,16 @@
   <div class="sm-list-panel">
     <div class="sm-list-header">
       <h3>{{ $t('apps.standardMgr.listTitle') }}</h3>
-      <el-button type="primary" size="small" :icon="Plus" @click="$emit('uploadClick')">
-        {{ $t('apps.standardMgr.onboard') }}
-      </el-button>
+      <div class="sm-list-header-actions">
+        <el-tooltip v-if="showSettings" :content="$t('apps.standardMgr.configTooltip')" placement="bottom">
+          <el-button size="small" :icon="Setting" @click="$emit('settingsClick')">
+            {{ $t('apps.standardMgr.configButton') }}
+          </el-button>
+        </el-tooltip>
+        <el-button type="primary" size="small" :icon="Plus" @click="$emit('uploadClick')">
+          {{ $t('apps.standardMgr.onboard') }}
+        </el-button>
+      </div>
     </div>
 
     <div v-loading="loading" class="sm-list-body">
@@ -61,7 +68,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { i18n } from '@/i18n'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Setting } from '@element-plus/icons-vue'
 import type { StandardItem, AnchorBuildStatus, EnterpriseItem } from '../api/standard-mgr'
 
 const props = defineProps<{
@@ -69,11 +76,14 @@ const props = defineProps<{
   selectedId: string | null
   loading: boolean
   enterprises?: EnterpriseItem[]
+  /** 是否显示设置按钮（管理员） */
+  showSettings?: boolean
 }>()
 
 const emit = defineEmits<{
   select: [standardId: string]
   uploadClick: []
+  settingsClick: []
 }>()
 
 // ============================================================
@@ -341,6 +351,12 @@ function statusLabel(status: AnchorBuildStatus): string {
   margin: 0;
   font-size: 15px;
   color: #303133;
+}
+
+.sm-list-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .sm-list-body {

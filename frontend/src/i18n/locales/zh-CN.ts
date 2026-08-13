@@ -1509,6 +1509,20 @@ export default {
       deleteForbiddenWhileProcessing: '标准正在清洗中，无法删除',
       // R8-4 多页签
       noDetailOpen: '请从列表选择标准查看详情',
+      // R20: 应用设置（大模型配置）
+      configButton: '设置',
+      configTooltip: '模型配置',
+      configTitle: '模型配置',
+      configLLMModel: 'LLM 模型',
+      configLLMPlaceholder: '选择 LLM 模型',
+      configUseDefault: '(使用专家默认模型)',
+      configTemperature: 'Temperature',
+      configHelpText: '未选择模型时，清洗使用专家绑定的默认模型；配置后清洗将使用所选模型。',
+      configLoadFailed: '加载配置失败',
+      configSaved: '配置已保存',
+      configSaveFailed: '保存配置失败',
+      cancel: '取消',
+      save: '保存',
     },
 
     treeFilter: {

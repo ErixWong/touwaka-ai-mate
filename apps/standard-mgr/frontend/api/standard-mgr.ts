@@ -441,4 +441,24 @@ export async function classifyPreview(data: {
   return apiRequest<ClassifyPreviewResult>(apiClient.post(`${PREFIX}/standards/classify-preview`, data))
 }
 
+// ============================================================
+// 应用配置（设置大模型）
+// ============================================================
+
+export interface StandardMgrConfig {
+  /** LLM 模型 ID（null = 使用专家绑定/系统默认模型） */
+  llm_model_id: string | null
+  temperature?: number
+}
+
+/** 读取应用配置（登录即可） */
+export async function getConfig(): Promise<StandardMgrConfig> {
+  return apiRequest<StandardMgrConfig>(apiClient.get(`${PREFIX}/config`))
+}
+
+/** 保存应用配置（需管理员） */
+export async function saveConfig(config: StandardMgrConfig): Promise<StandardMgrConfig> {
+  return apiRequest<StandardMgrConfig>(apiClient.put(`${PREFIX}/config`, config))
+}
+
 

@@ -36,8 +36,10 @@
                 :selected-id="store.selectedStandardId"
                 :loading="store.loading"
                 :enterprises="store.enterprises"
+                :show-settings="isAdmin"
                 @select="handleSelectStandard"
                 @upload-click="showUploadDialog = true"
+                @settings-click="openConfigDialog"
               />
             </div>
 
@@ -155,6 +157,14 @@
       @close="fixDialogTarget = null"
       @fixed="handleFixComplete"
     />
+
+    <!-- 设置对话框（仅管理员） -->
+    <AdminConfigDialog
+      v-if="showConfigDialog && isAdmin"
+      :config="appConfig"
+      @close="showConfigDialog = false"
+      @saved="handleConfigSaved"
+    />
   </div>
 </template>
 
@@ -163,6 +173,7 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 import { useStandardMgrStore } from '../stores/standardMgr'
 import { useToastStore } from '@/stores/toast'
+import { useUserStore } from '@/stores/user'
 import { i18n } from '@/i18n'
 import StandardListPanel from '../components/StandardListPanel.vue'
 import StandardDetailView from '../components/StandardDetailView.vue'
@@ -170,9 +181,13 @@ import AnchorPanel from '../components/AnchorPanel.vue'
 import UploadDialog from '../components/UploadDialog.vue'
 import ManualFixDialog from '../components/ManualFixDialog.vue'
 import FilterPanel from '../components/FilterPanel.vue'
+import AdminConfigDialog from '../components/AdminConfigDialog.vue'
+import { getConfig, type StandardMgrConfig } from '../api/standard-mgr'
 import type { RefAnchor } from '../api/standard-mgr'
 
 const store = useStandardMgrStore()
+const userStore = useUserStore()
+const isAdmin = userStore.isAdmin
 
 /** R8-3: 页签切换 */
 const activePageTab = ref('manage')
@@ -181,6 +196,25 @@ const showLeftPanel = ref(true)
 const showRightPanel = ref(true)
 const showUploadDialog = ref(false)
 const fixDialogTarget = ref<RefAnchor | null>(null)
+
+/** 设置对话框状态 */
+const showConfigDialog = ref(false)
+const appConfig = ref<StandardMgrConfig | null>(null)
+
+/** 打开设置对话框（管理员） */
+async function openConfigDialog() {
+  try {
+    appConfig.value = await getConfig()
+  } catch (err: any) {
+    useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.configLoadFailed'))
+    appConfig.value = null
+  }
+  showConfigDialog.value = true
+}
+
+function handleConfigSaved(config: StandardMgrConfig) {
+  appConfig.value = config
+}
 
 /** R8-1: 已纳管 (document_id, revision_id) 组合键集合，传给 UploadDialog 精确标记已纳管版本。
  * 同一文档可纳管多个版本（R17-3 一文档多版本），仅当 doc+rev 都相同才算重复纳管。 */
