@@ -191,6 +191,8 @@ export interface EnterpriseItem {
   name: string
   name_en: string | null
   description: string | null
+  /** 标准编号前缀（逗号分隔，如 Q-JL, Q-JLY）；用于企业标准识别与归属推断 */
+  code_prefixes: string | null
   is_active: boolean
   created_by: string | null
   created_at: string
@@ -419,8 +421,9 @@ export async function listEnterprises(): Promise<EnterpriseItem[]> {
 /** 新建企业 */
 export async function createEnterprise(data: {
   name: string
-  name_en?: string
-  description?: string
+  name_en?: string | null
+  description?: string | null
+  code_prefixes?: string | null
 }): Promise<EnterpriseItem> {
   return apiRequest<EnterpriseItem>(apiClient.post(`${PREFIX}/enterprises`, data))
 }
@@ -428,9 +431,22 @@ export async function createEnterprise(data: {
 /** 更新企业 */
 export async function updateEnterprise(
   enterpriseId: string,
-  data: { name?: string; name_en?: string; description?: string; is_active?: boolean },
+  data: {
+    name?: string
+    name_en?: string | null
+    description?: string | null
+    code_prefixes?: string | null
+    is_active?: boolean
+  },
 ): Promise<EnterpriseItem> {
   return apiRequest<EnterpriseItem>(apiClient.put(`${PREFIX}/enterprises/${enterpriseId}`, data))
+}
+
+/** 停用企业（软删除，is_active=0） */
+export async function deleteEnterprise(enterpriseId: string): Promise<{ id: string; name: string; is_active: boolean }> {
+  return apiRequest<{ id: string; name: string; is_active: boolean }>(
+    apiClient.delete(`${PREFIX}/enterprises/${enterpriseId}`),
+  )
 }
 
 /** 归属推断预览 */

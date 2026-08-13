@@ -4050,6 +4050,38 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== standard-mgr: 企业标准编号前缀 ====================
+  {
+    name: 'app_enterprise add code_prefixes',
+    check: async (conn) => await hasColumn(conn, 'app_enterprise', 'code_prefixes'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_enterprise
+          ADD COLUMN code_prefixes TEXT NULL COMMENT '标准编号前缀（逗号分隔，如 Q-JL,Q-JLY；用于企业标准识别与归属推断）'
+      `);
+      console.log('  ✓ Added code_prefixes to app_enterprise');
+    }
+  },
+
+  {
+    name: 'backfill geely code_prefixes',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT code_prefixes FROM app_enterprise WHERE name = '吉利'
+      `);
+      // 吉利已配置前缀则跳过；无记录或为空则回填
+      return rows.length > 0 && rows[0].code_prefixes !== null && rows[0].code_prefixes !== '';
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        UPDATE app_enterprise
+          SET code_prefixes = 'Q-JL, Q-JLY, Q/JL, Q/JLY'
+          WHERE name = '吉利'
+      `);
+      console.log('  ✓ Backfilled code_prefixes for 吉利');
+    }
+  },
+
 ];
 
 /**

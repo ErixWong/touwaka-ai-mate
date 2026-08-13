@@ -46,6 +46,11 @@ export default class app_enterprise extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    code_prefixes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "标准编号前缀（逗号分隔，如 Q-JL,Q-JLY；用于企业标准识别与归属推断）"
     }
   }, {
     sequelize,

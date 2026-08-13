@@ -995,17 +995,64 @@ class StandardMgrService {
    *       QJLJ160003, Q/JLYJ7210640, FMVSS 118, ECE R21.01
    * 年份后缀（-2000, .1-2012）由正则末尾 `[\d.\-]*` 覆盖。
    */
-  _extractStandardCodes(text) {
+  /**
+   * 加载全部活跃企业的编号前缀（懒加载 + 缓存）
+   * 结构：[{ enterprise_id, enterprise_name, prefix }]
+   * 企业变更（create/update/停用）时由调用方清空 _enterprisePrefixCache。
+   */
+  async _loadEnterprisePrefixes() {
+    if (this._enterprisePrefixCache) return this._enterprisePrefixCache;
+    const Enterprise = this._enterprise();
+    const rows = await Enterprise.findAll({
+      where: { is_active: true },
+      attributes: ['id', 'name', 'code_prefixes'],
+      raw: true,
+    });
+    const prefixes = [];
+    for (const row of rows) {
+      if (!row.code_prefixes) continue;
+      for (const p of String(row.code_prefixes).split(',')) {
+        const trimmed = p.trim();
+        if (trimmed) {
+          prefixes.push({ enterprise_id: row.id, enterprise_name: row.name, prefix: trimmed });
+        }
+      }
+    }
+    this._enterprisePrefixCache = prefixes;
+    return prefixes;
+  }
+
+  /**
+   * 从 source_text 中提取标准编号（确定性正则，双通道）
+   *
+   * 通道 1：已知标准化组织前缀 + 动态企业前缀
+   *   - 企业前缀来自 app_enterprise.code_prefixes（如 Q-JL、Q-JLY、Q/JL、Q/JLY），
+   *     支持连字符/斜杠形态，随企业花名册动态扩展
+   *   - 原 QJLY/QJL 硬编码保留作为兜底（企业表未配置时仍可用）
+   * 通道 2：通用形态兜底——大写前缀(1-6 字母) + 可选 [/或-]分段 + 数字主体(≥2 位)
+   *
+   * @param {string} text
+   * @param {Array<{prefix: string}>} [enterprisePrefixes] 企业编号前缀（来自 _loadEnterprisePrefixes）
+   */
+  _extractStandardCodes(text, enterprisePrefixes = []) {
     if (!text) return [];
     const codes = [];
-    // 通道 1：支持的标准化组织前缀（含常见五类 + 行业前缀 + 企业/国际法规）
-    // 注意：企业标准代号是 QJL（Q/JL）/ QJLY（Q/JLY），不是 QJ
-    const prefix = '(?:GB|QC|ISO|JB|YC|TW|DB|CB|JT|JTJ|SY|SH|HG|NB|DL|SD|YD|QJLY|QJL|FMVSS|ECE|SAE|ASTM|DIN|JIS)';
+    // 通道 1：标准化组织前缀 + 动态企业前缀（含连字符/斜杠形态）
+    const orgPrefix = '(?:GB|QC|ISO|JB|YC|TW|DB|CB|JT|JTJ|SY|SH|HG|NB|DL|SD|YD|QJLY|QJL|FMVSS|ECE|SAE|ASTM|DIN|JIS)';
     // [/:]? 后接可选空格、可选单字母（连写形态）、可选 T，再接数字主体与可选版本/年份后缀
-    const re1 = new RegExp(`${prefix}[/:]?\\s*[A-Z]?\\s*T?\\s*\\d+[\\d.\\-]*`, 'gi');
+    const re1 = new RegExp(`${orgPrefix}[/:]?\\s*[A-Z]?\\s*T?\\s*\\d+[\\d.\\-]*`, 'gi');
     let m;
     while ((m = re1.exec(text)) !== null) {
       codes.push(m[0]);
+    }
+    // 企业前缀单独处理：按长度降序（短前缀不抢长前缀），边界断言防子串误匹配
+    const sortedEnt = [...enterprisePrefixes].sort((a, b) => b.prefix.length - a.prefix.length);
+    for (const ep of sortedEnt) {
+      const esc = ep.prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`${esc}(?=$|[\\s/\-]|\\d)[\\s/\-]*[A-Z]?\\s*T?\\s*\\d+[\\d.\\-]*`, 'gi');
+      while ((m = re.exec(text)) !== null) {
+        if (!codes.includes(m[0])) codes.push(m[0]);
+      }
     }
     // 通道 2：通用形态兜底（去重合并）
     const re2 = /[A-Z]{1,6}(?:[/-][A-Z]{1,4})?\s*[A-Z]?\d{2,}(?:[.\-]\d+)*[A-Z]?(?:[-–]\d{4})?/g;
@@ -1063,6 +1110,8 @@ class StandardMgrService {
       const RefAnchor = this._refAnchor();
       const Document = this.db.getModel('document');
       const AppStandard = this._appStandard();
+      // 企业编号前缀（动态，用于 gap 文本提取通道 1 白名单）
+      const enterprisePrefixes = await this._loadEnterprisePrefixes();
 
       let candidateCodes = [];    // 归一化后的标准编号
       let candidateNames = [];    // 标准名称（用于 clean_done 辅助匹配）
@@ -1154,8 +1203,8 @@ class StandardMgrService {
 
         for (const gap of gaps) {
           try {
-            // R3-2: 从 gap.source_text 提取标准编号并归一化
-            const gapCodes = this._extractStandardCodes(gap.source_text);
+            // R3-2: 从 gap.source_text 提取标准编号并归一化（通道 1 含动态企业前缀）
+            const gapCodes = this._extractStandardCodes(gap.source_text, enterprisePrefixes);
             const gapCodesNorm = gapCodes.map(c => this._normalizeCode(c));
 
             // R3-2: 双向前缀匹配（代替 R2-2 的全等比较）
@@ -2338,7 +2387,7 @@ class StandardMgrService {
    * 新建企业
    * name 唯一冲突 → 409
    */
-  async createEnterprise({ name, name_en, description, user_id }) {
+  async createEnterprise({ name, name_en, description, code_prefixes, user_id }) {
     const Enterprise = this._enterprise();
 
     // 唯一性检查（DB 有唯一键兜底，这里提前给出友好错误）
@@ -2355,9 +2404,13 @@ class StandardMgrService {
       name,
       name_en: name_en || null,
       description: description || null,
+      code_prefixes: code_prefixes || null,
       is_active: true,
       created_by: user_id || null,
     });
+
+    // 前缀缓存失效
+    this._enterprisePrefixCache = null;
 
     return record.toJSON ? record.toJSON() : record;
   }
@@ -2386,12 +2439,15 @@ class StandardMgrService {
     }
     if (updates.name_en !== undefined) data.name_en = updates.name_en;
     if (updates.description !== undefined) data.description = updates.description;
+    if (updates.code_prefixes !== undefined) data.code_prefixes = updates.code_prefixes || null;
     if (updates.is_active !== undefined) data.is_active = updates.is_active ? 1 : 0;
 
     if (Object.keys(data).length === 0) return existing;
 
     data.updated_at = new Date();
     await Enterprise.update(data, { where: { id: enterpriseId } });
+    // 前缀缓存失效（可能改了前缀或停用）
+    this._enterprisePrefixCache = null;
     return await Enterprise.findByPk(enterpriseId, { raw: true });
   }
 
@@ -2441,14 +2497,16 @@ class StandardMgrService {
       // 首节获取失败不阻塞主逻辑
     }
 
-    // 3. 从标题解析编号和名称
-    const { standard_code, standard_name, standard_type } = this._parseStandardFromTitle(title);
+    // 3. 从标题解析编号和名称（带动态企业前缀）
+    const enterprisePrefixes = await this._loadEnterprisePrefixes();
+    const { standard_code, standard_name, standard_type, enterprise_id: entId, enterprise_name: entName } =
+      this._parseStandardFromTitle(title, enterprisePrefixes);
 
-    // 4. 企业匹配（仅 enterprise 类型）
-    let enterprise_id = null;
-    let enterprise_name = null;
+    // 4. 企业匹配（仅 enterprise 类型；前缀未命中时用企业名包含匹配兜底）
+    let enterprise_id = entId;
+    let enterprise_name = entName;
 
-    if (standard_type === 'enterprise') {
+    if (standard_type === 'enterprise' && !enterprise_id) {
       const searchText = (title + ' ' + firstSectionText.slice(0, 500)).toLowerCase();
       const enterprise = await this._matchEnterprise(searchText);
       if (enterprise) {
@@ -2469,39 +2527,67 @@ class StandardMgrService {
    *
    * 解析策略：找标题开头的标准编号前缀，剩余部分为名称
    */
-  _parseStandardFromTitle(title) {
+  _parseStandardFromTitle(title, enterprisePrefixes = []) {
     if (!title || !title.trim()) {
-      return { standard_code: '', standard_name: '', standard_type: '' };
+      return { standard_code: '', standard_name: '', standard_type: '', enterprise_id: null, enterprise_name: null };
     }
 
     const trimmed = title.trim();
 
-    // 已知标准前缀列表（含常见分隔符）
-    const prefixPatterns = [
-      /^(GB[/\s]*T?\s*[\d.\-]+)/i,
-      /^(ISO[/\s]*[\d.\-]+)/i,
-      /^(IEC[/\s]*[\d.\-]+)/i,
-      /^(Q[/\s]*[\d.\-]+)/i,
-      /^([A-Z]{1,4}[/\s]*T?\s*[\d.\-]+)/i,  // QC/T, JB/T, YC/T 等行业标准
-    ];
-
     let standard_code = '';
     let standard_name = trimmed;
+    let matchedEnterprise = null; // { id, name } —— 前缀命中的企业归属
 
-    for (const pattern of prefixPatterns) {
-      const m = trimmed.match(pattern);
+    // 1. 动态企业前缀优先（Q-JL、Q-JLY、Q/JL 等）
+    //    必须放在通用 Q 形态之前：避免 "Q-JLY J7111029E" 被 /^(Q[/\s]*[\d.\-]+)/ 截成 "Q-"
+    //    按长度降序：避免短前缀（Q-JL）抢占长前缀（Q-JLY）
+    const sortedEnt = [...enterprisePrefixes].sort((a, b) => b.prefix.length - a.prefix.length);
+    for (const ep of sortedEnt) {
+      const esc = ep.prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // 边界断言：前缀后必须是行尾/分隔符/数字，防止 Q-JL 误匹配 Q-JLY
+      const re = new RegExp(`^${esc}(?=$|[\\s/\\-]|\\d)[\\s/\\-]*[A-Z]?\\d+(?:[.\\-]\\d+)*[A-Z]?(?:[-–]\\d{4})?`, 'i');
+      const m = trimmed.match(re);
       if (m) {
-        standard_code = m[1].replace(/\s+/g, '');  // 去除多余空格：QC T → QCT, 但保留 /
-        // 美化常见格式：QCT636 → QC/T 636, GBT19001 → GB/T 19001
-        standard_code = this._beautifyCode(standard_code);
+        standard_code = this._beautifyCode(m[0].replace(/\s+/g, ' '));
         standard_name = trimmed.slice(m[0].length).trim().replace(/^[\s\-—–]+/, '');
+        matchedEnterprise = { id: ep.enterprise_id, name: ep.enterprise_name };
         break;
       }
     }
 
-    const standard_type = this._inferStandardType(standard_code);
+    // 2. 通用标准前缀（企业前缀未命中时）
+    if (!matchedEnterprise) {
+      const prefixPatterns = [
+        /^(GB[/\s]*T?\s*[\d.\-]+)/i,
+        /^(ISO[/\s]*[\d.\-]+)/i,
+        /^(IEC[/\s]*[\d.\-]+)/i,
+        /^(Q[/\s]*[\d.\-]+)/i,
+        /^([A-Z]{1,4}[/\s]*T?\s*[\d.\-]+)/i,  // QC/T, JB/T, YC/T 等行业标准
+      ];
 
-    return { standard_code, standard_name, standard_type };
+      for (const pattern of prefixPatterns) {
+        const m = trimmed.match(pattern);
+        if (m) {
+          standard_code = m[1].replace(/\s+/g, '');  // 去除多余空格：QC T → QCT, 但保留 /
+          // 美化常见格式：QCT636 → QC/T 636, GBT19001 → GB/T 19001
+          standard_code = this._beautifyCode(standard_code);
+          standard_name = trimmed.slice(m[0].length).trim().replace(/^[\s\-—–]+/, '');
+          break;
+        }
+      }
+    }
+
+    const standard_type = matchedEnterprise
+      ? 'enterprise'
+      : this._inferStandardType(standard_code, enterprisePrefixes);
+
+    return {
+      standard_code,
+      standard_name,
+      standard_type,
+      enterprise_id: matchedEnterprise ? matchedEnterprise.id : null,
+      enterprise_name: matchedEnterprise ? matchedEnterprise.name : null,
+    };
   }
 
   /**
@@ -2529,11 +2615,11 @@ class StandardMgrService {
   /**
    * 根据标准编号前缀推断类型（确定性规则）
    */
-  _inferStandardType(code) {
+  _inferStandardType(code, enterprisePrefixes = []) {
     if (!code) return '';
 
     const upperCode = code.toUpperCase().trim();
-    const normalized = upperCode.replace(/[/\s]+/g, '');
+    const normalized = upperCode.replace(/[/\s-]+/g, '');
 
     if (/^GB/.test(normalized) && !/^GBT/.test(normalized)) {
       // 纯 GB 不带 T 也是国标（如 GB 1495-2002）
@@ -2544,13 +2630,23 @@ class StandardMgrService {
     if (/^GBT/.test(normalized)) return 'national';
     if (/^ISO/.test(normalized)) return 'international';
     if (/^IEC/.test(normalized)) return 'international';
-    if (/^Q[/\s]/.test(upperCode) || /^Q\d/.test(upperCode)) return 'enterprise';
 
-    // 其余行业代号：QC/T, JB/T, YC/T 等
+    // 行业前缀优先于企业前缀（决策 5：企业标准命名规则是 Q-企业代号，冲突概率低）
     const industryPrefixes = ['QC', 'JB', 'YC', 'TW', 'DB', 'CB', 'JT', 'JTJ', 'SY', 'SH', 'HG', 'NB', 'DL', 'SD', 'YD'];
     for (const prefix of industryPrefixes) {
       if (normalized.startsWith(prefix)) return 'industry';
     }
+
+    // 企业前缀（动态，含连字符/斜杠形态，如 Q-JL → QJL）
+    if (enterprisePrefixes.length > 0) {
+      for (const ep of enterprisePrefixes) {
+        const epNorm = this._normalizeCode(ep.prefix);
+        if (epNorm && normalized.startsWith(epNorm)) return 'enterprise';
+      }
+    }
+
+    // 兜底：Q 系企业标准（Q/、Q空格、Q数字）
+    if (/^Q[/\s]/.test(upperCode) || /^Q\d/.test(upperCode)) return 'enterprise';
 
     return '';
   }
