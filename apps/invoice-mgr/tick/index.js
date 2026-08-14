@@ -1,7 +1,7 @@
 import path from 'path';
 import { pathToFileURL } from 'url';
 import logger from '../../../lib/logger.js';
-import { resolveAttachmentPath } from '../handlers/shared.js';
+import { resolveAttachmentPath } from '../server/handlers/shared.js';
 
 const APP_ID = 'invoice-mgr';
 const HANDLERS_DIR = path.join(process.cwd(), 'apps', APP_ID, 'handlers');

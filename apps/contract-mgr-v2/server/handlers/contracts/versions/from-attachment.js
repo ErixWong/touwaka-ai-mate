@@ -1,4 +1,4 @@
-import ContractV2Service from '../../../../services/contract-v2.service.js';
+import ContractV2Service from '../../../services/contract-v2.service.js';
 
 // Handler 元数据：声明具名参数路径
 export const route = {

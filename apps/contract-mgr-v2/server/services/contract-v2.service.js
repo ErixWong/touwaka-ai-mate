@@ -466,9 +466,15 @@ class ContractV2Service {
       return collection;
     }
 
-    const departmentId = await this.getUserDepartmentId(userId);
+    let departmentId = await this.getUserDepartmentId(userId);
     if (!departmentId) {
-      throw new Error('当前用户缺少 department_id，无法创建私有文档集合');
+      // 系统管理员允许无部门创建私有集合（department_id 无外键约束）
+      // 产品逻辑：管理员拥有全部权限，不应被组织数据配置卡住
+      const { isSystemAdmin } = await import('../../../../lib/permission-utils.js');
+      if (!(await isSystemAdmin(this.db, userId))) {
+        throw new Error('当前用户缺少 department_id，无法创建私有文档集合');
+      }
+      departmentId = 'sysadmin';
     }
 
     // 自动创建私有 collection，严格按照 document_collection 模型字段
@@ -1310,7 +1316,7 @@ ${fullText.substring(0, 8000)}`;
     });
 
     // 异步执行比对
-    const DocController = (await import('../../lib/doc-compare-executor.js')).default;
+    const DocController = (await import('../../../../lib/doc-compare-executor.js')).default;
     const executor = new DocController(this.db);
     setImmediate(() => executor.execute(runId));
 
