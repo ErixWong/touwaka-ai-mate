@@ -200,13 +200,11 @@ async function main() {
     console.log('='.repeat(50));
     console.log(JSON.stringify(result, null, 2));
     console.log('='.repeat(50));
-    
-    if (result && result.success) {
-      console.log('✅ 执行成功');
-    } else {
-      console.log('❌ 执行失败');
-    }
-    
+
+    // R2-8：工具契约返回裸对象，不强制要求 success 字段
+    // 没有 throw = 执行成功
+    console.log('✅ 执行成功');
+
   } catch (error) {
     console.error('\n❌ 执行失败:', error.message);
     if (error.stack) {

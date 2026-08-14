@@ -3567,6 +3567,330 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== standard-mgr 扩展表 ====================
+  // DDL 定稿 v1.0（2026-07-31，docs/tasks/active/task-20260731-standard-anchor-tools/DDL-DRAFT.md）
+  // 与 apps/standard-mgr/migrations/install.js 保持一致
+  {
+    name: 'app_standard create table',
+    check: async (conn) => await hasTable(conn, 'app_standard'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_standard (
+          id VARCHAR(32) PRIMARY KEY,
+          document_id VARCHAR(32) NOT NULL COMMENT '文档平台 documents.id，一份文档只纳管一次',
+          standard_type VARCHAR(20) NOT NULL COMMENT '标准类型，当前取值 national/industry/enterprise/international，应用层校验，可扩展',
+          standard_code VARCHAR(100) NOT NULL COMMENT '标准编号，如 GB/T 19001-2016',
+          standard_name VARCHAR(500) NOT NULL COMMENT '标准名称',
+          enterprise_id VARCHAR(32) NULL COMMENT '归属企业；NULL=公共标准库（承接国家/行业/国际标准），企业表建立后迁移为企业记录',
+          current_revision_id VARCHAR(32) NULL COMMENT '当前采用版本 document_revisions.id',
+          is_active BIT(1) DEFAULT 1 COMMENT '是否启用',
+          anchor_build_status ENUM('pending','processing','done','error') DEFAULT 'pending' COMMENT '引用清洗状态',
+          last_anchor_build_at DATETIME NULL COMMENT '最近一次清洗完成时间',
+          last_anchor_build_error TEXT NULL COMMENT '最近一次清洗错误信息',
+          needs_review BIT(1) DEFAULT 0 COMMENT '是否存在待人工处理的存疑/gap/无效引用',
+          reference_count INT DEFAULT 0 COMMENT '引用总数',
+          valid_reference_count INT DEFAULT 0 COMMENT '有效引用数',
+          suspected_reference_count INT DEFAULT 0 COMMENT '存疑引用数',
+          gap_reference_count INT DEFAULT 0 COMMENT '待回填缺口数',
+          invalid_reference_count INT DEFAULT 0 COMMENT '无效引用数',
+          has_manual_fix BIT(1) DEFAULT 0 COMMENT '是否存在人工修正',
+          manual_fix_count INT DEFAULT 0 COMMENT '人工修正次数',
+          last_manual_fix_at DATETIME NULL COMMENT '最近人工修正时间',
+          last_manual_fix_by VARCHAR(32) NULL COMMENT '最近人工修正人 users.id',
+          created_by VARCHAR(32) NULL COMMENT '创建人',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_app_standard_document_revision (document_id, current_revision_id),
+          INDEX idx_document_id (document_id),
+          INDEX idx_standard_code (standard_code),
+          INDEX idx_enterprise (enterprise_id),
+          INDEX idx_build_status (anchor_build_status),
+          INDEX idx_current_revision (current_revision_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='标准纳管主对象表'
+      `);
+      console.log('  ✓ Created app_standard table');
+    }
+  },
+
+  {
+    // R17-3（一文档多版本）：document_id 唯一索引 → (document_id, current_revision_id) 联合唯一
+    // 背景：与文档平台对齐——同一文档可对应多个版本（revision），每个版本一条标准记录。
+    // 唯一约束改为「同文档 + 同版本」粒度：同文档不同版本可共存，同版本不重复纳管。
+    // current_revision_id 为 NULL 时 MySQL 联合唯一不生效，与文档平台 NULL=版本未定 语义一致。
+    name: 'app_standard unique index to document+revision',
+    // check 目标：新联合唯一索引不存在时才需要迁移
+    check: async (conn) => await hasIndex(conn, 'app_standard', 'uk_app_standard_document_revision'),
+    migrate: async (conn) => {
+      await safeExecute(conn, 'ALTER TABLE app_standard DROP INDEX uk_app_standard_document');
+      await conn.execute('ALTER TABLE app_standard ADD UNIQUE KEY uk_app_standard_document_revision (document_id, current_revision_id)');
+      await safeExecute(conn, 'ALTER TABLE app_standard ADD INDEX idx_document_id (document_id)');
+      console.log('  ✓ Dropped uk_app_standard_document → added uk_app_standard_document_revision (document_id, current_revision_id)');
+    }
+  },
+
+  {
+    name: 'app_standard_ref_anchor create table',
+    check: async (conn) => await hasTable(conn, 'app_standard_ref_anchor'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_standard_ref_anchor (
+          id VARCHAR(32) PRIMARY KEY,
+          standard_id VARCHAR(32) NOT NULL COMMENT '所属标准 app_standard.id',
+          source_revision_id VARCHAR(32) NOT NULL COMMENT '引用所在版本 document_revisions.id',
+          source_outline_id VARCHAR(32) NOT NULL COMMENT '引用所在 section document_outlines.id',
+          occurrence_index INT NOT NULL DEFAULT 0 COMMENT '同一引用片段在该 section 内第几次出现，从 0 起',
+          source_text VARCHAR(500) NOT NULL COMMENT '原文引用片段（如 GB/T 2001），兼作 gap 回填预筛线索',
+          context_text TEXT NULL COMMENT '引用片段上下文快照，供人工修正界面展示',
+          ref_type ENUM('explicit','implicit') NOT NULL COMMENT '显式/隐式引用',
+          status ENUM('valid','suspected','gap','invalid') NOT NULL COMMENT '有效/存疑/待回填/无效',
+          source ENUM('auto','user_confirmed','manual','auto_backfill') NOT NULL DEFAULT 'auto' COMMENT '来源：自动识别/用户确认候选/人工新建/自动回填',
+          target_document_id VARCHAR(32) NULL COMMENT '目标文档 documents.id，未定目标为 NULL',
+          target_revision_id VARCHAR(32) NULL COMMENT '目标版本 document_revisions.id',
+          target_outline_id VARCHAR(32) NULL COMMENT '目标 section document_outlines.id',
+          candidates_json JSON NULL COMMENT '存疑候选列表 [{document_id,revision_id,outline_id,reason,score}]',
+          status_reason VARCHAR(500) NULL COMMENT '状态原因元数据',
+          retry_count INT DEFAULT 0 COMMENT 'gap 回填已重试次数',
+          last_retry_at DATETIME NULL COMMENT '最近回填重试时间',
+          created_by VARCHAR(32) NULL COMMENT '写入入口标识（清洗运行ID/用户ID/回填任务ID）',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_ref_anchor_occurrence (source_revision_id, source_outline_id, occurrence_index),
+          INDEX idx_standard_status (standard_id, status),
+          INDEX idx_target_document (target_document_id),
+          INDEX idx_source_outline (source_outline_id),
+          FOREIGN KEY (standard_id) REFERENCES app_standard(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='标准引用锚点记录表'
+      `);
+      console.log('  ✓ Created app_standard_ref_anchor table');
+    }
+  },
+
+  {
+    name: 'app_standard_anchored_section create table',
+    check: async (conn) => await hasTable(conn, 'app_standard_anchored_section'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_standard_anchored_section (
+          id VARCHAR(32) PRIMARY KEY,
+          standard_id VARCHAR(32) NOT NULL COMMENT '所属标准 app_standard.id',
+          revision_id VARCHAR(32) NOT NULL COMMENT '来源版本 document_revisions.id',
+          outline_id VARCHAR(32) NOT NULL COMMENT '来源 section document_outlines.id',
+          anchored_text LONGTEXT NULL COMMENT '插入 <document_id+revision_id(+outline_id)> 锚点后的文本',
+          source_text_hash VARCHAR(64) NOT NULL COMMENT '对齐 document_outlines.text_hash，不符则副本失效',
+          anchor_count INT DEFAULT 0 COMMENT '本 section 内锚点数量',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_anchored_section (revision_id, outline_id),
+          INDEX idx_standard (standard_id),
+          FOREIGN KEY (standard_id) REFERENCES app_standard(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='标准带锚点文本副本表'
+      `);
+      console.log('  ✓ Created app_standard_anchored_section table');
+    }
+  },
+
+  // ==================== R3-2：注册 standard-mgr 到 mini_apps ====================
+  {
+    name: 'register standard-mgr in mini_apps',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT 1 FROM mini_apps WHERE id = 'standard-mgr'"
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const userId = await getAnyExistingUserId(conn);
+      await conn.execute(
+        `INSERT INTO mini_apps (id, name, description, icon, type, component, fields, views, config,
+           visibility, owner_id, creator_id, sort_order, is_active, revision)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          'standard-mgr',
+          '标准管理',
+          '标准文档纳管、引用清洗与锚点定位',
+          '📐',
+          'document',
+          null,
+          '[]',
+          '{}',
+          '{"extension_tables":["app_standard","app_standard_ref_anchor","app_standard_anchored_section"]}',
+          'all',
+          userId,
+          userId,
+          50,
+          1,
+          1,
+        ]
+      );
+      console.log('  ✓ Registered standard-mgr in mini_apps');
+    }
+  },
+
+  // ==================== R3-2：注册 standard-anchor 技能 ====================
+  {
+    name: 'register standard-anchor skill',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT 1 FROM skills WHERE name = 'standard-anchor'"
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const skillId = 'skill-standard-anchor';
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+      // 1. 插入技能记录
+      await conn.execute(
+        `INSERT INTO skills (id, name, mark, description, version, author, tags, source_type, source_path,
+           skill_md, security_score, security_warnings, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          skillId,
+          'standard-anchor',
+          'standard-anchor',
+          '标准锚点识别工具集：解析锚点、读取文档章节/全文、定位引用目标。',
+          '1.0.0',
+          'Touwaka Team',
+          '["标准","锚点","引用","文档"]',
+          'local',
+          'skills/standard-anchor',
+          '',  // skill_md — SKILL.md 内容按需通过 API 同步
+          50,
+          '[]',
+          1,
+          now,
+          now,
+        ]
+      );
+      console.log('  ✓ Registered standard-anchor skill');
+
+      // 2. 插入 12 个工具定义（与 data/skills/standard-anchor/index.js getTools() 同步）
+      // R4-2：完整参数，不可手写子集；如变更工具定义，请通过 API POST /api/skills/register 重新注册
+      const tools = [
+        ['st-anchor-parse', skillId, 'parse_anchor', '解析锚点字符串 <document_id+revision_id(+outline_id)> 为结构化对象', '{"type":"object","properties":{"anchor":{"type":"string","description":"锚点字符串，格式 <document_id+revision_id> 或 <document_id+revision_id+outline_id>"}},"required":["anchor"]}', 'index.js', now, now],
+        ['st-anchor-list-sec', skillId, 'list_revision_sections', '按 revision_id 列出所有章节（outline），返回 title/seq/from_line/to_line/outline_id', '{"type":"object","properties":{"revision_id":{"type":"string","description":"版本 ID（document_revisions.id）"}},"required":["revision_id"]}', 'index.js', now, now],
+        ['st-anchor-read-sec', skillId, 'read_section_context', '读取指定 section 正文，可附带前后相邻 section 的上下文', '{"type":"object","properties":{"outline_id":{"type":"string","description":"章节 ID（document_outlines.id）"},"context_window":{"type":"number","description":"上下文窗口大小，前后各取几个相邻 section（默认 0）"}},"required":["outline_id"]}', 'index.js', now, now],
+        ['st-anchor-read-rev', skillId, 'read_revision_content', '读取指定 revision 的全文文本内容', '{"type":"object","properties":{"revision_id":{"type":"string","description":"版本 ID（document_revisions.id）"}},"required":["revision_id"]}', 'index.js', now, now],
+        ['st-anchor-locator', skillId, 'get_section_locator', '通过 outline_id 反查所属的 document_id 和 revision_id', '{"type":"object","properties":{"outline_id":{"type":"string","description":"章节 ID（document_outlines.id）"}},"required":["outline_id"]}', 'index.js', now, now],
+        ['st-anchor-find-code', skillId, 'find_documents_by_standard_code', '按标准编号查找已纳管的标准（查 app_standard 表）', '{"type":"object","properties":{"standard_code":{"type":"string","description":"标准编号，如 GB/T 19001-2016"}},"required":["standard_code"]}', 'index.js', now, now],
+        ['st-anchor-find-name', skillId, 'find_documents_by_standard_name', '按标准名称查找已纳管的标准（查 app_standard 表），支持模糊匹配', '{"type":"object","properties":{"standard_name":{"type":"string","description":"标准名称，支持模糊匹配"}},"required":["standard_name"]}', 'index.js', now, now],
+        ['st-anchor-get-revs', skillId, 'get_document_revisions', '获取指定文档的所有版本列表', '{"type":"object","properties":{"document_id":{"type":"string","description":"文档 ID（documents.id）"}},"required":["document_id"]}', 'index.js', now, now],
+        ['st-anchor-sel-rev', skillId, 'select_revision_candidate', '按版本线索从候选 revision 中筛选最匹配的版本（纯函数，不发 IO）', '{"type":"object","properties":{"revisions":{"type":"array","items":{"type":"object"},"description":"版本列表（含 revision_label、revision_no）"},"hints":{"type":"object","properties":{"year":{"type":"string","description":"年份线索，如 \\"2016\\""},"revision_label":{"type":"string","description":"精确 label 匹配"}}}},"required":["revisions"]}', 'index.js', now, now],
+        ['st-anchor-find-sec', skillId, 'find_section_candidates', '按节号/标题等线索查找候选 section（outline）', '{"type":"object","properties":{"document_id":{"type":"string","description":"文档 ID"},"revision_id":{"type":"string","description":"版本 ID（优先于 document_id）"},"title_hint":{"type":"string","description":"章节标题线索"},"seq_hint":{"type":"number","description":"章节序号线索"},"query_text":{"type":"string","description":"语义搜索文本（用于向量召回辅助）"}},"required":[]}', 'index.js', now, now],
+        ['st-anchor-list-gap', skillId, 'list_reference_gaps', '列出指定标准中待回填的引用缺口（status=gap）', '{"type":"object","properties":{"standard_id":{"type":"string","description":"标准 ID（app_standard.id）"},"limit":{"type":"number","description":"返回数量上限（默认 100）"},"offset":{"type":"number","description":"偏移量（默认 0）"}},"required":["standard_id"]}', 'index.js', now, now],
+        // R4-2：write_anchor_result 必须含全部 16 个参数（含 target 三字段），否则 agent schema 层面无法写入 valid 锚点
+        ['st-anchor-write', skillId, 'write_anchor_result', '写入一个引用的完整判断结果（幂等），同时更新带锚点副本和汇总计数', '{"type":"object","properties":{"standard_id":{"type":"string","description":"标准 ID"},"source_revision_id":{"type":"string","description":"来源 revision ID"},"source_outline_id":{"type":"string","description":"来源 outline ID"},"occurrence_index":{"type":"number","description":"同 section 内出现序号（从 0 开始）"},"source_text":{"type":"string","description":"原始引用文本（必须是被引章节原文的逐字连续子串，禁止改写、合并、补字或转述）"},"context_text":{"type":"string","description":"引用上下文"},"ref_type":{"type":"string","enum":["explicit","implicit"],"description":"引用类型"},"status":{"type":"string","enum":["valid","suspected","gap","invalid"],"description":"引用状态"},"source":{"type":"string","enum":["auto","user_confirmed","manual","auto_backfill"],"description":"来源"},"target_document_id":{"type":"string","description":"目标文档 ID"},"target_revision_id":{"type":"string","description":"目标 revision ID"},"target_outline_id":{"type":"string","description":"目标 outline ID"},"candidates_json":{"type":"object","description":"候选列表"},"status_reason":{"type":"string","description":"状态原因"},"anchored_text":{"type":"string","description":"带锚点副本的文本"},"source_text_hash":{"type":"string","description":"来源文本 hash"}},"required":["standard_id","source_revision_id","source_outline_id","occurrence_index","source_text","ref_type","status","source"]}', 'index.js', now, now],
+      ];
+
+      for (const t of tools) {
+        await conn.execute(
+          `INSERT INTO skill_tools (id, skill_id, name, description, parameters, script_path, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          t
+        );
+      }
+      console.log('  ✓ Registered 12 standard-anchor tools');
+    }
+  },
+
+  // ==================== R4-2：修复已注册的 standard-anchor 工具参数完整性 ====================
+  // R3-2 迁移中的 write_anchor_result 参数只有 8 个字段（缺 target 三字段等），
+  // 已运行过的实例需要此迁移补充完整。新安装不受影响（上面迁移已包含完整参数）。
+  {
+    name: 'fix standard-anchor tool params (R4-2)',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT parameters FROM skill_tools WHERE name = 'write_anchor_result' AND skill_id IN (SELECT id FROM skills WHERE name = 'standard-anchor')"
+      );
+      if (rows.length === 0) return true; // 无记录，跳过
+      try {
+        const params = typeof rows[0].parameters === 'string' ? JSON.parse(rows[0].parameters) : rows[0].parameters;
+        // 检查是否缺 target_outline_id（说明是 R3-2 旧版手写参数）
+        return params?.properties?.target_outline_id !== undefined;
+      } catch {
+        return false; // JSON 解析失败，需要修复
+      }
+    },
+    migrate: async (conn) => {
+      const [skillRows] = await conn.execute(
+        "SELECT id FROM skills WHERE name = 'standard-anchor'"
+      );
+      if (skillRows.length === 0) return;
+      const skillId = skillRows[0].id;
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+      // 删除旧工具，重新插入完整参数
+      await conn.execute('DELETE FROM skill_tools WHERE skill_id = ?', [skillId]);
+      console.log('  ✓ Cleared stale standard-anchor tools');
+
+      const tools = [
+        ['st-anchor-parse', skillId, 'parse_anchor', '解析锚点字符串 <document_id+revision_id(+outline_id)> 为结构化对象', '{"type":"object","properties":{"anchor":{"type":"string","description":"锚点字符串，格式 <document_id+revision_id> 或 <document_id+revision_id+outline_id>"}},"required":["anchor"]}', 'index.js', now, now],
+        ['st-anchor-list-sec', skillId, 'list_revision_sections', '按 revision_id 列出所有章节（outline），返回 title/seq/from_line/to_line/outline_id', '{"type":"object","properties":{"revision_id":{"type":"string","description":"版本 ID（document_revisions.id）"}},"required":["revision_id"]}', 'index.js', now, now],
+        ['st-anchor-read-sec', skillId, 'read_section_context', '读取指定 section 正文，可附带前后相邻 section 的上下文', '{"type":"object","properties":{"outline_id":{"type":"string","description":"章节 ID（document_outlines.id）"},"context_window":{"type":"number","description":"上下文窗口大小，前后各取几个相邻 section（默认 0）"}},"required":["outline_id"]}', 'index.js', now, now],
+        ['st-anchor-read-rev', skillId, 'read_revision_content', '读取指定 revision 的全文文本内容', '{"type":"object","properties":{"revision_id":{"type":"string","description":"版本 ID（document_revisions.id）"}},"required":["revision_id"]}', 'index.js', now, now],
+        ['st-anchor-locator', skillId, 'get_section_locator', '通过 outline_id 反查所属的 document_id 和 revision_id', '{"type":"object","properties":{"outline_id":{"type":"string","description":"章节 ID（document_outlines.id）"}},"required":["outline_id"]}', 'index.js', now, now],
+        ['st-anchor-find-code', skillId, 'find_documents_by_standard_code', '按标准编号查找已纳管的标准（查 app_standard 表）', '{"type":"object","properties":{"standard_code":{"type":"string","description":"标准编号，如 GB/T 19001-2016"}},"required":["standard_code"]}', 'index.js', now, now],
+        ['st-anchor-find-name', skillId, 'find_documents_by_standard_name', '按标准名称查找已纳管的标准（查 app_standard 表），支持模糊匹配', '{"type":"object","properties":{"standard_name":{"type":"string","description":"标准名称，支持模糊匹配"}},"required":["standard_name"]}', 'index.js', now, now],
+        ['st-anchor-get-revs', skillId, 'get_document_revisions', '获取指定文档的所有版本列表', '{"type":"object","properties":{"document_id":{"type":"string","description":"文档 ID（documents.id）"}},"required":["document_id"]}', 'index.js', now, now],
+        ['st-anchor-sel-rev', skillId, 'select_revision_candidate', '按版本线索筛选最匹配 revision（纯函数，不发 IO）', '{"type":"object","properties":{"revisions":{"type":"array","items":{"type":"object"},"description":"版本列表（含 revision_label、revision_no）"},"hints":{"type":"object","properties":{"year":{"type":"string","description":"年份线索"},"revision_label":{"type":"string","description":"精确 label 匹配"}}}},"required":["revisions"]}', 'index.js', now, now],
+        ['st-anchor-find-sec', skillId, 'find_section_candidates', '按节号/标题查找候选 section（outline）', '{"type":"object","properties":{"document_id":{"type":"string","description":"文档 ID"},"revision_id":{"type":"string","description":"版本 ID（优先于 document_id）"},"title_hint":{"type":"string","description":"章节标题线索"},"seq_hint":{"type":"number","description":"章节序号线索"},"query_text":{"type":"string","description":"语义搜索文本（用于向量召回辅助）"}},"required":[]}', 'index.js', now, now],
+        ['st-anchor-list-gap', skillId, 'list_reference_gaps', '列出指定标准中待回填的引用缺口（status=gap）', '{"type":"object","properties":{"standard_id":{"type":"string","description":"标准 ID（app_standard.id）"},"limit":{"type":"number","description":"返回数量上限（默认 100）"},"offset":{"type":"number","description":"偏移量（默认 0）"}},"required":["standard_id"]}', 'index.js', now, now],
+        ['st-anchor-write', skillId, 'write_anchor_result', '写入一个引用的完整判断结果（幂等），同时更新带锚点副本和汇总计数', '{"type":"object","properties":{"standard_id":{"type":"string","description":"标准 ID"},"source_revision_id":{"type":"string","description":"来源 revision ID"},"source_outline_id":{"type":"string","description":"来源 outline ID"},"occurrence_index":{"type":"number","description":"同 section 内出现序号（从 0 开始）"},"source_text":{"type":"string","description":"原始引用文本（必须是被引章节原文的逐字连续子串，禁止改写、合并、补字或转述）"},"context_text":{"type":"string","description":"引用上下文"},"ref_type":{"type":"string","enum":["explicit","implicit"],"description":"引用类型"},"status":{"type":"string","enum":["valid","suspected","gap","invalid"],"description":"引用状态"},"source":{"type":"string","enum":["auto","user_confirmed","manual","auto_backfill"],"description":"来源"},"target_document_id":{"type":"string","description":"目标文档 ID"},"target_revision_id":{"type":"string","description":"目标 revision ID"},"target_outline_id":{"type":"string","description":"目标 outline ID"},"candidates_json":{"type":"object","description":"候选列表"},"status_reason":{"type":"string","description":"状态原因"},"anchored_text":{"type":"string","description":"带锚点副本的文本"},"source_text_hash":{"type":"string","description":"来源文本 hash"}},"required":["standard_id","source_revision_id","source_outline_id","occurrence_index","source_text","ref_type","status","source"]}', 'index.js', now, now],
+      ];
+
+      for (const t of tools) {
+        await conn.execute(
+          `INSERT INTO skill_tools (id, skill_id, name, description, parameters, script_path, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          t
+        );
+      }
+      console.log('  ✓ Re-registered 12 standard-anchor tools with full params');
+    }
+  },
+
+  // ==================== R5-3：source_text 描述加入"逐字"约束 ====================
+  // R4-2 迁移基于 target_outline_id 存在性做 check，第一次运行就写入了旧版 source_text
+  // 描述（不含"逐字"），后续编辑代码不会触发重跑。本迁移专门检查 source_text 描述
+  // 是否含"逐字"，若不含则就地 UPDATE parameters JSON。
+  {
+    name: 'add verbatim constraint to write_anchor_result source_text (R5-3)',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT parameters FROM skill_tools WHERE name = 'write_anchor_result' AND skill_id IN (SELECT id FROM skills WHERE name = 'standard-anchor')"
+      );
+      if (rows.length === 0) return true; // 无记录，跳过
+      try {
+        const params = typeof rows[0].parameters === 'string' ? JSON.parse(rows[0].parameters) : rows[0].parameters;
+        const desc = params?.properties?.source_text?.description || '';
+        return desc.includes('逐字');
+      } catch {
+        return false; // JSON 解析失败，需要修复
+      }
+    },
+    migrate: async (conn) => {
+      const [rows] = await conn.execute(
+        "SELECT parameters FROM skill_tools WHERE name = 'write_anchor_result' AND skill_id IN (SELECT id FROM skills WHERE name = 'standard-anchor')"
+      );
+      if (rows.length === 0) return;
+
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const params = typeof rows[0].parameters === 'string' ? JSON.parse(rows[0].parameters) : rows[0].parameters;
+
+      params.properties.source_text.description =
+        '原始引用文本（必须是被引章节原文的逐字连续子串，禁止改写、合并、补字或转述）';
+
+      await conn.execute(
+        `UPDATE skill_tools
+         SET parameters = ?, updated_at = ?
+         WHERE name = 'write_anchor_result'
+           AND skill_id IN (SELECT id FROM skills WHERE name = 'standard-anchor')`,
+        [JSON.stringify(params), now]
+      );
+      console.log('  ✓ Updated write_anchor_result source_text description → verbatim constraint');
+    }
+  },
+
   // ==================== revision_label 唯一性约束 ====================
   // 文档平台版本管理 P0 收敛：为 revision_label 添加 NOT NULL + UNIQUE 约束
   // 审计: audit-round02 §7.2 / audit-round03 §7.1
@@ -3670,6 +3994,112 @@ const MIGRATIONS = [
       console.log('  ✓ Dropped legacy assistant tables');
     }
   },
+
+  // ==================== standard-mgr: revision publish_date ====================
+  {
+    name: 'add publish_date to document_revisions',
+    check: async (conn) => await hasColumn(conn, 'document_revisions', 'publish_date'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE document_revisions
+          ADD COLUMN publish_date DATE NULL COMMENT '发布日期（标准等文档的正式发布日，用于引用版本判定）'
+      `);
+      console.log('  ✓ Added publish_date to document_revisions');
+    }
+  },
+
+  // ==================== standard-mgr: 企业花名册 ====================
+  {
+    name: 'app_enterprise create table',
+    check: async (conn) => await hasTable(conn, 'app_enterprise'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE app_enterprise (
+          id VARCHAR(32) PRIMARY KEY COMMENT '主键，Utils.newID(32)',
+          name VARCHAR(100) NOT NULL COMMENT '企业名称（如：吉利、小鹏、比亚迪）',
+          name_en VARCHAR(200) NULL COMMENT '企业英文名',
+          description TEXT NULL COMMENT '备注',
+          is_active BIT(1) DEFAULT b'1' COMMENT '是否启用',
+          created_by VARCHAR(32) NULL COMMENT '创建人 users.id',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_app_enterprise_name (name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企业花名册（标准归属）'
+      `);
+      console.log('  ✓ Created app_enterprise table');
+    }
+  },
+
+  {
+    name: 'app_standard enterprise FK to app_enterprise',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_standard'
+          AND CONSTRAINT_NAME = 'fk_standard_enterprise'
+      `);
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_standard
+          ADD CONSTRAINT fk_standard_enterprise
+          FOREIGN KEY (enterprise_id) REFERENCES app_enterprise(id)
+      `);
+      console.log('  ✓ Added FK app_standard.enterprise_id -> app_enterprise.id');
+    }
+  },
+
+  // ==================== standard-mgr: 企业标准编号前缀 ====================
+  {
+    name: 'app_enterprise add code_prefixes',
+    check: async (conn) => await hasColumn(conn, 'app_enterprise', 'code_prefixes'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE app_enterprise
+          ADD COLUMN code_prefixes TEXT NULL COMMENT '标准编号前缀（逗号分隔，如 Q-JL,Q-JLY；用于企业标准识别与归属推断）'
+      `);
+      console.log('  ✓ Added code_prefixes to app_enterprise');
+    }
+  },
+
+  // 注意：企业前缀初始数据通过 scripts/seed-enterprises.mjs 或管理后台配置，
+  // 不硬编码在迁移脚本中，保持迁移脚本无业务数据。
+
+  // ==================== standard-mgr: app_enterprise.id 统一为 VARCHAR(32) ====================
+  {
+    name: 'app_enterprise id length to 32',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT CHARACTER_MAXIMUM_LENGTH AS len
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_enterprise' AND COLUMN_NAME = 'id'`
+      );
+      return rows.length > 0 && rows[0].len >= 32;
+    },
+    migrate: async (conn) => {
+      // 1. 先移除外键约束（app_standard.enterprise_id -> app_enterprise.id）
+      await conn.execute(`
+        ALTER TABLE app_standard DROP FOREIGN KEY fk_standard_enterprise
+      `);
+      console.log('  - Dropped fk_standard_enterprise');
+
+      // 2. 放宽企业表 id 长度并保留注释
+      await conn.execute(`ALTER TABLE app_enterprise MODIFY COLUMN id VARCHAR(32) NOT NULL COMMENT '主键，Utils.newID(32)'`);
+      console.log('  - Widened app_enterprise.id to VARCHAR(32)');
+
+      // 3. 重新添加外键
+      await conn.execute(`
+        ALTER TABLE app_standard
+          ADD CONSTRAINT fk_standard_enterprise
+          FOREIGN KEY (enterprise_id) REFERENCES app_enterprise(id)
+      `);
+      console.log('  - Re-added fk_standard_enterprise');
+
+      console.log('  ✓ app_enterprise.id widened to VARCHAR(32)');
+    }
+  },
+
 ];
 
 /**

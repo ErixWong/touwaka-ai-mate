@@ -486,7 +486,7 @@ class StreamController {
       await this._ensureRequestMaintenanceReady();
 
       // 标准化任务主键字段：优先使用 task_db_id，兼容 task_id
-      const { content, expert_id, model_id, task_id, task_db_id, working_path } = ctx.request.body;
+      const { content, expert_id, model_id, task_id, task_db_id, working_path, topic_id: requestedTopicId } = ctx.request.body;
       // 标准化：task_db_id 为语义明确的字段名，task_id 为兼容字段
       const normalizedTaskDbId = task_db_id || task_id || null;
 
@@ -521,8 +521,8 @@ class StreamController {
         return;
       }
 
-      // 获取或创建该用户与 Expert 的活跃 Topic（支持 task_db_id 关联）
-      const topic_id = await this.getOrCreateActiveTopic(user_id, expert_id, normalizedTaskDbId);
+      // 优先使用调用方显式传入的 topic_id；未传时再获取或创建活跃 Topic
+      const topic_id = requestedTopicId || await this.getOrCreateActiveTopic(user_id, expert_id, normalizedTaskDbId);
 
       // 创建 request_id（一次流式生成请求的唯一标识）
       const request_id = `req_${Utils.newID(16)}`;

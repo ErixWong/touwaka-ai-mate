@@ -19,7 +19,7 @@ export default class user_skill_parameter extends Model {
       }
     },
     skill_id: {
-      type: DataTypes.STRING(64),
+      type: DataTypes.STRING(32),
       allowNull: false,
       comment: "技能ID",
       references: {

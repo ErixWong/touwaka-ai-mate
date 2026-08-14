@@ -69,6 +69,18 @@ export default (controller) => {
   // 获取内容树
   router.get('/documents/:documentId/revisions/:revisionId/content-tree', authenticate(), controller.getContentTree.bind(controller));
 
+  // G1: 按 revision 读 outline 列表
+  router.get('/revisions/:revisionId/outlines', authenticate(), controller.getOutlinesByRevision.bind(controller));
+
+  // G2: 按 outline_id 读 section 文本
+  router.get('/outlines/:outlineId/section', authenticate(), controller.getSectionByOutline.bind(controller));
+
+  // G3: 按 revision_id 读全文
+  router.get('/revisions/:revisionId/content', authenticate(), controller.getRevisionContent.bind(controller));
+
+  // G4: outline_id 反查 document/revision 定位
+  router.get('/outlines/:outlineId/locator', authenticate(), controller.getOutlineLocator.bind(controller));
+
   // 设为当前版本 — 2.6
   router.post('/revisions/:revisionId/set-current', authenticate(), controller.setCurrentVersion.bind(controller));
 

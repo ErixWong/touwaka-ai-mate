@@ -8,7 +8,7 @@ export default class app_contract_mgr_content extends Model {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "关联 mini_app_rows.id",
+      comment: "关联 app_contract_mgr_records.id",
       references: {
         model: 'app_contract_mgr_records',
         key: 'id'
@@ -43,6 +43,11 @@ export default class app_contract_mgr_content extends Model {
       type: DataTypes.DATE,
       allowNull: true,
       comment: "过滤时间"
+    },
+    sections: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "章节结构"
     },
     extract_prompt: {
       type: DataTypes.TEXT,
@@ -80,11 +85,6 @@ export default class app_contract_mgr_content extends Model {
       allowNull: true,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp'),
       comment: "更新时间"
-    },
-    sections: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "章节结构数组"
     }
   }, {
     sequelize,

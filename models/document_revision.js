@@ -26,7 +26,7 @@ export default class document_revision extends Model {
     },
     revision_label: {
       type: DataTypes.STRING(20),
-      allowNull: true,
+      allowNull: false,
       comment: "展示版号(v1.0)"
     },
     revision_status: {
@@ -91,6 +91,11 @@ export default class document_revision extends Model {
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    publish_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      comment: "发布日期（标准等文档的正式发布日，用于引用版本判定）"
     }
   }, {
     sequelize,
@@ -122,6 +127,15 @@ export default class document_revision extends Model {
         fields: [
           { name: "document_id" },
           { name: "revision_no" },
+        ]
+      },
+      {
+        name: "uk_document_revision_label",
+        unique: true,
+        using: "BTREE",
+        fields: [
+          { name: "document_id" },
+          { name: "revision_label" },
         ]
       },
       {

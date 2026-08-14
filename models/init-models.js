@@ -12,9 +12,20 @@ import _app_contract_mgr_v2_row from  "./app_contract_mgr_v2_row.js";
 import _app_current_feature_rule_set from  "./app_current_feature_rule_set.js";
 import _app_current_feature_rule_stage from  "./app_current_feature_rule_stage.js";
 import _app_doc_binding from  "./app_doc_binding.js";
+import _app_els_library from  "./app_els_library.js";
+import _app_els_material from  "./app_els_material.js";
+import _app_els_notebook from  "./app_els_notebook.js";
+import _app_els_user_preference from  "./app_els_user_preference.js";
+import _app_els_user_review from  "./app_els_user_review.js";
+import _app_els_user_study_day from  "./app_els_user_study_day.js";
+import _app_els_user_word from  "./app_els_user_word.js";
+import _app_enterprise from  "./app_enterprise.js";
 import _app_invoice_mgr_item from  "./app_invoice_mgr_item.js";
 import _app_invoice_mgr_record from  "./app_invoice_mgr_record.js";
 import _app_invoice_mgr_row from  "./app_invoice_mgr_row.js";
+import _app_standard from  "./app_standard.js";
+import _app_standard_anchored_section from  "./app_standard_anchored_section.js";
+import _app_standard_ref_anchor from  "./app_standard_ref_anchor.js";
 import _app_tick_log from  "./app_tick_log.js";
 import _app_tick_run from  "./app_tick_run.js";
 import _attachment_token from  "./attachment_token.js";
@@ -26,7 +37,6 @@ import _contract_v2_version from  "./contract_v2_version.js";
 import _department from  "./department.js";
 import _doc_compare_item from  "./doc_compare_item.js";
 import _doc_compare_run from  "./doc_compare_run.js";
-import _doc_content_unit from  "./doc_content_unit.js";
 import _doc_document_tag from  "./doc_document_tag.js";
 import _doc_ocr_image from  "./doc_ocr_image.js";
 import _doc_ocr_result from  "./doc_ocr_result.js";
@@ -75,13 +85,6 @@ import _user_profile from  "./user_profile.js";
 import _user_role from  "./user_role.js";
 import _user_skill_parameter from  "./user_skill_parameter.js";
 import _user from  "./user.js";
-import _app_els_library from  "./app_els_library.js";
-import _app_els_material from  "./app_els_material.js";
-import _app_els_notebook from  "./app_els_notebook.js";
-import _app_els_user_preference from  "./app_els_user_preference.js";
-import _app_els_user_review from  "./app_els_user_review.js";
-import _app_els_user_study_day from  "./app_els_user_study_day.js";
-import _app_els_user_word from  "./app_els_user_word.js";
 
 export default function initModels(sequelize) {
   const ai_model = _ai_model.init(sequelize, DataTypes);
@@ -96,9 +99,20 @@ export default function initModels(sequelize) {
   const app_current_feature_rule_set = _app_current_feature_rule_set.init(sequelize, DataTypes);
   const app_current_feature_rule_stage = _app_current_feature_rule_stage.init(sequelize, DataTypes);
   const app_doc_binding = _app_doc_binding.init(sequelize, DataTypes);
+  const app_els_library = _app_els_library.init(sequelize, DataTypes);
+  const app_els_material = _app_els_material.init(sequelize, DataTypes);
+  const app_els_notebook = _app_els_notebook.init(sequelize, DataTypes);
+  const app_els_user_preference = _app_els_user_preference.init(sequelize, DataTypes);
+  const app_els_user_review = _app_els_user_review.init(sequelize, DataTypes);
+  const app_els_user_study_day = _app_els_user_study_day.init(sequelize, DataTypes);
+  const app_els_user_word = _app_els_user_word.init(sequelize, DataTypes);
+  const app_enterprise = _app_enterprise.init(sequelize, DataTypes);
   const app_invoice_mgr_item = _app_invoice_mgr_item.init(sequelize, DataTypes);
   const app_invoice_mgr_record = _app_invoice_mgr_record.init(sequelize, DataTypes);
   const app_invoice_mgr_row = _app_invoice_mgr_row.init(sequelize, DataTypes);
+  const app_standard = _app_standard.init(sequelize, DataTypes);
+  const app_standard_anchored_section = _app_standard_anchored_section.init(sequelize, DataTypes);
+  const app_standard_ref_anchor = _app_standard_ref_anchor.init(sequelize, DataTypes);
   const app_tick_log = _app_tick_log.init(sequelize, DataTypes);
   const app_tick_run = _app_tick_run.init(sequelize, DataTypes);
   const attachment_token = _attachment_token.init(sequelize, DataTypes);
@@ -110,7 +124,6 @@ export default function initModels(sequelize) {
   const department = _department.init(sequelize, DataTypes);
   const doc_compare_item = _doc_compare_item.init(sequelize, DataTypes);
   const doc_compare_run = _doc_compare_run.init(sequelize, DataTypes);
-  const doc_content_unit = _doc_content_unit.init(sequelize, DataTypes);
   const doc_document_tag = _doc_document_tag.init(sequelize, DataTypes);
   const doc_ocr_image = _doc_ocr_image.init(sequelize, DataTypes);
   const doc_ocr_result = _doc_ocr_result.init(sequelize, DataTypes);
@@ -180,14 +193,22 @@ export default function initModels(sequelize) {
   app_clock_registry.hasMany(app_tick_log, { as: "app_tick_logs", foreignKey: "registry_id"});
   app_contract_mgr_compare.belongsTo(app_contract_mgr_record, { as: "row", foreignKey: "row_id"});
   app_contract_mgr_record.hasOne(app_contract_mgr_compare, { as: "app_contract_mgr_compare", foreignKey: "row_id"});
+  app_contract_mgr_compare.belongsTo(app_contract_mgr_record, { as: "target_row", foreignKey: "target_row_id"});
+  app_contract_mgr_record.hasMany(app_contract_mgr_compare, { as: "target_row_app_contract_mgr_compares", foreignKey: "target_row_id"});
   app_contract_mgr_content.belongsTo(app_contract_mgr_record, { as: "row", foreignKey: "row_id"});
   app_contract_mgr_record.hasOne(app_contract_mgr_content, { as: "app_contract_mgr_content", foreignKey: "row_id"});
   app_contract_mgr_row.belongsTo(app_contract_mgr_record, { as: "row", foreignKey: "row_id"});
   app_contract_mgr_record.hasOne(app_contract_mgr_row, { as: "app_contract_mgr_row", foreignKey: "row_id"});
+  app_standard.belongsTo(app_enterprise, { as: "enterprise", foreignKey: "enterprise_id"});
+  app_enterprise.hasMany(app_standard, { as: "app_standards", foreignKey: "enterprise_id"});
   app_invoice_mgr_item.belongsTo(app_invoice_mgr_record, { as: "row", foreignKey: "row_id"});
   app_invoice_mgr_record.hasMany(app_invoice_mgr_item, { as: "app_invoice_mgr_items", foreignKey: "row_id"});
   app_invoice_mgr_row.belongsTo(app_invoice_mgr_record, { as: "row", foreignKey: "row_id"});
   app_invoice_mgr_record.hasOne(app_invoice_mgr_row, { as: "app_invoice_mgr_row", foreignKey: "row_id"});
+  app_standard_anchored_section.belongsTo(app_standard, { as: "standard", foreignKey: "standard_id"});
+  app_standard.hasMany(app_standard_anchored_section, { as: "app_standard_anchored_sections", foreignKey: "standard_id"});
+  app_standard_ref_anchor.belongsTo(app_standard, { as: "standard", foreignKey: "standard_id"});
+  app_standard.hasMany(app_standard_ref_anchor, { as: "app_standard_ref_anchors", foreignKey: "standard_id"});
   doc_ocr_image.belongsTo(attachment, { as: "attachment", foreignKey: "attachment_id"});
   attachment.hasMany(doc_ocr_image, { as: "doc_ocr_images", foreignKey: "attachment_id"});
   doc_ocr_result.belongsTo(attachment, { as: "main_markdown_attachment", foreignKey: "main_markdown_attachment_id"});
@@ -218,8 +239,6 @@ export default function initModels(sequelize) {
   department.hasMany(position, { as: "positions", foreignKey: "department_id"});
   doc_compare_item.belongsTo(doc_compare_run, { as: "run", foreignKey: "run_id"});
   doc_compare_run.hasMany(doc_compare_item, { as: "doc_compare_items", foreignKey: "run_id"});
-  doc_content_unit.belongsTo(doc_content_unit, { as: "parent", foreignKey: "parent_id"});
-  doc_content_unit.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "parent_id"});
   doc_ocr_image.belongsTo(doc_ocr_result, { as: "ocr_result", foreignKey: "ocr_result_id"});
   doc_ocr_result.hasMany(doc_ocr_image, { as: "doc_ocr_images", foreignKey: "ocr_result_id"});
   doc_document_tag.belongsTo(doc_tag, { as: "tag", foreignKey: "tag_id"});
@@ -238,8 +257,6 @@ export default function initModels(sequelize) {
   document_revision.hasMany(doc_compare_run, { as: "doc_compare_runs", foreignKey: "base_version_id"});
   doc_compare_run.belongsTo(document_revision, { as: "target_version", foreignKey: "target_version_id"});
   document_revision.hasMany(doc_compare_run, { as: "target_version_doc_compare_runs", foreignKey: "target_version_id"});
-  doc_content_unit.belongsTo(document_revision, { as: "version", foreignKey: "version_id"});
-  document_revision.hasMany(doc_content_unit, { as: "doc_content_units", foreignKey: "version_id"});
   doc_ocr_result.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
   document_revision.hasMany(doc_ocr_result, { as: "doc_ocr_results", foreignKey: "revision_id"});
   doc_process_run.belongsTo(document_revision, { as: "revision", foreignKey: "revision_id"});
@@ -298,10 +315,6 @@ export default function initModels(sequelize) {
   mcp_server.hasMany(mcp_user_credential, { as: "mcp_user_credentials", foreignKey: "mcp_server_id"});
   app_action_log.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
   mini_app_row.hasMany(app_action_log, { as: "app_action_logs", foreignKey: "record_id"});
-  app_contract_mgr_v2_row.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
-  mini_app_row.hasOne(app_contract_mgr_v2_row, { as: "app_contract_mgr_v2_row", foreignKey: "row_id"});
-  contract_v2_version.belongsTo(mini_app_row, { as: "row", foreignKey: "row_id"});
-  mini_app_row.hasMany(contract_v2_version, { as: "contract_v2_versions", foreignKey: "row_id"});
   mini_app_file.belongsTo(mini_app_row, { as: "record", foreignKey: "record_id"});
   mini_app_row.hasMany(mini_app_file, { as: "mini_app_files", foreignKey: "record_id"});
   app_action_log.belongsTo(mini_app, { as: "app", foreignKey: "app_id"});
@@ -375,13 +388,6 @@ export default function initModels(sequelize) {
   user_skill_parameter.belongsTo(user, { as: "user", foreignKey: "user_id"});
   user.hasMany(user_skill_parameter, { as: "user_skill_parameters", foreignKey: "user_id"});
 
-  const app_els_library = _app_els_library.init(sequelize, DataTypes);
-  const app_els_material = _app_els_material.init(sequelize, DataTypes);
-  const app_els_notebook = _app_els_notebook.init(sequelize, DataTypes);
-  const app_els_user_preference = _app_els_user_preference.init(sequelize, DataTypes);
-  const app_els_user_review = _app_els_user_review.init(sequelize, DataTypes);
-  const app_els_user_study_day = _app_els_user_study_day.init(sequelize, DataTypes);
-  const app_els_user_word = _app_els_user_word.init(sequelize, DataTypes);
   return {
     ai_model,
     app_action_log,
@@ -395,9 +401,20 @@ export default function initModels(sequelize) {
     app_current_feature_rule_set,
     app_current_feature_rule_stage,
     app_doc_binding,
+    app_els_library,
+    app_els_material,
+    app_els_notebook,
+    app_els_user_preference,
+    app_els_user_review,
+    app_els_user_study_day,
+    app_els_user_word,
+    app_enterprise,
     app_invoice_mgr_item,
     app_invoice_mgr_record,
     app_invoice_mgr_row,
+    app_standard,
+    app_standard_anchored_section,
+    app_standard_ref_anchor,
     app_tick_log,
     app_tick_run,
     attachment_token,
@@ -409,7 +426,6 @@ export default function initModels(sequelize) {
     department,
     doc_compare_item,
     doc_compare_run,
-    doc_content_unit,
     doc_document_tag,
     doc_ocr_image,
     doc_ocr_result,
@@ -457,13 +473,6 @@ export default function initModels(sequelize) {
     user_profile,
     user_role,
     user_skill_parameter,
-    app_els_library,
-    app_els_material,
-    app_els_notebook,
-    app_els_user_preference,
-    app_els_user_review,
-    app_els_user_study_day,
-    app_els_user_word,
     user,
   };
 }

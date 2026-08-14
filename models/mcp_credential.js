@@ -17,7 +17,7 @@ export default class mcp_credential extends Model {
         model: 'mcp_servers',
         key: 'id'
       },
-      unique: "1"
+      unique: "mcp_credentials_ibfk_1"
     },
     credentials: {
       type: DataTypes.TEXT,

@@ -10,10 +10,10 @@ export default class doc_tag extends Model {
       primaryKey: true,
       comment: "标签ID"
     },
-    department_id: {
+    org_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "部门ID"
+      comment: "组织ID"
     },
     name: {
       type: DataTypes.STRING(100),
@@ -50,19 +50,19 @@ export default class doc_tag extends Model {
         ]
       },
       {
-        name: "idx_dept_name",
+        name: "idx_org_name",
         unique: true,
         using: "BTREE",
         fields: [
-          { name: "department_id" },
+          { name: "org_id" },
           { name: "name" },
         ]
       },
       {
-        name: "idx_dept",
+        name: "idx_org",
         using: "BTREE",
         fields: [
-          { name: "department_id" },
+          { name: "org_id" },
         ]
       },
     ]

@@ -1,0 +1,49 @@
+{
+  "id": "standard-mgr",
+  "name": "标准管理",
+  "version": "1.0.0",
+  "description": "标准文档管理、引用清洗与锚点定位",
+  "icon": "📐",
+  "type": "document",
+  "author": "Touwaka Team",
+  "license": "MIT",
+  "runtime": {
+    "frontend": {
+      "entry": "frontend/views/AppRuntimeView.vue"
+    }
+  },
+  "keywords": [
+    "标准",
+    "文档",
+    "引用",
+    "锚点",
+    "合规"
+  ],
+  "compatibility": {
+    "min_platform_version": "2.0.0"
+  },
+  "config": {
+    "llm_model_id": null,
+    "temperature": 0
+  },
+  "extension_tables": [
+    {
+      "name": "app_standard",
+      "type": "primary",
+      "description": "标准纳管主对象表"
+    },
+    {
+      "name": "app_standard_ref_anchor",
+      "type": "relation",
+      "description": "结构化引用记录表"
+    },
+    {
+      "name": "app_standard_anchored_section",
+      "type": "content",
+      "description": "按 section 组织的带锚点文本副本"
+    }
+  ],
+  "migrations": {
+    "install": "migrations/install.js"
+  }
+}

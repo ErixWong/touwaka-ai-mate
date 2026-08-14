@@ -25,6 +25,7 @@ import DocumentOcrService from '../../lib/document-ocr-service.js';
 import DocumentOutlineService from '../../lib/document-outline-service.js';
 import DocumentChunkService from '../../lib/document-chunk-service.js';
 import DocumentRevisionService from '../../lib/document-revision.service.js';
+import DocumentReadService from '../../lib/document-read.service.js';
 import DocumentIntakeService from '../../lib/document-intake.service.js';
 import DocPipelineAdvancer from '../../lib/doc-pipeline-advancer.js';
 import AttachmentService from '../services/attachment.service.js';
@@ -115,6 +116,12 @@ class DocController {
   ensureRevisionService() {
     if (!this.revisionService) {
       this.revisionService = new DocumentRevisionService(this.db);
+    }
+  }
+
+  ensureDocumentReadService() {
+    if (!this.documentReadService) {
+      this.documentReadService = new DocumentReadService(this.db);
     }
   }
 
@@ -222,7 +229,38 @@ class DocController {
       if (doc_type) where.doc_type = doc_type;
       if (collection_id) where.collection_id = collection_id;
       if (processing_status) where.processing_status = processing_status;
-      if (keyword) where.title = { [Op.like]: `%${keyword}%` };
+      if (keyword) {
+        // 扩展 keyword 匹配：标题 / 文档ID / 来源主键 / 版本ID / 版本标签 / 版本号
+        const kw = `%${keyword}%`;
+        const orConditions = [
+          { title: { [Op.like]: kw } },
+          { id: { [Op.like]: kw } },
+          { source_ref_id: { [Op.like]: kw } },
+        ];
+        // 版本维度匹配：先查 document_revisions 拿到匹配的 document_id 集合
+        const DocVersion = this.db.getModel('document_revision');
+        const revWhere = {
+          [Op.or]: [
+            { id: { [Op.like]: kw } },
+            { revision_label: { [Op.like]: kw } },
+          ],
+        };
+        // 纯数字关键词额外匹配 revision_no（机器版号）
+        const numericKeyword = Number(keyword);
+        if (Number.isInteger(numericKeyword)) {
+          revWhere[Op.or].push({ revision_no: numericKeyword });
+        }
+        const revRows = await DocVersion.findAll({
+          where: revWhere,
+          attributes: ['document_id'],
+          raw: true,
+        });
+        if (revRows.length) {
+          const docIds = [...new Set(revRows.map(r => r.document_id))];
+          orConditions.push({ id: { [Op.in]: docIds } });
+        }
+        where[Op.or] = orConditions;
+      }
 
       const { count, rows } = await this.models.DocDocument.findAndCountAll({
         where,
@@ -673,6 +711,150 @@ class DocController {
       ctx.success(chunks);
     } catch (error) {
       logger.error('[Doc] getContentTree error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * G1: 按 revision_id 读 outline 列表
+   * GET /api/docs/revisions/:revisionId/outlines
+   */
+  async getOutlinesByRevision(ctx) {
+    try {
+      this.ensureDocumentReadService();
+      this.ensureDocAccessService();
+      const { revisionId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const revision = await this.db.getModel('document_revision').findByPk(revisionId, { raw: true });
+      if (!revision) ctx.throw(404, 'Revision not found');
+
+      const canRead = await this.docAccessService.canRead(revision.document_id, userId);
+      if (!canRead) ctx.throw(403, 'Access denied');
+
+      const outlines = await this.documentReadService.listOutlines(revisionId);
+      ctx.success(outlines);
+    } catch (error) {
+      logger.error('[Doc] getOutlinesByRevision error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * G2: 按 outline_id 读 section 文本
+   * GET /api/docs/outlines/:outlineId/section?page=0&max_page_chars=4000
+   *
+   * R16-2：按 chunk 翻页（page 参数，0 起，每页 1 个 chunk）。
+   * 返回 page_has_more / page_next_offset / chunk_id / chunk_seq / from_line / to_line / overlap_lines。
+   * 超大 chunk 按行二次切分，保证单页 ≤ max_page_chars（默认 4000，低于摘要阈值 5000）。
+   */
+  async getSectionByOutline(ctx) {
+    try {
+      this.ensureDocumentReadService();
+      this.ensureDocAccessService();
+      const { outlineId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const locator = await this.documentReadService.resolveOutline(outlineId);
+      if (!locator || !locator.revision) ctx.throw(404, 'Outline not found');
+
+      const canRead = await this.docAccessService.canRead(locator.revision.document_id, userId);
+      if (!canRead) ctx.throw(403, 'Access denied');
+
+      const rawPage = ctx.query.page !== undefined ? parseInt(ctx.query.page, 10) : 0;
+      const rawMaxPageChars = ctx.query.max_page_chars !== undefined ? parseInt(ctx.query.max_page_chars, 10) : 4000;
+      const page = Number.isFinite(rawPage) && rawPage >= 0 ? rawPage : 0;
+      const maxPageChars = Number.isFinite(rawMaxPageChars) && rawMaxPageChars > 0 ? rawMaxPageChars : 4000;
+
+      const outline = await this.documentReadService.getSectionByOutlineId(outlineId, {
+        page,
+        max_page_chars: maxPageChars,
+      });
+      ctx.success(outline);
+    } catch (error) {
+      logger.error('[Doc] getSectionByOutline error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * G3: 按任意 revision_id 读全文
+   * GET /api/docs/revisions/:revisionId/content?max_chars=20000&offset_chars=0
+   *
+   * R2-7：支持 max_chars 截断参数，默认 20000
+   * R16-2：支持 offset_chars 翻页参数，配合返回 content_has_more 逐页读完长文
+   */
+  async getRevisionContent(ctx) {
+    try {
+      this.ensureDocumentReadService();
+      this.ensureDocAccessService();
+      const { revisionId } = ctx.params;
+      const userId = ctx.state.session.id;
+      // R3-4：显式 undefined 判断，避免 0 被 || 吞掉
+      const rawMaxChars = ctx.query.max_chars !== undefined
+        ? parseInt(ctx.query.max_chars, 10)
+        : 20000;
+      // R4-4：非数字输入（如 ?max_chars=abc）回落默认值
+      const maxChars = Number.isFinite(rawMaxChars) ? rawMaxChars : 20000;
+      const rawOffset = ctx.query.offset_chars !== undefined ? parseInt(ctx.query.offset_chars, 10) : 0;
+      const offsetChars = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+      const revision = await this.db.getModel('document_revision').findByPk(revisionId, { raw: true });
+      if (!revision) ctx.throw(404, 'Revision not found');
+
+      const canRead = await this.docAccessService.canRead(revision.document_id, userId);
+      if (!canRead) ctx.throw(403, 'Access denied');
+
+      const result = await this.documentReadService.getRevisionText(revisionId, {
+        max_chars: maxChars,
+        offset_chars: offsetChars,
+      });
+      if (result.text === null && result.revision === null) {
+        ctx.throw(404, 'Revision not found');
+      }
+      ctx.success({
+        text: result.text,
+        revision: result.revision,
+        content_truncated: result.content_truncated,
+        content_offset: result.content_offset,
+        content_has_more: result.content_has_more,
+        content_total_chars: result.content_total_chars,
+      });
+    } catch (error) {
+      logger.error('[Doc] getRevisionContent error:', error);
+      ctx.throw(error.status || 500, error.message);
+    }
+  }
+
+  /**
+   * G4: outline_id 反查 document/revision 定位信息
+   * GET /api/docs/outlines/:outlineId/locator
+   */
+  async getOutlineLocator(ctx) {
+    try {
+      this.ensureDocumentReadService();
+      this.ensureDocAccessService();
+      const { outlineId } = ctx.params;
+      const userId = ctx.state.session.id;
+
+      const locator = await this.documentReadService.resolveOutline(outlineId);
+      if (!locator) ctx.throw(404, 'Outline not found');
+
+      if (locator.revision) {
+        const canRead = await this.docAccessService.canRead(locator.revision.document_id, userId);
+        if (!canRead) ctx.throw(403, 'Access denied');
+      }
+
+      ctx.success({
+        outline_id: locator.outline?.id || null,
+        revision_id: locator.revision?.id || null,
+        document_id: locator.document?.id || null,
+        outline: locator.outline,
+        revision: locator.revision,
+        document: locator.document,
+      });
+    } catch (error) {
+      logger.error('[Doc] getOutlineLocator error:', error);
       ctx.throw(error.status || 500, error.message);
     }
   }
