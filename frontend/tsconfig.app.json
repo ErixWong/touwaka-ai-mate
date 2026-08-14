@@ -12,7 +12,9 @@
       "vue": ["./node_modules/vue"],
       "pinia": ["./node_modules/pinia"],
       "element-plus": ["./node_modules/element-plus"],
-      "@element-plus/icons-vue": ["./node_modules/@element-plus/icons-vue"]
+      "@element-plus/icons-vue": ["./node_modules/@element-plus/icons-vue"],
+      "echarts/*": ["./node_modules/echarts/*"],
+      "exceljs": ["./node_modules/exceljs"]
     }
   }
 }

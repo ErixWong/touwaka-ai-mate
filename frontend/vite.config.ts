@@ -28,9 +28,11 @@ export default defineConfig(({ command }) => ({
       'vue': fileURLToPath(new URL('./node_modules/vue', import.meta.url)),
       'pinia': fileURLToPath(new URL('./node_modules/pinia', import.meta.url)),
       'element-plus': fileURLToPath(new URL('./node_modules/element-plus', import.meta.url)),
-      '@element-plus/icons-vue': fileURLToPath(new URL('./node_modules/@element-plus/icons-vue', import.meta.url))
+      '@element-plus/icons-vue': fileURLToPath(new URL('./node_modules/@element-plus/icons-vue', import.meta.url)),
+      'echarts': fileURLToPath(new URL('./node_modules/echarts', import.meta.url)),
+      'exceljs': fileURLToPath(new URL('./node_modules/exceljs', import.meta.url))
     },
-    dedupe: ['vue', 'pinia', 'element-plus', '@element-plus/icons-vue'],
+    dedupe: ['vue', 'pinia', 'element-plus', '@element-plus/icons-vue', 'echarts', 'exceljs'],
   },
   server: {
     host: true,  // 监听所有网络接口（包括 localhost 和 127.0.0.1）
