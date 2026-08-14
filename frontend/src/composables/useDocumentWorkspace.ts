@@ -27,8 +27,10 @@ export function useDocumentWorkspace(options: UseDocumentWorkspaceOptions) {
   const { currentResult, markdownPreview, processingErrorCode, processingErrorMessage, t } = options
 
   // Markdown 引用图片路径
+  // 注：后端不返回 preview_markdown_content（task-20260814 审计 P0-4.1 删除假字段），
+  // 图片路径解析只基于已加载的 markdownPreview 内容
   const markdownReferencedImagePaths = computed(() => {
-    const content = markdownPreview.value || currentResult.value?.ocr_result?.preview_markdown_content || ''
+    const content = markdownPreview.value || ''
     const pathSet = new Set<string>()
     if (!content) return pathSet
 

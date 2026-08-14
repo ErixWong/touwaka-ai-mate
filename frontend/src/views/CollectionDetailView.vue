@@ -517,12 +517,8 @@ async function onPreviewVersion(revisionId: string) {
 
 // 加载 Markdown 预览
 async function loadMarkdownPreview() {
-  const previewContent = docStore.currentResult?.ocr_result?.preview_markdown_content
-  if (previewContent) {
-    markdownPreview.value = previewContent
-    return
-  }
-
+  // 后端不返回 preview_markdown_content（task-20260814 审计 P0-4.1 删除假字段），
+  // 统一走附件内容接口获取预览 markdown
   const attachment = markdownAttachmentFromWorkspace.value
   if (!attachment?.id) {
     markdownPreview.value = ''
