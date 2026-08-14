@@ -43,7 +43,7 @@ export default class knowledge_basis extends Model {
       }
     },
     embedding_model_id: {
-      type: DataTypes.STRING(50),
+      type: DataTypes.STRING(32),
       allowNull: true,
       comment: "关联 ai_models 表",
       references: {

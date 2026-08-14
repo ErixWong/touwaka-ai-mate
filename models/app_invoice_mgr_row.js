@@ -8,11 +8,16 @@ export default class app_invoice_mgr_row extends Model {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "关联 mini_app_rows.id",
+      comment: "关联 app_invoice_mgr_records.id",
       references: {
         model: 'app_invoice_mgr_records',
         key: 'id'
       }
+    },
+    user_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "用户ID，关联 app_invoice_mgr_records.user_id"
     },
     invoice_number: {
       type: DataTypes.STRING(20),
@@ -117,11 +122,6 @@ export default class app_invoice_mgr_row extends Model {
       defaultValue: 0,
       comment: "发票关键词匹配数"
     },
-    user_id: {
-      type: DataTypes.STRING(32),
-      allowNull: true,
-      comment: "用户ID"
-    },
     created_at: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -156,6 +156,13 @@ export default class app_invoice_mgr_row extends Model {
         ]
       },
       {
+        name: "idx_user_id",
+        using: "BTREE",
+        fields: [
+          { name: "user_id" },
+        ]
+      },
+      {
         name: "idx_seller",
         using: "BTREE",
         fields: [
@@ -181,13 +188,6 @@ export default class app_invoice_mgr_row extends Model {
         using: "BTREE",
         fields: [
           { name: "total_with_tax" },
-        ]
-      },
-      {
-        name: "idx_user_id",
-        using: "BTREE",
-        fields: [
-          { name: "user_id" },
         ]
       },
     ]

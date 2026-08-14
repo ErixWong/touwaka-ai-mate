@@ -8,11 +8,7 @@ export default class app_contract_mgr_v2_row extends Model {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "关联 mini_app_rows.id",
-      references: {
-        model: 'mini_app_rows',
-        key: 'id'
-      }
+      comment: "兼容旧 mini_app_rows ID（Phase 6 已移除 FK 绑定）"
     },
     contract_number: {
       type: DataTypes.STRING(64),

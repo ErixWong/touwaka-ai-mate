@@ -8,33 +8,13 @@ export default class app_contract_mgr_v2_content extends Model {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "关联 mini_app_rows.id"
+      comment: "兼容旧 mini_app_rows ID（Phase 6 已移除 FK 绑定）"
     },
     content_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      defaultValue: "",
+      comment: "app 自治内容主键",
       unique: "uk_content_id"
-    },
-    process_step: {
-      type: DataTypes.STRING(32),
-      allowNull: true,
-      comment: "处理步骤"
-    },
-    file_id: {
-      type: DataTypes.STRING(32),
-      allowNull: true,
-      comment: "文件ID"
-    },
-    document_id: {
-      type: DataTypes.STRING(32),
-      allowNull: true,
-      comment: "Doc平台文档ID"
-    },
-    ocr_task_id: {
-      type: DataTypes.STRING(128),
-      allowNull: true,
-      comment: "OCR任务ID"
     },
     ocr_text: {
       type: DataTypes.TEXT,
@@ -44,7 +24,7 @@ export default class app_contract_mgr_v2_content extends Model {
     ocr_service: {
       type: DataTypes.STRING(64),
       allowNull: true,
-      comment: "OCR 服务名称"
+      comment: "OCR 服务"
     },
     ocr_at: {
       type: DataTypes.DATE,
@@ -61,6 +41,67 @@ export default class app_contract_mgr_v2_content extends Model {
       allowNull: true,
       comment: "过滤时间"
     },
+    sections: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "章节结构"
+    },
+    classification_json: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "版本识别建议"
+    },
+    extract_prompt: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "提取提示词"
+    },
+    extract_json: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "提取的原始JSON"
+    },
+    extract_model: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      comment: "提取模型"
+    },
+    extract_temperature: {
+      type: DataTypes.DECIMAL(3,2),
+      allowNull: true,
+      comment: "模型温度"
+    },
+    extract_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: "提取时间"
+    },
+    created_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    updated_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+    },
+    process_step: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      defaultValue: "pending_ocr",
+      comment: "处理步骤"
+    },
+    document_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "Doc平台文档ID"
+    },
+    ocr_task_id: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: "OCR任务ID"
+    },
     filter_carried_over: {
       type: DataTypes.TEXT,
       allowNull: true,
@@ -72,52 +113,10 @@ export default class app_contract_mgr_v2_content extends Model {
       defaultValue: 0,
       comment: "当前处理chunk索引"
     },
-    sections: {
-      type: DataTypes.TEXT,
+    file_id: {
+      type: DataTypes.STRING(32),
       allowNull: true,
-      comment: "章节结构"
-    },
-    extract_prompt: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "提取提示词"
-    },
-    extract_json: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "提取JSON"
-    },
-    extract_model: {
-      type: DataTypes.STRING(64),
-      allowNull: true,
-      comment: "提取模型"
-    },
-    extract_temperature: {
-      type: DataTypes.DECIMAL(3,2),
-      allowNull: true,
-      comment: "提取温度"
-    },
-    extract_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      comment: "提取时间"
-    },
-    classification_json: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: "分类结果"
-    },
-    created_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      defaultValue: Sequelize.Sequelize.fn('current_timestamp'),
-      comment: "创建时间"
-    },
-    updated_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      defaultValue: Sequelize.Sequelize.fn('current_timestamp'),
-      comment: "更新时间"
+      comment: "关联文件ID"
     }
   }, {
     sequelize,
@@ -139,6 +138,20 @@ export default class app_contract_mgr_v2_content extends Model {
         using: "BTREE",
         fields: [
           { name: "content_id" },
+        ]
+      },
+      {
+        name: "idx_process_step",
+        using: "BTREE",
+        fields: [
+          { name: "process_step" },
+        ]
+      },
+      {
+        name: "idx_document_id",
+        using: "BTREE",
+        fields: [
+          { name: "document_id" },
         ]
       },
     ]

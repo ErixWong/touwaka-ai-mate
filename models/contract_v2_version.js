@@ -21,11 +21,7 @@ export default class contract_v2_version extends Model {
     row_id: {
       type: DataTypes.STRING(32),
       allowNull: false,
-      comment: "mini_app_rows ID",
-      references: {
-        model: 'mini_app_rows',
-        key: 'id'
-      }
+      comment: "兼容旧 mini_app_rows ID（Phase 6 已移除 FK 绑定）"
     },
     file_id: {
       type: DataTypes.STRING(32),
@@ -153,6 +149,13 @@ export default class contract_v2_version extends Model {
         using: "BTREE",
         fields: [
           { name: "row_id" },
+        ]
+      },
+      {
+        name: "idx_document",
+        using: "BTREE",
+        fields: [
+          { name: "document_id" },
         ]
       },
       {

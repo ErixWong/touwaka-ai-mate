@@ -8,7 +8,7 @@ export default class app_contract_mgr_row extends Model {
       type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "关联 mini_app_rows.id",
+      comment: "关联 app_contract_mgr_records.id",
       references: {
         model: 'app_contract_mgr_records',
         key: 'id'

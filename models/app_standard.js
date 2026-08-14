@@ -162,6 +162,13 @@ export default class app_standard extends Model {
         ]
       },
       {
+        name: "idx_document_id",
+        using: "BTREE",
+        fields: [
+          { name: "document_id" },
+        ]
+      },
+      {
         name: "idx_standard_code",
         using: "BTREE",
         fields: [
@@ -187,13 +194,6 @@ export default class app_standard extends Model {
         using: "BTREE",
         fields: [
           { name: "current_revision_id" },
-        ]
-      },
-      {
-        name: "idx_document_id",
-        using: "BTREE",
-        fields: [
-          { name: "document_id" },
         ]
       },
     ]
