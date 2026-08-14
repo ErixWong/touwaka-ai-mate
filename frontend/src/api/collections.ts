@@ -48,17 +48,8 @@ export interface CollectionDocumentItem {
   ocr_status: string | null
   has_preview_result: boolean
   import_source?: string | null
-  source_system?: string
-  source_ref_id?: string
-  owner_id?: string
-  department_id?: string
-  visibility?: string
-  collection_id?: string | null
-  current_version_id?: string | null
-  ocr_task_id?: string | null
-  processing_error_code?: string | null
-  lifecycle_status?: string
-  metadata?: Record<string, unknown>
+  // 注意：仅声明后端 listCollectionDocuments 实际返回的字段；
+  // 文档层不存在 owner_id/visibility/metadata 等（task-20260814 审计 P0-4.1）
   [key: string]: unknown
 }
 

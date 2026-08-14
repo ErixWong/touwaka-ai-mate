@@ -1982,108 +1982,42 @@ async createVersion(ctx) {
   async createIntake(ctx) {
     try {
       this.ensureModels();
+      this.ensureIntakeService();
+      this.ensureCollectionAccessService();
       const userId = ctx.state.session.id;
       const { app_id, collection_id, schema_id, attachments } = ctx.request.body;
 
+      // 参数契约快速失败（400），避免落入 service 的 500 路径
       if (!app_id) ctx.throw(400, 'app_id is required');
       if (!collection_id) ctx.throw(400, 'collection_id is required');
 
-      const DocumentCollection = this.db.getModel('document_collection');
-      const collection = await DocumentCollection.findByPk(collection_id);
-      if (!collection) ctx.throw(404, 'Collection not found');
-
-      const collectionAccess = new CollectionAccessService(this.db);
-      const canWrite = await collectionAccess.canWrite(collection_id, userId);
-      if (!canWrite) ctx.throw(403, 'Only the collection owner can create intake documents');
-
       const attachmentList = Array.isArray(attachments) ? attachments : [];
-      const attachmentIds = attachmentList.map(item => item?.id).filter(Boolean);
-      const uniqueAttachmentIds = [...new Set(attachmentIds)];
-      if (attachmentList.length > 0 && attachmentIds.length !== attachmentList.length) {
+      if (attachmentList.length > 0 && attachmentList.some(item => !item?.id)) {
         ctx.throw(400, 'attachments must contain valid attachment ids');
       }
 
-      if (uniqueAttachmentIds.length > 0) {
-        const Attachment = this.db.getModel('attachment');
-        const attachmentRows = await Attachment.findAll({
-          where: { id: uniqueAttachmentIds },
-          attributes: ['id', 'created_by'],
-          raw: true,
-        });
+      // 权限/集合存在性/附件归属校验 + 事务创建统一委托 DocumentIntakeService（单一实现）。
+      // 历史实现：controller 内联复制创建逻辑且 revision_status 用 'draft'，
+      // 与 service 的 'effective'（两态语义约定）漂移（task-20260814 审计 P0-3.1）。
+      await this.intakeService.validateIntakeRequest({
+        appId: app_id,
+        collectionId: collection_id,
+        // 与历史 controller 行为等价：附件 ID 去重后再做存在性/归属校验
+        attachmentIds: [...new Set(attachmentList.map(item => item.id).filter(Boolean))],
+        userId,
+        collectionAccessService: this.collectionAccessService,
+      });
 
-        if (attachmentRows.length !== uniqueAttachmentIds.length) {
-          ctx.throw(404, 'One or more attachments not found');
-        }
-
-        const deniedAttachment = attachmentRows.find(item => item.created_by !== userId);
-        if (deniedAttachment) {
-          ctx.throw(403, 'Attachment access denied');
-        }
-      }
-
-      const sourceRefId = Utils.newID();
-      const firstAttachment = attachmentList.length > 0 ? attachmentList[0] : null;
-      const intakeMetadata = JSON.stringify({
-        app_id,
-        schema_id: schema_id || null,
+      const result = await this.intakeService.createIntakeDocument({
+        appId: app_id,
+        collectionId: collection_id,
+        schemaId: schema_id,
         attachments: attachmentList,
+        userId,
       });
 
-      const documentId = Utils.newID();
-      const revisionId = Utils.newID();
-      const document = await this.db.sequelize.transaction(async (t) => {
-        const createdDocument = await this.models.DocDocument.create({
-          id: documentId,
-          collection_id,
-          doc_type: app_id.startsWith('contract') ? 'contract' : 'knowledge',
-          source_system: app_id,
-          source_ref_id: sourceRefId,
-          title: firstAttachment ? `Intake ${sourceRefId}` : `Document ${sourceRefId}`,
-          processing_status: 'pending_ocr',
-            current_revision_id: null,
-          metadata: intakeMetadata,
-        }, { transaction: t });
-
-        await this.models.DocVersion.create({
-          id: revisionId,
-          document_id: documentId,
-          revision_no: 1,
-          revision_label: 'v1',
-          revision_status: 'draft',
-          is_current: 1,
-          change_summary: 'Initial intake revision',
-          created_by: userId,
-        }, { transaction: t });
-
-          await createdDocument.update({
-            current_revision_id: revisionId,
-          }, { transaction: t });
-
-        if (attachmentList.length > 0) {
-          const Attachment = this.db.getModel('attachment');
-          for (const item of attachmentList) {
-            if (!item?.id) continue;
-            await Attachment.update({
-              source_tag: 'doc-platform',
-              source_id: revisionId,
-            }, {
-              where: { id: item.id },
-              transaction: t,
-            });
-          }
-        }
-
-        return createdDocument;
-      });
-
-      ctx.success({
-        document_id: document.id,
-        revision_id: revisionId,
-        processing_status: document.processing_status,
-        source_ref_id: sourceRefId,
-        attachment_count: attachmentList.length,
-      });
-      logger.info(`[Doc] createIntake: ${document.id} for app ${app_id}, collection ${collection_id}`);
+      ctx.success(result);
+      logger.info(`[Doc] createIntake: ${result.document_id} for app ${app_id}, collection ${collection_id}`);
     } catch (error) {
       logger.error('[Doc] createIntake error:', error);
       ctx.throw(error.status || 500, error.message);

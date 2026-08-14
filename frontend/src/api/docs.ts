@@ -49,32 +49,44 @@ export function getDocProcessingStatusTagType(status?: string | null): 'success'
 export interface DocDocument {
   id: string
   doc_type: 'knowledge' | 'contract' | 'department_doc' | 'standard'
-  source_system: string
-  source_ref_id: string
+  source_system: string | null
+  source_ref_id: string | null
   title: string
-  owner_id: string
-  department_id: string
-  visibility: 'private' | 'department' | 'public'
   collection_id: string | null
-  current_version_id: string | null
   current_revision_id: string | null
-  ocr_task_id?: string | null
   processing_status: DocProcessingStage | null
   processing_error_code: string | null
-  lifecycle_status: string
-  metadata: Record<string, unknown>
-  classification_json?: Array<{
-    document_id: string
-    title: string
-    confidence: number
-    reasons: string[]
-  }>
+  processing_error_message: string | null
+  processing_retry_count: number | null
+  processing_updated_at: string | null
+  current_stage_started_at: string | null
+  // 注意：后端 metadata 列为 TEXT，序列化后为 JSON 字符串，不是对象（task-20260814 审计 P0-4.1）
+  metadata: string | null
   created_at: string
   updated_at: string
+  // 列表接口增强字段（listDocuments / listCollectionDocuments 返回）
+  current_revision?: {
+    id: string
+    revision_no: number
+    revision_label: string | null
+  } | null
+  source_attachment?: {
+    id: string
+    file_name: string | null
+    mime_type: string
+    file_size: number
+    created_at: string
+  } | null
+  ocr_task_id?: string | null
+  ocr_status?: string | null
+  ocr_progress?: number | null
+  ocr_error_message?: string | null
+  has_preview_result?: boolean
 }
 
 export interface DocVersion {
   id: string
+  document_id?: string
   revision_no: number
   revision_label: string | null
   revision_status: DocRevisionStatus
@@ -150,7 +162,10 @@ export interface DocPermissions {
 
 export interface DocDiffStatus {
   revision_id: string
-  status: string
+  document_id: string
+  revision_no: number
+  diff_status: string | null
+  updated_at: string | null
 }
 
 export interface DocIntakeResult {
@@ -234,7 +249,6 @@ export interface DocResultDetail {
     error_code: string | null
     error_message: string | null
     import_source?: string | null
-    preview_markdown_content?: string | null
     // 新语义（推荐使用）
     preview_markdown_attachment: DocAttachmentInfo | null
     raw_markdown_attachment: DocAttachmentInfo | null
@@ -272,7 +286,7 @@ export interface SyncOcrResult {
 
 export interface DocChunk {
   id: string
-  version_id: string
+  revision_id: string
   outline_id: string | null
   title: string | null
   content: string | null

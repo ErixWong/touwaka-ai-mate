@@ -1,9 +1,12 @@
 /**
  * Internal Docs Controller - 内部文档 API 控制器
  *
- * 用于驻留进程/技能调用文档能力
- *
- * API 设计（按审计报告 P27）：
+ * === 身份与认证契约（task-20260814 审计 P0-2.1 收口）===
+ * 所有 /internal/docs/* 路由在路由层强制 requireAuth（JWT 认证，见 server/routes/internal.routes.js），
+ * 到达本控制器的请求必定携带合法用户 session。因此：
+ *   - 身份来源唯一：ctx.state.session.id，禁止从 body 读取 user_id（可被调用方伪造）。
+ *   - 删除历史遗留的“本地 IP 免认证”分支（isLocal）：它是死代码（被路由层拦截），
+ *     且会误导未来新增内部路由时误以为可以绕过认证。
  * - POST /internal/docs/intakes - 文档接入
  * - GET /internal/docs/:document_id/processing - 查询处理状态
  * - POST /internal/docs/recall - 文档召回
@@ -58,9 +61,9 @@ class InternalDocsController {
   }
 
   validateInternalAccess(ctx) {
-    const ip = ctx.ip || ctx.request.ip || '';
-    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip.startsWith('::ffff:127.0.0.1');
-    return isLocal || ctx.state.session;
+    // 身份来源唯一：必须携带合法用户 session。
+    // 路由层 requireAuth 已保证无 token 请求被 401 拦截（server/routes/internal.routes.js）。
+    return Boolean(ctx.state.session && ctx.state.session.id);
   }
 
   async createIntake(ctx) {
@@ -72,7 +75,8 @@ class InternalDocsController {
 
       this.ensureIntakeService();
       this.ensureCollectionAccessService();
-      const userId = ctx.state.session?.id || ctx.request.body?.user_id;
+      // 身份固定为 session 用户（禁止 body 伪造 user_id）
+      const userId = ctx.state.session.id;
       const { app_id, collection_id, schema_id, attachments } = ctx.request.body;
 
       const { collection } = await this.intakeService.validateIntakeRequest({
@@ -107,7 +111,8 @@ class InternalDocsController {
       }
 
       const { document_id } = ctx.params;
-      const userId = ctx.state.session?.id || ctx.request.body?.user_id;
+      // 身份固定为 session 用户（禁止 body 伪造 user_id）
+      const userId = ctx.state.session.id;
 
       this.ensureDocAccessService();
       const canRead = await this.docAccessService.canRead(document_id, userId);
@@ -142,7 +147,8 @@ class InternalDocsController {
       }
 
       this.ensureRecallService();
-      const userId = ctx.state.session?.id || ctx.request.body?.user_id;
+      // 身份固定为 session 用户（禁止 body 伪造 user_id）
+      const userId = ctx.state.session.id;
       const { query, scope, doc_types, top_k, threshold } = ctx.request.body;
 
       const items = await this.recallService.recall(query, {
@@ -169,7 +175,8 @@ class InternalDocsController {
       }
 
       const { document_id } = ctx.params;
-      const userId = ctx.state.session?.id || ctx.request.body?.user_id;
+      // 身份固定为 session 用户（禁止 body 伪造 user_id）
+      const userId = ctx.state.session.id;
 
       this.ensureDocAccessService();
       const canRead = await this.docAccessService.canRead(document_id, userId);
