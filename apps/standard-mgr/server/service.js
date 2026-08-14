@@ -2132,7 +2132,8 @@ class StandardMgrService {
 
     // ---- 2. 校验 document_id / revision 唯一性 ----
     // R17-3（一文档多版本）：允许同一 document_id 纳管多个版本（revision_id 不同）。
-    // 仅拒绝「同 document_id + 同 revision_id」的完全重复纳管。
+    // 每次纳管必须明确指定 revision_id；若未指定且该文档已有任意标准记录，则拒绝，
+    // 防止在不确定版本的情况下重复纳管。仅拒绝「同 document_id + 同 revision_id」的完全重复纳管。
     const AppStandard = this._appStandard();
     const existing = await AppStandard.findOne({
       where: { document_id },
