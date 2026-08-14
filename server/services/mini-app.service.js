@@ -1176,6 +1176,20 @@ ${JSON.stringify(listB, null, 2)}
     return null;
   }
 
+  async getAppInitialState(appId) {
+    // autonomous app 的初始状态取自 manifest step_resources 的首个 key
+    // （安装时将 states 展开为 step_resources，顺序即状态机流转顺序）
+    try {
+      const app = await this.models.MiniApp.findByPk(appId);
+      const config = typeof app?.config === 'string' ? JSON.parse(app.config) : (app?.config || {});
+      const resources = config.step_resources || {};
+      const keys = Object.keys(resources);
+      return keys[0] || 'pending';
+    } catch {
+      return 'pending';
+    }
+  }
+
   async getAutonomousPrimaryConfig(appId) {
     const extConfigs = await this.extensionService.getExtensionConfigs(appId);
     return extConfigs?.find(c => c.type === 'primary') || null;

@@ -1,6 +1,6 @@
 import logger from '../../../lib/logger.js';
 import path from 'path';
-import { splitIntoChunks, getStepResource, getPrompt, callLlmJson } from '../handlers/shared.js';
+import { splitIntoChunks, getStepResource, getPrompt, callLlmJson } from '../server/handlers/shared.js';
 
 const MAX_LOG_STRING_LENGTH = parseInt(process.env.CONTRACT_MGR_V2_LOG_MAX_LENGTH || '1000', 10);
 const MAX_EXTRACT_TEXT_LENGTH = parseInt(process.env.CONTRACT_MGR_V2_EXTRACT_TEXT_MAX_LENGTH || '200000', 10);
@@ -63,6 +63,16 @@ function stringifyForLog(value, maxLength = MAX_LOG_STRING_LENGTH) {
     return truncateString(JSON.stringify(summarizeForLog(value)), maxLength);
   } catch (error) {
     return `[unserializable: ${error.message}]`;
+  }
+}
+
+function safeParseJson(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
 }
 
@@ -320,7 +330,50 @@ ${taskInfo}
     if (!parsed.status) parsed.status = 'pending';
     
     if (parsed.status === 'completed') {
-      let ocrText = extractTextFromMcpResult(mcpResult);
+      // OCR 任务完成后，通过交付物协议获取真实文本：
+      // 1. list_deliverables 列出产物（primary markdown）
+      // 2. download_deliverable 下载并提取 content 文本
+      // 说明：get_task_status 只返回状态 JSON，不包含解析文本。
+      let ocrText = '';
+      try {
+        // OCR 交付物协议：list_deliverables -> download_deliverable
+        // 响应可能多层包装：{result:{content:"<json>"}} / {content:"<json>"} / 直接字符串
+        const unwrapContent = (input) => {
+          let cur = input;
+          for (let i = 0; i < 3 && cur && typeof cur === 'object'; i++) {
+            if (cur.result && typeof cur.result === 'object') { cur = cur.result; continue; }
+            if (typeof cur.content === 'string') {
+              const parsed = safeParseJson(cur.content);
+              if (parsed && typeof parsed === 'object') cur = parsed;
+            }
+            break;
+          }
+          return cur;
+        };
+
+        const deliverables = await services.callMcp(mcp.server, 'list_deliverables', { task_id: taskId });
+        const deliverablesObj = unwrapContent(deliverables);
+        const artifacts = (deliverablesObj && (deliverablesObj.artifacts || deliverablesObj.result?.artifacts)) || [];
+        const primary =
+          artifacts.find(a => a.is_default) ||
+          artifacts.find(a => a.artifact_type === 'markdown') ||
+          artifacts.find(a => a.role === 'primary') ||
+          artifacts[0];
+        if (primary?.download_key) {
+          const dl = await services.callMcp(mcp.server, 'download_deliverable', {
+            task_id: taskId,
+            download_key: primary.download_key,
+            include_content: true,
+          });
+          const dlObj = unwrapContent(dl);
+          ocrText = (dlObj && (dlObj.content || dlObj.text)) || extractTextFromMcpResult(dl);
+        } else {
+          logger.warn(`[tick] No downloadable deliverable for ${row.row_id}`);
+        }
+      } catch (dlErr) {
+        logger.warn(`[tick] OCR deliverable download failed for ${row.row_id}: ${dlErr.message}, falling back to status text`);
+      }
+      if (!ocrText) ocrText = extractTextFromMcpResult(mcpResult);
       ocrText = ocrText.replace(/\\n/g, '\n');
       
       await services.execute(`

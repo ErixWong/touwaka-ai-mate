@@ -27,6 +27,7 @@ services:
       - DATA_BASE_PATH=/app/data
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - APP_MARKET_PRESERVE_DIR=true
+      - ENABLE_CLOCK_CORE=1
     volumes:
       - ./:/app
       - node_modules:/app/node_modules

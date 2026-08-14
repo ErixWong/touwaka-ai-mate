@@ -234,10 +234,10 @@
         "type": "mcp",
         "mcp": {
           "server": "markitdown",
-          "tool": "submit_conversion_task",
+          "tool": "create_task",
           "params_mapping": {
-            "content": "file.base64",
-            "filename": "file.name"
+            "file_base64": "file.base64",
+            "file_name": "file.name"
           }
         }
       },
@@ -245,7 +245,7 @@
         "type": "mcp",
         "mcp": {
           "server": "markitdown",
-          "tool": "get_task",
+          "tool": "get_task_status",
           "hide_params_mapping": true
         },
         "judge_model_id": null,

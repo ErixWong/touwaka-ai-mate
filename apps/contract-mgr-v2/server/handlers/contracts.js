@@ -43,7 +43,7 @@ export async function post(ctx, deps) {
     }
 
     const service = new ContractV2Service(deps.db);
-    const contract = await service.createContract(ctx.request.body);
+    const contract = await service.createContract(ctx.request.body, ctx.state.session.id);
     ctx.success(contract);
   } catch (err) {
     logger.error(`[contract-mgr-v2] createContract error: ${err.message}`);
