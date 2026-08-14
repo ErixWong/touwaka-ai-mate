@@ -4063,24 +4063,8 @@ const MIGRATIONS = [
     }
   },
 
-  {
-    name: 'backfill geely code_prefixes',
-    check: async (conn) => {
-      const [rows] = await conn.execute(`
-        SELECT code_prefixes FROM app_enterprise WHERE name = '吉利'
-      `);
-      // 吉利已配置前缀则跳过；无记录或为空则回填
-      return rows.length > 0 && rows[0].code_prefixes !== null && rows[0].code_prefixes !== '';
-    },
-    migrate: async (conn) => {
-      await conn.execute(`
-        UPDATE app_enterprise
-          SET code_prefixes = 'Q-JL, Q-JLY, Q/JL, Q/JLY'
-          WHERE name = '吉利'
-      `);
-      console.log('  ✓ Backfilled code_prefixes for 吉利');
-    }
-  },
+  // 注意：企业前缀初始数据通过 scripts/seed-enterprises.mjs 或管理后台配置，
+  // 不硬编码在迁移脚本中，保持迁移脚本无业务数据。
 
 ];
 

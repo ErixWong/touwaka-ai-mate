@@ -27,7 +27,8 @@ export async function get(ctx, deps) {
       // 获取单个企业
       const enterprise = await service.getEnterprise(ctx.params.enterpriseId);
       if (!enterprise) {
-        ctx.throw(404, 'Enterprise not found');
+        ctx.error('Enterprise not found', 404);
+        return;
       }
       ctx.success(enterprise);
       return;

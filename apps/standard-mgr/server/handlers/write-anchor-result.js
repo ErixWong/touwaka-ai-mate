@@ -23,9 +23,24 @@ export const route = {
 export async function post(ctx, deps) {
   try {
     const userId = getUserId(ctx);
-    const service = new StandardMgrService(deps.db);
+    if (!userId) {
+      ctx.error('Unauthorized', 401);
+      return;
+    }
 
-    const body = ctx.request.body;
+    const body = ctx.request.body || {};
+
+    // 人工修正/确认入口必须管理员权限
+    // auto / auto_backfill 来源由清洗 agent / 回填流程内部调用，仍需登录用户身份，
+    // 后续可进一步通过任务 token 或 standard/document 权限做细粒度控制
+    if (body.source === 'manual' || body.source === 'user_confirmed') {
+      if (!ctx.state.session?.isAdmin) {
+        ctx.error('需要管理员权限', 403);
+        return;
+      }
+    }
+
+    const service = new StandardMgrService(deps.db);
 
     // R2-4 过渡策略：忽略客户端传入的 enterprise_id
     const result = await service.writeAnchorResult({
