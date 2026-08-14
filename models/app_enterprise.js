@@ -5,10 +5,10 @@ export default class app_enterprise extends Model {
   static init(sequelize, DataTypes) {
   return super.init({
     id: {
-      type: DataTypes.STRING(24),
+      type: DataTypes.STRING(32),
       allowNull: false,
       primaryKey: true,
-      comment: "主键，Utils.newID()"
+      comment: "主键，Utils.newID(32)"
     },
     name: {
       type: DataTypes.STRING(100),

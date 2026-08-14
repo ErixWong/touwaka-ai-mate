@@ -49,7 +49,7 @@ async function seed() {
         );
         console.log(`  ✓ Updated prefixes for ${ent.name}`);
       } else {
-        const id = Utils.newID();
+        const id = Utils.newID(32);
         await conn.execute(
           `INSERT INTO app_enterprise
              (id, name, name_en, description, is_active, code_prefixes, created_at, updated_at)

@@ -2190,7 +2190,7 @@ class StandardMgrService {
     }
 
     // ---- 5. 纳管 ----
-    const id = Utils.newID();
+    const id = Utils.newID(32);
     const standard = await AppStandard.create({
       id,
       document_id,
@@ -2398,7 +2398,7 @@ class StandardMgrService {
       throw err;
     }
 
-    const id = Utils.newID();
+    const id = Utils.newID(32);
     const record = await Enterprise.create({
       id,
       name,

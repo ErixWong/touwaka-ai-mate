@@ -4015,7 +4015,7 @@ const MIGRATIONS = [
     migrate: async (conn) => {
       await conn.execute(`
         CREATE TABLE app_enterprise (
-          id VARCHAR(24) PRIMARY KEY COMMENT '主键，Utils.newID()',
+          id VARCHAR(32) PRIMARY KEY COMMENT '主键，Utils.newID(32)',
           name VARCHAR(100) NOT NULL COMMENT '企业名称（如：吉利、小鹏、比亚迪）',
           name_en VARCHAR(200) NULL COMMENT '企业英文名',
           description TEXT NULL COMMENT '备注',
@@ -4065,6 +4065,40 @@ const MIGRATIONS = [
 
   // 注意：企业前缀初始数据通过 scripts/seed-enterprises.mjs 或管理后台配置，
   // 不硬编码在迁移脚本中，保持迁移脚本无业务数据。
+
+  // ==================== standard-mgr: app_enterprise.id 统一为 VARCHAR(32) ====================
+  {
+    name: 'app_enterprise id length to 32',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT CHARACTER_MAXIMUM_LENGTH AS len
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_enterprise' AND COLUMN_NAME = 'id'`
+      );
+      return rows.length > 0 && rows[0].len >= 32;
+    },
+    migrate: async (conn) => {
+      // 1. 先移除外键约束（app_standard.enterprise_id -> app_enterprise.id）
+      await conn.execute(`
+        ALTER TABLE app_standard DROP FOREIGN KEY fk_standard_enterprise
+      `);
+      console.log('  - Dropped fk_standard_enterprise');
+
+      // 2. 放宽企业表 id 长度并保留注释
+      await conn.execute(`ALTER TABLE app_enterprise MODIFY COLUMN id VARCHAR(32) NOT NULL COMMENT '主键，Utils.newID(32)'`);
+      console.log('  - Widened app_enterprise.id to VARCHAR(32)');
+
+      // 3. 重新添加外键
+      await conn.execute(`
+        ALTER TABLE app_standard
+          ADD CONSTRAINT fk_standard_enterprise
+          FOREIGN KEY (enterprise_id) REFERENCES app_enterprise(id)
+      `);
+      console.log('  - Re-added fk_standard_enterprise');
+
+      console.log('  ✓ app_enterprise.id widened to VARCHAR(32)');
+    }
+  },
 
 ];
 
