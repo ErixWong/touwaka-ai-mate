@@ -11,9 +11,8 @@ apps/
 │   ├── manifest.json         # app 元数据入口
 │   ├── migrations/           # 安装/卸载数据库脚本
 │   ├── tick/                 # 后台 tick 入口（可选）
-│   ├── server/               # 自定义 routes / service（可选）
+│   ├── server/               # 自定义 API（wildcard handlers / services，可选）
 │   ├── frontend/             # 自定义前端组件（可选）
-│   ├── handlers/             # 历史或专题处理脚本（按 app 实现决定）
 │   └── states.js             # 推荐：状态语义集中定义（可选）
 └── ...其他 app
 ```
@@ -51,13 +50,13 @@ apps/
 - [App 模块文档入口](../docs/apps/README.md)
 - [当前架构总纲](../docs/apps/current-architecture.md)
 - [App 生成指导手册](../docs/apps/app-generation-guide.md)
-- [App 平台设计](../docs/design/app-platform/README.md)
+- [App 平台边界](../docs/design/app-platform-boundaries.md)
 - [历史 App 设计](../docs/apps/historical/README.md)
 
 ## 仓库地址
 
 - GitHub: https://github.com/ErixWong/touwaka-ai-mate
-- Registry Raw URL: https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/main/apps/
+- Registry Raw URL: https://raw.githubusercontent.com/ErixWong/touwaka-ai-mate/master/apps/
 
 ---
 
