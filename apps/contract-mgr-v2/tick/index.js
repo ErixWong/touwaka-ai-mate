@@ -145,11 +145,29 @@ const CONTRACT_FIELDS = [
   { name: 'party_a', label: '甲方', guide: '查找甲方名称' },
   { name: 'party_b', label: '乙方', guide: '查找乙方名称' },
   { name: 'parent_company', label: '上级公司', guide: '如果甲方是子公司，推断上级公司' },
-  { name: 'contract_amount', label: '合同金额', guide: '查找合同总金额' },
+  { name: 'contract_amount', label: '合同金额', guide: '查找合同总金额，去除 RMB/人民币/￥/$ 前缀和千分位，优先输出阿拉伯数字' },
   { name: 'contract_date', label: '签订日期', guide: '查找签订日期，格式 YYYY-MM-DD' },
 ];
 
 const DEFAULT_CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 50000;
+
+function parseContractAmount(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== 'string') return null;
+
+  const normalized = value
+    .trim()
+    .replace(/^(?:rmb|cny|usd|人民币|美元)\s*/i, '')
+    .replace(/^[¥￥$]\s*/, '')
+    .replace(/[,，\s]/g, '');
+  const match = normalized.match(/[-+]?\d+(?:\.\d+)?/);
+  if (!match) return null;
+
+  const amount = Number(match[0]);
+  return Number.isFinite(amount) ? amount : null;
+}
 
 const JSON_FORMAT_PROMPT = `
 返回JSON格式：
@@ -627,8 +645,8 @@ ${exampleJson}
       if (!value) continue;
       
       if (field.name === 'contract_amount') {
-        const num = Number(String(value).replace(/[,，]/g, ''));
-        if (!isNaN(num)) cleanMetadata[field.name] = num;
+        const amount = parseContractAmount(value);
+        if (amount !== null) cleanMetadata[field.name] = amount;
       } else if (field.name === 'contract_date') {
         const dateStr = String(value).replace(/年/g, '-').replace(/月/g, '-').replace(/日/g, '');
         if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) cleanMetadata[field.name] = dateStr;
