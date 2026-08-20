@@ -21,12 +21,15 @@ import {
   updateVersionMetadata,
   createCompareRun,
   getCompareRunResult,
+  compareVersionsWithLlm,
+  getVersionCompareResult,
   type OrgNode,
   type ContractMainRecord,
   type ContractVersion,
   type ContractListResult,
   type DashboardData,
   type CompareRunResult,
+  type LlmCompareResult,
   type VersionMetadata,
 } from '@/api/contract-v2'
 import {
@@ -378,6 +381,8 @@ export const useContractV2Store = defineStore('contract-v2', () => {
 
   async function doCreateCompareRun(versionIdA: string, versionIdB: string) {
     try {
+      // v2 已切换到 LLM 语义比对（qwen3.6:35b）：compare 接口需要 row_id，
+      // 由调用方（组件）从 versions 映射后传入；此处保留旧签名兼容
       const result = await createCompareRun(versionIdA, versionIdB)
       toast.success('比对任务已创建')
       return result
@@ -387,8 +392,27 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     }
   }
 
+  async function doCompareVersionsWithLlm(
+    rowIdA: string,
+    rowIdB: string,
+    options?: { model_id?: string; temperature?: number; concurrency?: number },
+  ): Promise<LlmCompareResult> {
+    try {
+      const result = await compareVersionsWithLlm(rowIdA, rowIdB, options)
+      toast.success('语义比对完成')
+      return result
+    } catch (e: unknown) {
+      toast.error((e as Error).message || '语义比对失败')
+      throw e
+    }
+  }
+
   async function doGetCompareRunResult(runId: string): Promise<CompareRunResult> {
     return await getCompareRunResult(runId)
+  }
+
+  async function doGetVersionCompareResult(rowId: string): Promise<LlmCompareResult | null> {
+    return await getVersionCompareResult(rowId)
   }
 
   return {
@@ -432,6 +456,8 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     doUpdateVersionMetadata,
     doCreateCompareRun,
     doGetCompareRunResult,
+    doCompareVersionsWithLlm,
+    doGetVersionCompareResult,
     retryDocProcessing,
     setDocRevisionCurrent,
   }

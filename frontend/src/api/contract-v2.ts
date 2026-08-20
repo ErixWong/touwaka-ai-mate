@@ -303,6 +303,65 @@ export async function getCompareRunResult(runId: string): Promise<CompareRunResu
   return apiRequest<CompareRunResult>(apiClient.get(`/apps/contract-mgr-v2/compare-runs/${runId}`))
 }
 
+// ===== LLM 语义比对（qwen3.6:35b，替代旧 compare-runs 纯文本比对）=====
+export interface LlmCompareKeyChange {
+  description?: string
+  old?: string
+  new?: string
+}
+
+export interface LlmCompareSectionResult {
+  type: 'matched' | 'added' | 'removed'
+  title: string
+  change_type: 'identical' | 'modified' | 'semantic_change' | 'added' | 'removed' | 'error'
+  summary: string
+  key_changes?: LlmCompareKeyChange[]
+  risk_level?: string
+  content_preview?: string
+}
+
+export interface LlmCompareResult {
+  target_row_id: string
+  results: LlmCompareSectionResult[]
+  summary: {
+    total: number
+    identical: number
+    modified: number
+    added: number
+    removed: number
+  }
+  duration_ms: number
+}
+
+// qwen3.6:35b（ErixAI relay）
+export const CONTRACT_LLM_COMPARE_MODEL_ID = 'mojfh2d7cvgl6uam7fnx'
+
+export async function compareVersionsWithLlm(
+  rowIdA: string,
+  rowIdB: string,
+  options?: { model_id?: string; temperature?: number; concurrency?: number },
+): Promise<LlmCompareResult> {
+  return apiRequest<LlmCompareResult>(
+    apiClient.post(
+      `/mini-apps/contract-mgr-v2/compare`,
+      {
+        row_id_a: rowIdA,
+        row_id_b: rowIdB,
+        model_id: options?.model_id || CONTRACT_LLM_COMPARE_MODEL_ID,
+        temperature: options?.temperature ?? 0.3,
+        concurrency: options?.concurrency ?? 3,
+      },
+      { timeout: 1800000 },
+    ),
+  )
+}
+
+export async function getVersionCompareResult(rowId: string): Promise<LlmCompareResult | null> {
+  return apiRequest<LlmCompareResult | null>(
+    apiClient.get(`/mini-apps/contract-mgr-v2/data/${rowId}/compare`),
+  )
+}
+
 export interface VersionContent {
   has_content: boolean
   row_id?: string

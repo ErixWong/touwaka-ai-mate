@@ -57,8 +57,8 @@ export default {
     const mcp = resConfig.mcp || {};
 
     try {
-      logger.info(`[contract-check-ocr] Record ${record.id}: Calling MCP ${mcp.server}.${mcp.tool || 'get_task'}`);
-      const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId });
+      logger.info(`[contract-check-ocr] Record ${record.id}: Calling MCP ${mcp.server}.${mcp.tool || 'get_task_status'}`);
+      const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task_status', { task_id: taskId });
       
       logger.info(`[contract-check-ocr] Record ${record.id}: MCP result received, judging status`);
       

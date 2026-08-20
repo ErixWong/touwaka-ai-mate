@@ -5,9 +5,9 @@ import logger from '../../../lib/logger.js';
 const DEFAULT_STEP_RESOURCES = {
   type: 'mcp',
   mcp: {
-    server: 'markitdown',
-    tool: 'submit_conversion_task',
-    params_mapping: { content: 'file.base64', filename: 'file.name' }
+    server: 'mineru',
+    tool: 'create_task',
+    params_mapping: { file_base64: 'file.base64', file_name: 'file.name' }
   },
 };
 

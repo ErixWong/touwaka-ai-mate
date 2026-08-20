@@ -76,6 +76,48 @@ function safeParseJson(value) {
   }
 }
 
+function extractTaskIdFromMcpResult(value, allowPlainString = true, seen = new Set()) {
+  if (value == null) return '';
+
+  if (typeof value === 'string') {
+    const parsed = safeParseJson(value);
+    if (parsed && parsed !== value) {
+      return extractTaskIdFromMcpResult(parsed, false, seen);
+    }
+    return allowPlainString ? value.trim() : '';
+  }
+
+  if (typeof value !== 'object') return '';
+  if (seen.has(value)) return '';
+  seen.add(value);
+
+  if (value.task_id || value.id) {
+    return String(value.task_id || value.id);
+  }
+
+  if (Array.isArray(value)) {
+    const text = value
+      .filter(item => item && typeof item === 'object' && item.type === 'text' && typeof item.text === 'string')
+      .map(item => item.text)
+      .join('\n');
+    const fromText = text ? extractTaskIdFromMcpResult(text, false, seen) : '';
+    if (fromText) return fromText;
+
+    for (const item of value) {
+      const taskId = extractTaskIdFromMcpResult(item, false, seen);
+      if (taskId) return taskId;
+    }
+    return '';
+  }
+
+  for (const key of ['result', 'content', 'text', 'raw']) {
+    const taskId = extractTaskIdFromMcpResult(value[key], false, seen);
+    if (taskId) return taskId;
+  }
+
+  return '';
+}
+
 function extractTextValue(value, maxLength = MAX_EXTRACT_TEXT_LENGTH) {
   if (value == null) return '';
   if (typeof value === 'string') return sanitizeString(value, maxLength);
@@ -115,6 +157,53 @@ const JSON_FORMAT_PROMPT = `
   "processed_text": "本轮清洗后的完整章节内容",
   "carried_over": "末尾不完整章节的原文"
 }`;
+
+/**
+ * 归一化标题：去掉所有空白，便于 `## 标题行` 与 LLM 输出标题的匹配
+ */
+function normalizeTitle(t) {
+  return (t || '').replace(/\s+/g, '').toLowerCase();
+}
+
+/**
+ * 根据清洗后文本（markdown，含 `## 章节标题` 行）计算每个 section 的行号范围。
+ * 分 section 比对依赖 start_line/end_line 从 filtered_text 中切片，
+ * 否则比对时 slice(undefined, undefined) 会退化为全文比对（慢且重复）。
+ */
+function computeSectionLines(filteredText, sections) {
+  // 存量数据可能把换行存成了字面 `\n`（split 后是单行），先还原为真实换行
+  const normalized = (filteredText || '').replace(/\\n/g, '\n');
+  const lines = normalized.split('\n');
+  // 收集所有 `##` 标题行（注意跳过正文中非标题的 `##` 引用，只认行首 `##`）
+  const headingLines = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^#{1,3}\s+/.test(line)) {
+      headingLines.push({ lineNo: i, title: line.replace(/^#+\s*/, '').trim() });
+    }
+  }
+
+  const result = sections.map((s) => {
+    const titleNorm = normalizeTitle(s.title);
+    let start = -1;
+    for (const h of headingLines) {
+      const hNorm = normalizeTitle(h.title);
+      if (titleNorm && (hNorm.includes(titleNorm) || titleNorm.includes(hNorm))) {
+        start = h.lineNo;
+        break;
+      }
+    }
+    return { ...s, start_line: start >= 0 ? start : 0, end_line: 0 };
+  });
+
+  // end_line = 下一个 section 的 start_line（未找到则取全文末尾）
+  for (let i = 0; i < result.length; i++) {
+    const next = result[i + 1];
+    const nextStart = next && next.start_line > 0 ? next.start_line : lines.length;
+    result[i].end_line = nextStart;
+  }
+  return result;
+}
 
 export async function tick(context) {
   const { app, registry, services } = context;
@@ -204,7 +293,7 @@ async function handleOcrSubmit(row, app, services) {
   const base64 = buffer.toString('base64');
   
   const config = getStepResource(app, 'pending_ocr', {});
-  const mcp = config.mcp || { server: 'markitdown', tool: 'submit_conversion_task' };
+  const mcp = config.mcp || { server: 'mineru', tool: 'create_task' };
   
   logger.info(`[tick] OCR MCP config: server=${mcp.server}, tool=${mcp.tool}`);
   logger.info(`[tick] OCR file: ${file.file_name}, size=${buffer.length} bytes`);
@@ -220,8 +309,8 @@ async function handleOcrSubmit(row, app, services) {
         }
       }
     } else {
-      params.content = base64;
-      params.filename = file.file_name;
+      params.file_base64 = base64;
+      params.file_name = file.file_name;
     }
     
     logger.info(`[tick] OCR request params: filename=${params.filename || params.name}, base64_length=${base64.length}`);
@@ -258,18 +347,9 @@ ${stringifyForLog(result, 1000)}`;
     }
     
     if (!taskId) {
-      if (typeof result === 'string') {
-        taskId = result;
-      } else if (typeof result === 'object' && result !== null) {
-        taskId = result.task_id || result.id || result.result?.task_id || '';
-        if (!taskId && result.content) {
-          try {
-            const parsed = JSON.parse(result.content);
-            taskId = parsed.task_id || parsed.id || '';
-          } catch (e) {
-            logger.warn(`[tick] Failed to parse result.content: ${e.message}`);
-          }
-        }
+      taskId = extractTaskIdFromMcpResult(result);
+      if (taskId) {
+        logger.info(`[tick] OCR task_id extracted by fallback: ${taskId}`);
       }
     }
     
@@ -307,10 +387,10 @@ async function handleOcrCheck(row, app, services) {
   }
   
   const config = getStepResource(app, 'ocr_submitted', {});
-  const mcp = config.mcp || { server: 'markitdown', tool: 'get_task' };
+  const mcp = config.mcp || { server: 'mineru', tool: 'get_task_status' };
   
   try {
-    const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId });
+    const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task_status', { task_id: taskId });
     
     const taskInfo = stringifyForLog(mcpResult, 1000);
     
@@ -422,7 +502,7 @@ async function handleFilter(row, app, services) {
   const existingChunkIndex = content[0].filter_chunk_index || 0;
   
   const filterConfig = getStepResource(app, 'pending_filter', { temperature: 0.3 });
-  const filterPrompt = getPrompt(app, 'filter', '去除页码、水印、乱码，保留正文');
+  const filterPrompt = getPrompt(app, 'filter', '去除页码、水印、乱码，保留正文。必须保留章节标题行（以##开头的markdown标题，如"## 一、前言 Preface"），标题行不要修改、不要删除，它们是后续章节定位的依据');
   const maxLen = filterConfig.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
   
   let filteredText;
@@ -611,7 +691,7 @@ async function handleSection(row, app, services) {
   }
   
   const sectionConfig = getStepResource(app, 'pending_section', { temperature: 0.3 });
-  const sectionPrompt = getPrompt(app, 'section', '分析章节结构');
+  const sectionPrompt = getPrompt(app, 'section', '分析章节结构。只输出一级大章（如"一、前言"、"二、质量要求"、"七、召回和三包"），不要展开子章节；章节标题必须与原文中的##标题行完全一致（含序号），不要改写或省略，便于按标题定位正文范围');
   
   const jsonFormat = `
 返回JSON:
@@ -629,12 +709,16 @@ async function handleSection(row, app, services) {
       await updateProcessStep(services, row.content_id, 'section_failed');
       return;
     }
-    
+
+    // 关键：为 section 计算 start_line/end_line（基于清洗后文本的 `## 标题` 行），
+    // 分 section 比对依赖行号切片，缺失会退化为全文比对
+    const sectionsWithLines = computeSectionLines(content[0].filtered_text, sections);
+
     await services.execute(`
       UPDATE ${CONTENT_TABLE} 
       SET process_step = 'pending_classify', sections = ?
       WHERE content_id = ?
-    `, [JSON.stringify(sections), row.content_id]);
+    `, [JSON.stringify(sectionsWithLines), row.content_id]);
 
     await advanceDocStatus(services, row.row_id, 'pending_classify');
     logger.info(`[tick] Section completed for ${row.row_id}, found ${sections.length} sections`);

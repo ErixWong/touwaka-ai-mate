@@ -4,9 +4,10 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useContractV2Store, getProcessingStatusLabel } from '@/stores/contract-v2'
 import type { ContractVersion } from '@/api/contract-v2'
-import { getVersionContent } from '@/api/contract-v2'
+import { getVersionContent, CONTRACT_LLM_COMPARE_MODEL_ID } from '@/api/contract-v2'
 import { uploadAttachmentFormData } from '@/api/attachment'
 import { getRevisions, getDocumentPermissions, type DocRevision, type DocPermissions } from '@/api/docs'
+import { getAvailableResources } from '@/api/mini-apps'
 import DocumentContentViewer from '@/components/apps/DocumentContentViewer.vue'
 
 const APP_ID = 'contract-mgr-v2'
@@ -53,13 +54,33 @@ const versionProcessingStatus = ref<Record<string, {
 }>>({})
 const selectedVersionsForCompare = ref<string[]>([])
 const showCompareDialog = ref(false)
+const comparePhase = ref<'config' | 'running' | 'result'>('config')
+const compareModels = ref<Array<{ id: string; name: string; provider_name?: string }>>([])
+const compareModelId = ref('')
+const compareSwapped = ref(false)
+const compareTemperature = ref(0.3)
+const compareConcurrency = ref(3)
+const sortedCompareVersions = ref<ContractVersion[]>([])
+const compareVersionA = computed(() => sortedCompareVersions.value[compareSwapped.value ? 1 : 0] || null)
+const compareVersionB = computed(() => sortedCompareVersions.value[compareSwapped.value ? 0 : 1] || null)
+const selectedModelName = computed(() => {
+  const m = compareModels.value.find(m => m.id === compareModelId.value)
+  return m ? `${m.name} (${m.provider_name || ''})` : ''
+})
 const compareRunId = ref('')
 const compareResultLoading = ref(false)
 const compareResult = ref<null | {
-  run_id: string
-  status: string
-  summary: { total: number; high: number; medium: number; low: number }
-  items: Array<{ id: string; change_type: string; risk_level: string | null; summary: string | null }>
+  target_row_id: string
+  results: Array<{
+    type: string
+    title: string
+    change_type: string
+    summary: string
+    key_changes?: Array<{ description?: string; old?: string; new?: string }>
+    risk_level?: string
+  }>
+  summary: { total: number; identical: number; modified: number; added: number; removed: number }
+  duration_ms: number
 }>(null)
 
 // 元数据编辑相关
@@ -292,15 +313,12 @@ async function handleExtractMetadata(versionId: string) {
   try {
     const result = await store.doExtractMetadata(versionId)
     if (result?.metadata) {
-      // 显示提取的元数据，并附带落库目标（revision_id / row_id）便于核对版本级事实
+      // 仅展示业务元数据，不暴露 document_id/revision_id 等内部 ID
       const metaLines = Object.entries(result.metadata)
         .map(([key, value]) => `${key}: ${value || '-'}`)
         .join('<br>')
-      const targetLines = result.revision_id || result.row_id
-        ? `<br><span style="color:#909399;font-size:12px;">${t('contractV2.businessVersions.extractTarget', { revisionId: result.revision_id || '-', rowId: result.row_id || '-' })}</span>`
-        : ''
       await ElMessageBox.alert(
-        metaLines + targetLines,
+        metaLines,
         t('contractV2.businessVersions.extractResultTitle'),
         { confirmButtonText: t('common.confirm'), dangerouslyUseHTMLString: true }
       )
@@ -359,31 +377,59 @@ function toggleVersionForCompare(versionId: string) {
   }
 }
 
+function versionNumberToNum(vn: string): number {
+  const m = String(vn || '').match(/v?(\d+(?:\.\d+)?)/)
+  return m ? Number(m[1]) : 0
+}
+
 async function handleStartCompare() {
   if (selectedVersionsForCompare.value.length !== 2) {
     return
   }
-  const [versionIdA, versionIdB] = selectedVersionsForCompare.value
-  if (!versionIdA || !versionIdB) {
-    return
-  }
+  const vs = versions.value.filter(v => selectedVersionsForCompare.value.includes(v.id))
+  if (vs.length !== 2) return
+  // 旧版本为基准 A，新版本为对比 B（可交换）
+  vs.sort((x, y) => versionNumberToNum(x.version_number) - versionNumberToNum(y.version_number))
+  sortedCompareVersions.value = vs
+  compareSwapped.value = false
+  compareResult.value = null
+  compareResultLoading.value = false
+  comparePhase.value = 'config'
+  showCompareDialog.value = true
+  // 拉取可用的内部 LLM 模型（默认选中 qwen3.6:35b）
   try {
-    const result = await store.doCreateCompareRun(
-      versionIdA,
-      versionIdB
+    const resources = await getAvailableResources(APP_ID)
+    compareModels.value = resources.internal_llm?.models || []
+    const qwen = compareModels.value.find(m => m.id === CONTRACT_LLM_COMPARE_MODEL_ID)
+    compareModelId.value = qwen?.id || compareModels.value[0]?.id || ''
+  } catch {
+    compareModels.value = []
+    compareModelId.value = ''
+  }
+}
+
+function swapCompare() {
+  compareSwapped.value = !compareSwapped.value
+}
+
+async function startCompareRun() {
+  if (!compareVersionA.value?.row_id || !compareVersionB.value?.row_id) return
+  comparePhase.value = 'running'
+  compareResultLoading.value = true
+  try {
+    const result = await store.doCompareVersionsWithLlm(
+      compareVersionA.value.row_id,
+      compareVersionB.value.row_id,
+      { model_id: compareModelId.value || undefined, temperature: compareTemperature.value, concurrency: compareConcurrency.value },
     )
-    if (result?.run_id) {
-      compareRunId.value = result.run_id
-      showCompareDialog.value = true
-      await loadCompareResult()
-      await ElMessageBox.alert(
-        t('contractV2.compare.taskCreated', { runId: result.run_id }),
-        t('contractV2.compare.taskStarted'),
-        { confirmButtonText: t('common.confirm') }
-      )
-    }
+    compareRunId.value = compareVersionA.value.row_id
+    compareResult.value = result
+    comparePhase.value = 'result'
   } catch (e: unknown) {
     console.error('Compare failed:', e)
+    comparePhase.value = 'config'
+  } finally {
+    compareResultLoading.value = false
   }
 }
 
@@ -391,9 +437,97 @@ async function loadCompareResult() {
   if (!compareRunId.value) return
   compareResultLoading.value = true
   try {
-    compareResult.value = await store.doGetCompareRunResult(compareRunId.value)
+    const r = await store.doGetVersionCompareResult(compareRunId.value)
+    if (r) {
+      compareResult.value = r
+      comparePhase.value = 'result'
+    }
   } finally {
     compareResultLoading.value = false
+  }
+}
+
+const isExporting = ref(false)
+
+async function exportCompareExcel() {
+  if (!compareResult.value) return
+  isExporting.value = true
+  try {
+    const ExcelJS = await import('exceljs')
+    const workbook = new ExcelJS.default.Workbook()
+    const detailSheet = workbook.addWorksheet(t('contractV2.compare.sheetDetail'))
+    detailSheet.columns = [
+      { header: t('contractV2.compare.colSection'), key: 'section', width: 30 },
+      { header: t('contractV2.compare.colChangeType'), key: 'changeType', width: 14 },
+      { header: t('contractV2.compare.colRiskLevel'), key: 'riskLevel', width: 12 },
+      { header: t('contractV2.compare.colSummary'), key: 'summary', width: 50 },
+      { header: t('contractV2.compare.colChanges'), key: 'changes', width: 40 },
+      { header: t('contractV2.compare.colBase'), key: 'base', width: 30 },
+      { header: t('contractV2.compare.colTarget'), key: 'target', width: 30 },
+    ]
+    const headerRow = detailSheet.getRow(1)
+    headerRow.font = { bold: true }
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } }
+    const changeTypeMap: Record<string, string> = {
+      identical: t('contractV2.compare.typeIdentical'),
+      modified: t('contractV2.compare.typeModified'),
+      semantic_change: t('contractV2.compare.typeSemanticChange'),
+      added: t('contractV2.compare.typeAdded'),
+      removed: t('contractV2.compare.typeRemoved'),
+      error: t('contractV2.compare.typeError'),
+    }
+    const changeColors: Record<string, string> = {
+      identical: 'FFE8F5E9',
+      modified: 'FFFFF3E0',
+      semantic_change: 'FFFFF3E0',
+      added: 'FFE3F2FD',
+      removed: 'FFFCE4EC',
+      error: 'FFEFEBE9',
+    }
+    for (const item of compareResult.value.results) {
+      const changes = (item.key_changes || []).map(c => c.description).join('; ')
+      const baseParts = (item.key_changes || []).filter(c => c.old).map(c => c.old).join('\n')
+      const targetParts = (item.key_changes || []).filter(c => c.new).map(c => c.new).join('\n')
+      const row = detailSheet.addRow({
+        section: String(item.title || '').replace(/^##\s*/, ''),
+        changeType: changeTypeMap[item.change_type] || item.change_type,
+        riskLevel: item.risk_level || 'low',
+        summary: item.summary,
+        changes: changes || '',
+        base: baseParts,
+        target: targetParts,
+      })
+      const fillColor = changeColors[item.change_type]
+      if (fillColor) {
+        for (let col = 1; col <= 7; col++) {
+          row.getCell(col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } }
+        }
+      }
+    }
+    const summarySheet = workbook.addWorksheet(t('contractV2.compare.sheetSummary'))
+    summarySheet.columns = [
+      { header: t('contractV2.compare.colMetric'), key: 'metric', width: 20 },
+      { header: t('contractV2.compare.colValue'), key: 'value', width: 12 },
+    ]
+    const s = compareResult.value.summary
+    summarySheet.addRow({ metric: t('contractV2.compare.typeTotal'), value: s.total })
+    summarySheet.addRow({ metric: t('contractV2.compare.typeIdentical'), value: s.identical })
+    summarySheet.addRow({ metric: t('contractV2.compare.typeModified'), value: s.modified })
+    summarySheet.addRow({ metric: t('contractV2.compare.typeAdded'), value: s.added })
+    summarySheet.addRow({ metric: t('contractV2.compare.typeRemoved'), value: s.removed })
+    const buf = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `contract-compare-${compareResult.value.target_row_id.slice(0, 8)}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error('Export failed:', e)
+    ElMessage.error(t('contractV2.compare.exportFailed'))
+  } finally {
+    isExporting.value = false
   }
 }
 
@@ -662,16 +796,6 @@ async function handleFileUpload(event: Event) {
             {{ row.party_a || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="document_id" :label="$t('contractV2.businessVersions.columnDocumentId')" min-width="170">
-          <template #default="{ row }">
-            <span class="mono-text">{{ row.document_id || '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="revision_id" :label="$t('contractV2.businessVersions.columnRevisionId')" min-width="170">
-          <template #default="{ row }">
-            <span class="mono-text">{{ row.revision_id || '-' }}</span>
-          </template>
-        </el-table-column>
         <el-table-column :label="$t('contractV2.businessVersions.columnActions')" width="430" fixed="right">
           <template #default="{ row }">
             <el-button
@@ -771,48 +895,92 @@ async function handleFileUpload(event: Event) {
       width="900px"
       destroy-on-close
     >
-      <div class="contract-detail-section-header">
-        <div>
-          <div class="mono-text">{{ $t('contractV2.compare.runId') }}: {{ compareRunId || '-' }}</div>
-          <div v-if="compareResult" class="compare-summary">
-            {{ $t('contractV2.compare.summaryLine', {
-              status: compareStatusLabels[compareResult.status] || compareResult.status,
-              totalLabel: $t('contractV2.compare.total'),
-              total: compareResult.summary.total,
-              highLabel: $t('contractV2.compare.highRisk'),
-              high: compareResult.summary.high,
-              mediumLabel: $t('contractV2.compare.mediumRisk'),
-              medium: compareResult.summary.medium,
-              lowLabel: $t('contractV2.compare.lowRisk'),
-              low: compareResult.summary.low
-            }) }}
+      <!-- 配置阶段：选择基准/对比方向 + 模型 -->
+      <div v-if="comparePhase === 'config'">
+        <div class="compare-config-row">
+          <div class="compare-side">
+            <div class="compare-side-label">📄 {{ $t('contractV2.compare.baseVersion') }}（旧）</div>
+            <div class="compare-side-value">{{ compareVersionA ? (compareVersionA.version_number + ' ' + (compareVersionA.version_name || '')) : '-' }}</div>
+          </div>
+          <el-button circle size="small" :title="$t('contractV2.compare.swap')" @click="swapCompare">⇄</el-button>
+          <div class="compare-side">
+            <div class="compare-side-label">📄 {{ $t('contractV2.compare.targetVersion') }}（新）</div>
+            <div class="compare-side-value">{{ compareVersionB ? (compareVersionB.version_number + ' ' + (compareVersionB.version_name || '')) : '-' }}</div>
           </div>
         </div>
-        <el-button size="small" @click="loadCompareResult" :loading="compareResultLoading">{{ $t('contractV2.compare.refreshResult') }}</el-button>
+        <el-form label-width="110px" style="margin-top: 16px;">
+          <el-form-item :label="$t('contractV2.compare.model')">
+            <el-select v-model="compareModelId" placeholder="" style="width: 320px;">
+              <el-option v-for="m in compareModels" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name || ''})`" />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="$t('contractV2.compare.temperature')">
+            <el-slider v-model="compareTemperature" :min="0" :max="1" :step="0.1" style="width: 320px;" />
+          </el-form-item>
+        </el-form>
+        <div style="text-align: right;">
+          <el-button type="primary" @click="startCompareRun">{{ $t('contractV2.compare.startCompare') }}</el-button>
+        </div>
       </div>
-      <el-table v-if="compareResult" :data="compareResult.items" stripe v-loading="compareResultLoading">
-        <el-table-column prop="change_type" :label="$t('contractV2.compare.columnChangeType')" width="120">
-          <template #default="{ row }">
-            <el-tag size="small" :type="(compareChangeTypeLabels[row.change_type]?.type as any) || 'info'" disable-transitions>
-              {{ compareChangeTypeLabels[row.change_type]?.label || row.change_type }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="risk_level" :label="$t('contractV2.compare.columnRiskLevel')" width="120">
-          <template #default="{ row }">
-            <el-tag v-if="row.risk_level" size="small" :type="(compareRiskLevelLabels[row.risk_level]?.type as any) || 'info'" disable-transitions>
-              {{ compareRiskLevelLabels[row.risk_level]?.label || row.risk_level }}
-            </el-tag>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="summary" :label="$t('contractV2.compare.columnSummary')" min-width="420">
-          <template #default="{ row }">
-            {{ row.summary || '-' }}
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-empty v-else-if="!compareResultLoading" :description="$t('contractV2.compare.noResult')" />
+
+      <!-- 比对中 -->
+      <div v-else-if="comparePhase === 'running'" v-loading="true" element-loading-text="语义比对进行中（约需数分钟）..." style="min-height: 220px; display: flex; align-items: center; justify-content: center;">
+        <span style="color: var(--el-text-color-secondary);">正在使用 {{ selectedModelName }} 逐章节语义比对，请稍候...</span>
+      </div>
+
+      <!-- 结果阶段 -->
+      <div v-else-if="comparePhase === 'result' && compareResult">
+        <div class="contract-detail-section-header">
+          <div class="compare-summary">
+            {{ $t('contractV2.compare.summaryResult', {
+              total: compareResult.summary.total,
+              identical: compareResult.summary.identical,
+              modified: compareResult.summary.modified
+            }) }}
+            <span v-if="compareResult.duration_ms" style="margin-left: 8px; color: #909399;">耗时 {{ (compareResult.duration_ms / 1000).toFixed(0) }}s</span>
+          </div>
+          <el-button size="small" @click="loadCompareResult" :loading="compareResultLoading">{{ $t('contractV2.compare.refreshResult') }}</el-button>
+          <el-button size="small" type="primary" @click="exportCompareExcel" :loading="isExporting">{{ $t('contractV2.compare.exportExcel') }}</el-button>
+        </div>
+        <el-table :data="compareResult.results" stripe v-loading="compareResultLoading">
+          <el-table-column prop="title" :label="$t('contractV2.compare.columnTitle')" width="240">
+            <template #default="{ row }">
+              {{ String(row.title || '').replace(/^##\s*/, '') || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="change_type" :label="$t('contractV2.compare.columnChangeType')" width="130">
+            <template #default="{ row }">
+              <el-tag size="small" :type="(compareChangeTypeLabels[row.change_type]?.type as any) || 'info'" disable-transitions>
+                {{ compareChangeTypeLabels[row.change_type]?.label || row.change_type }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="risk_level" :label="$t('contractV2.compare.columnRiskLevel')" width="100">
+            <template #default="{ row }">
+              <el-tag v-if="row.risk_level" size="small" :type="(compareRiskLevelLabels[row.risk_level]?.type as any) || 'info'" disable-transitions>
+                {{ compareRiskLevelLabels[row.risk_level]?.label || row.risk_level }}
+              </el-tag>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('contractV2.compare.columnSummary')" min-width="360">
+            <template #default="{ row }">
+              <div style="white-space: normal; line-height: 1.6;">{{ row.summary || '-' }}</div>
+              <el-collapse v-if="row.key_changes && row.key_changes.length" style="margin-top: 6px;">
+                <el-collapse-item v-for="(kc, kci) in row.key_changes" :key="kci">
+                  <template #title>
+                    <span class="kc-title">{{ kc.description || ('变更 ' + (kci + 1)) }}</span>
+                  </template>
+                  <div class="kc-body">
+                    <div v-if="kc.old" class="kc-old">旧：{{ kc.old }}</div>
+                    <div v-if="kc.new" class="kc-new">新：{{ kc.new }}</div>
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </el-dialog>
 
     <el-dialog
@@ -1084,5 +1252,50 @@ async function handleFileUpload(event: Event) {
 .mono-text {
   font-family: Consolas, Monaco, monospace;
   font-size: 12px;
+}
+
+.kc-title {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+}
+.kc-body {
+  font-size: 12px;
+  line-height: 1.7;
+  padding: 4px 8px;
+}
+.kc-old {
+  color: var(--el-color-danger);
+  margin-bottom: 6px;
+}
+.kc-new {
+  color: var(--el-color-success);
+}
+.compare-summary-extra {
+  margin-left: 8px;
+  color: var(--el-color-warning);
+}
+.compare-config-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+}
+.compare-side {
+  flex: 1;
+  min-width: 0;
+}
+.compare-side-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 4px;
+}
+.compare-side-value {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

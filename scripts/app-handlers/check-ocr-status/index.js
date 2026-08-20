@@ -58,8 +58,8 @@ export default {
     const mcp = resConfig.mcp || {};
 
     try {
-      logger.info(`[check-ocr] Record ${record.id}: Calling MCP ${mcp.server}.${mcp.tool || 'get_task'}`);
-      const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId });
+      logger.info(`[check-ocr] Record ${record.id}: Calling MCP ${mcp.server}.${mcp.tool || 'get_task_status'}`);
+      const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task_status', { task_id: taskId });
       
       logger.info(`[check-ocr] Record ${record.id}: MCP result received, judging status`);
       const parsed = await services.llm.extractJson(JUDGE_PROMPT.replace('{{MCP_RESULT}}', JSON.stringify(mcpResult, null, 2)), {
