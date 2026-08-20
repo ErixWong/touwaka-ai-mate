@@ -520,7 +520,7 @@ async function exportCompareExcel() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `contract-compare-${compareResult.value.target_row_id.slice(0, 8)}.xlsx`
+    a.download = `contract-compare-${(compareResult.value.target_row_id || compareRunId.value || 'result').slice(0, 8)}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
   } catch (e) {
