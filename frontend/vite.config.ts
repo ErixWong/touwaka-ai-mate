@@ -23,8 +23,9 @@ export default defineConfig(({ command }) => ({
   ],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // 注意顺序：@apps 必须在 @ 之前，否则 @ 前缀会把 @apps/x 吞成 src/apps/x
       '@apps': fileURLToPath(new URL('../apps', import.meta.url)),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
       'vue': fileURLToPath(new URL('./node_modules/vue', import.meta.url)),
       'pinia': fileURLToPath(new URL('./node_modules/pinia', import.meta.url)),
       'element-plus': fileURLToPath(new URL('./node_modules/element-plus', import.meta.url)),
