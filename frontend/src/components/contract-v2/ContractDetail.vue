@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useContractV2Store, getProcessingStatusLabel } from '@/stores/contract-v2'
-import type { ContractVersion } from '@/api/contract-v2'
+import type { ContractVersion, LlmCompareRunResponse } from '@/api/contract-v2'
 import { getVersionContent, CONTRACT_LLM_COMPARE_MODEL_ID } from '@/api/contract-v2'
 import { uploadAttachmentFormData } from '@/api/attachment'
 import { getRevisions, getDocumentPermissions, type DocRevision, type DocPermissions } from '@/api/docs'
@@ -69,19 +69,7 @@ const selectedModelName = computed(() => {
 })
 const compareRunId = ref('')
 const compareResultLoading = ref(false)
-const compareResult = ref<null | {
-  target_row_id: string
-  results: Array<{
-    type: string
-    title: string
-    change_type: string
-    summary: string
-    key_changes?: Array<{ description?: string; old?: string; new?: string }>
-    risk_level?: string
-  }>
-  summary: { total: number; identical: number; modified: number; added: number; removed: number }
-  duration_ms: number
-}>(null)
+const compareResult = ref<null | LlmCompareRunResponse>(null)
 const compareSectionCount = ref<number | null>(null)
 const compareStartedAt = ref<number | null>(null)
 const compareElapsedSeconds = ref(0)
@@ -441,6 +429,8 @@ async function handleSaveMetadata() {
       contract_amount: editableMetadata.value.contract_amount,
     })
     showMetadataDialog.value = false
+  } catch (e: unknown) {
+    ElMessage.error(t('common.operationFailed'))
   } finally {
     savingMetadata.value = false
   }
@@ -667,7 +657,11 @@ async function handleFileUpload(event: Event) {
     })
 
     // 使用新接口，不依赖 mini-app.service.js
-    const nextVerNum = String(versions.value.length + 1)
+    // 版本号按已有最大版本号 + 1 生成，避免删除中间版本后冲突
+    const nextNum = versions.value.length
+      ? Math.max(...versions.value.map(v => versionNumberToNum(v.version_number))) + 1
+      : 1
+    const nextVerNum = String(nextNum)
     await store.addVersionFromAttachment(contract.value.id, {
       file_id: att.id,
       contract_type: uploadingType.value,

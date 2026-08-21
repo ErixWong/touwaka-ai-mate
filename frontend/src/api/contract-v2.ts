@@ -117,6 +117,7 @@ export async function listContracts(params?: {
   include_children?: boolean
   contract_type?: string
   status?: string
+  keyword?: string
   page?: number
   page_size?: number
 }): Promise<ContractListResult> {
@@ -320,8 +321,7 @@ export interface LlmCompareSectionResult {
   content_preview?: string
 }
 
-export interface LlmCompareResult {
-  target_row_id: string
+export interface LlmCompareData {
   results: LlmCompareSectionResult[]
   summary: {
     total: number
@@ -333,6 +333,18 @@ export interface LlmCompareResult {
   duration_ms: number
 }
 
+/** POST /compare 实时运行结果（target_row_id 可选） */
+export interface LlmCompareRunResponse extends LlmCompareData {
+  target_row_id?: string
+}
+
+/** GET /data/:rowId/compare 已存储结果 */
+export interface LlmCompareStoredResult extends LlmCompareData {
+  target_row_id: string
+  model_name?: string
+  compared_at?: string
+}
+
 // qwen3.6:35b（ErixAI relay）
 export const CONTRACT_LLM_COMPARE_MODEL_ID = 'mojfh2d7cvgl6uam7fnx'
 
@@ -340,8 +352,8 @@ export async function compareVersionsWithLlm(
   rowIdA: string,
   rowIdB: string,
   options?: { model_id?: string; temperature?: number; concurrency?: number },
-): Promise<LlmCompareResult> {
-  return apiRequest<LlmCompareResult>(
+): Promise<LlmCompareRunResponse> {
+  return apiRequest<LlmCompareRunResponse>(
     apiClient.post(
       `/mini-apps/contract-mgr-v2/compare`,
       {
@@ -356,8 +368,8 @@ export async function compareVersionsWithLlm(
   )
 }
 
-export async function getVersionCompareResult(rowId: string): Promise<LlmCompareResult | null> {
-  return apiRequest<LlmCompareResult | null>(
+export async function getVersionCompareResult(rowId: string): Promise<LlmCompareStoredResult | null> {
+  return apiRequest<LlmCompareStoredResult | null>(
     apiClient.get(`/mini-apps/contract-mgr-v2/data/${rowId}/compare`),
   )
 }

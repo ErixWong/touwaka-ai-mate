@@ -45,6 +45,13 @@ import { buildAppHostContext } from '../../lib/app-host-context-builder.js';
 
 const APPS_DIR = path.join(process.cwd(), 'apps');
 const HANDLERS_DIR = 'server/handlers';
+const VALID_SEGMENT_RE = /^[\w-]+$/;
+
+function validateSegment(seg, label = 'segment') {
+  if (!seg || !VALID_SEGMENT_RE.test(seg)) {
+    throw new Error(`Invalid ${label}: ${seg}`);
+  }
+}
 
 /**
  * 从 route.path 声明中提取具名参数
@@ -92,6 +99,11 @@ function resolveHandlerPath(appInternalPath, appId, method) {
   
   if (segments.length === 0) {
     return null;
+  }
+
+  // 安全校验：拒绝路径遍历与非法字符
+  for (const seg of segments) {
+    validateSegment(seg, 'app path segment');
   }
 
   const candidates = [];
@@ -165,10 +177,13 @@ function _collectCandidates(remainingSegs, handlerPrefix, collectedParams, appId
 }
 
 async function loadHandler(appId, handlerPath, appsDir) {
+  validateSegment(appId, 'appId');
+
   const fullPath = path.join(appsDir, appId, handlerPath);
   const normalizedPath = path.normalize(fullPath);
+  const expectedBase = path.normalize(path.join(appsDir, appId, HANDLERS_DIR) + path.sep);
 
-  if (!normalizedPath.startsWith(path.normalize(appsDir))) {
+  if (!normalizedPath.startsWith(expectedBase) || !normalizedPath.endsWith('.js')) {
     throw new Error(`Handler path not allowed: ${handlerPath}`);
   }
 
@@ -225,6 +240,14 @@ export function createAppWildcardRouter(db, options = {}) {
       return;
     }
 
+    // 校验 appId 合法性，防止路径遍历
+    try {
+      validateSegment(appId, 'appId');
+    } catch (err) {
+      ctx.error('Invalid appId in path', 400);
+      return;
+    }
+
     const appInternalPath = '/' + pathParts.slice(1).join('/');
     const requestSegments = pathParts.slice(1);
     const method = ctx.method.toUpperCase();
@@ -260,7 +283,13 @@ export function createAppWildcardRouter(db, options = {}) {
       }
 
       // 解析 handler 文件路径
-      const handlerInfo = resolveHandlerPath(appInternalPath, appId, method);
+      let handlerInfo;
+      try {
+        handlerInfo = resolveHandlerPath(appInternalPath, appId, method);
+      } catch (err) {
+        ctx.error(`Invalid app path: ${err.message}`, 400);
+        return;
+      }
 
       if (!handlerInfo) {
         // handler 不存在时，放行给后续路由（平台管理路由如 /config、/runtime 仍可工作）

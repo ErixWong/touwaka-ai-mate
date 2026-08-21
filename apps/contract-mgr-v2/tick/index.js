@@ -149,7 +149,7 @@ const CONTRACT_FIELDS = [
   { name: 'contract_date', label: '签订日期', guide: '查找签订日期，格式 YYYY-MM-DD' },
 ];
 
-const DEFAULT_CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 50000;
+const DEFAULT_CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 12000;
 
 function parseContractAmount(value) {
   if (typeof value === 'number') {
@@ -395,6 +395,70 @@ ${stringifyForLog(result, 1000)}`;
   }
 }
 
+function normalizeOcrStatus(status) {
+  const s = String(status || '').toLowerCase();
+  if (['completed', 'done', 'succeeded', 'success', 'finished', 'complete'].some(k => s.includes(k))) {
+    return 'completed';
+  }
+  if (['processing', 'pending', 'running', 'in_progress', 'ongoing', 'wait', 'waiting', 'queued'].some(k => s.includes(k))) {
+    return 'pending';
+  }
+  if (['failed', 'failure', 'error', 'rejected', 'timeout', 'expired'].some(k => s.includes(k))) {
+    return 'failed';
+  }
+  return null;
+}
+
+function parseOcrProgress(value) {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+  const parsed = parseFloat(String(value).replace('%', ''));
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 0;
+}
+
+function extractOcrStatusFromMcpResult(value, seen = new Set()) {
+  if (value == null) return null;
+
+  if (typeof value === 'string') {
+    const parsed = safeParseJson(value);
+    if (parsed && parsed !== value) {
+      return extractOcrStatusFromMcpResult(parsed, seen);
+    }
+    return null;
+  }
+
+  if (typeof value !== 'object') return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const status = extractOcrStatusFromMcpResult(item, seen);
+      if (status) return status;
+    }
+    return null;
+  }
+
+  for (const key of ['status', 'state', 'task_status']) {
+    if (value[key] !== undefined) {
+      const normalized = normalizeOcrStatus(value[key]);
+      if (normalized) {
+        return {
+          status: normalized,
+          progress: parseOcrProgress(value.progress ?? value.percent ?? value.completion),
+        };
+      }
+    }
+  }
+
+  for (const key of ['result', 'content', 'raw', 'text', 'data']) {
+    const status = extractOcrStatusFromMcpResult(value[key], seen);
+    if (status) return status;
+  }
+
+  return null;
+}
+
 async function handleOcrCheck(row, app, services) {
   logger.info(`[tick] Checking OCR for ${row.row_id}`);
   
@@ -410,21 +474,25 @@ async function handleOcrCheck(row, app, services) {
   try {
     const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task_status', { task_id: taskId });
     
-    const taskInfo = stringifyForLog(mcpResult, 1000);
-    
-    const judgePrompt = `判断OCR任务是否完成。
+    let parsed = extractOcrStatusFromMcpResult(mcpResult);
+    if (!parsed) {
+      logger.info(`[tick] OCR deterministic status parse failed for ${row.row_id}, falling back to LLM`);
+      const taskInfo = stringifyForLog(mcpResult, 1000);
+      
+      const judgePrompt = `判断OCR任务是否完成。
 任务返回信息：
 ${taskInfo}
 
 返回JSON：{"status": "completed|pending|failed", "progress": 0-100}`;
-    
-    const judgeResult = await services.llm.extractJson(judgePrompt, '', {
-      modelId: config.judge_model_id || null,
-      temperature: config.judge_temperature || 0.1,
-      defaultValue: { status: 'pending', progress: 0 },
-    });
+      
+      const judgeResult = await services.llm.extractJson(judgePrompt, '', {
+        modelId: config.judge_model_id || null,
+        temperature: config.judge_temperature || 0.1,
+        defaultValue: { status: 'pending', progress: 0 },
+      });
 
-    const parsed = { ...judgeResult };
+      parsed = { ...judgeResult };
+    }
     if (!parsed.status) parsed.status = 'pending';
     
     if (parsed.status === 'completed') {
@@ -522,44 +590,46 @@ async function handleFilter(row, app, services) {
   const filterConfig = getStepResource(app, 'pending_filter', { temperature: 0.3 });
   const filterPrompt = getPrompt(app, 'filter', '去除页码、水印、乱码，保留正文。必须保留章节标题行（以##开头的markdown标题，如"## 一、前言 Preface"），标题行不要修改、不要删除，它们是后续章节定位的依据');
   const maxLen = filterConfig.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
-  
+  const filterLlmConfig = { ...filterConfig, timeout: filterConfig.timeout ?? 300000 };
+
   let filteredText;
-  
+
   if (ocrText.length <= maxLen) {
     try {
-      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, ocrText, filterConfig);
+      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, ocrText, filterLlmConfig);
       filteredText = parsed?.processed_text || ocrText;
     } catch (e) {
+      logger.error(`[tick] Filter failed for ${row.row_id}: ${e.message}`);
       filteredText = ocrText;
     }
-    
+
     await services.execute(`
-      UPDATE ${CONTENT_TABLE} 
+      UPDATE ${CONTENT_TABLE}
       SET process_step = 'pending_extract', filtered_text = ?, filter_at = NOW(),
           filter_carried_over = NULL, filter_chunk_index = 0
       WHERE content_id = ?
     `, [filteredText, row.content_id]);
-    
+
     logger.info(`[tick] Filter completed for ${row.row_id}, length=${filteredText.length}`);
   } else {
-    const result = await filterWithSlidingWindow(ocrText, filterPrompt, filterConfig, services, row.row_id, existingCarriedOver, existingChunkIndex);
-    
+    const result = await filterWithSlidingWindow(ocrText, filterPrompt, filterLlmConfig, services, row.row_id, existingCarriedOver, existingChunkIndex);
+
     if (result.completed) {
       await services.execute(`
-        UPDATE ${CONTENT_TABLE} 
+        UPDATE ${CONTENT_TABLE}
         SET process_step = 'pending_extract', filtered_text = ?, filter_at = NOW(),
             filter_carried_over = NULL, filter_chunk_index = 0
         WHERE content_id = ?
       `, [result.filteredText, row.content_id]);
       await advanceDocStatus(services, row.row_id, 'pending_extract');
-      logger.info(`[tick] Filter completed for ${row.row_id}, length=${result.filteredText.length}`);
+      logger.info(`[tick] Filter completed for ${row.row_id}, length=${result.filteredText.length}, chunk_failures=${result.failureCount || 0}`);
     } else {
       await services.execute(`
-        UPDATE ${CONTENT_TABLE} 
+        UPDATE ${CONTENT_TABLE}
         SET filter_carried_over = ?, filter_chunk_index = ?
         WHERE content_id = ?
       `, [result.carriedOver, result.chunkIndex, row.content_id]);
-      logger.info(`[tick] Filter progress for ${row.row_id}, chunk ${result.chunkIndex}`);
+      logger.info(`[tick] Filter progress for ${row.row_id}, chunk ${result.chunkIndex}, chunk_failures=${result.failureCount || 0}`);
     }
   }
 }
@@ -567,40 +637,49 @@ async function handleFilter(row, app, services) {
 async function filterWithSlidingWindow(ocrText, filterPrompt, filterConfig, services, rowId, existingCarriedOver, existingChunkIndex) {
   const maxLen = filterConfig.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
   const chunks = splitIntoChunks(ocrText, maxLen);
-  
+
   const allProcessed = [];
   let carriedOver = existingCarriedOver || '';
   let startIndex = existingChunkIndex || 0;
-  
+  let failureCount = 0;
+
+  async function processChunk(chunkInput, label) {
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, chunkInput, filterConfig);
+        return { processed: parsed?.processed_text || chunkInput, carriedOver: parsed?.carried_over || '' };
+      } catch (e) {
+        lastError = e;
+        logger.warn(`[tick] Chunk ${label} attempt ${attempt + 1} failed for ${rowId}: ${e.message}`);
+      }
+    }
+    failureCount += 1;
+    logger.error(`[tick] Chunk ${label} ultimately failed for ${rowId}: ${lastError?.message}`);
+    return { processed: chunkInput, carriedOver: '' };
+  }
+
   for (let i = startIndex; i < chunks.length; i++) {
     const chunkInput = carriedOver + (carriedOver ? '\n' : '') + chunks[i];
-    
-    try {
-      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, chunkInput, filterConfig);
-      allProcessed.push(parsed?.processed_text || chunkInput);
-      carriedOver = parsed?.carried_over || '';
-      
-      logger.info(`[tick] Chunk ${i + 1}/${chunks.length} done for ${rowId}`);
-    } catch (e) {
-      allProcessed.push(chunkInput);
-      carriedOver = '';
-    }
+    const chunkResult = await processChunk(chunkInput, `${i + 1}/${chunks.length}`);
+    allProcessed.push(chunkResult.processed);
+    carriedOver = chunkResult.carriedOver;
+
+    logger.info(`[tick] Chunk ${i + 1}/${chunks.length} done for ${rowId}`);
   }
-  
+
   if (carriedOver) {
-    try {
-      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, carriedOver, filterConfig);
-      allProcessed.push(parsed?.processed_text || carriedOver);
-    } catch (e) {
-      allProcessed.push(carriedOver);
-    }
+    const tailResult = await processChunk(carriedOver, 'tail');
+    allProcessed.push(tailResult.processed);
+    carriedOver = tailResult.carriedOver;
   }
-  
+
   return {
     completed: true,
     filteredText: allProcessed.join('\n'),
-    carriedOver: '',
-    chunkIndex: chunks.length
+    carriedOver,
+    chunkIndex: chunks.length,
+    failureCount,
   };
 }
 
@@ -618,6 +697,7 @@ async function handleExtract(row, app, services) {
   }
   
   const extractConfig = getStepResource(app, 'pending_extract', { temperature: 0.3 });
+  const extractLlmConfig = { ...extractConfig, timeout: extractConfig.timeout ?? 180000 };
   
   const fieldDefs = CONTRACT_FIELDS.map(f => `- ${f.name} (${f.label}): ${f.guide}`).join('\n');
   const exampleJson = CONTRACT_FIELDS.map(f => `  "${f.name}": "值"`).join(',\n');
@@ -632,7 +712,7 @@ ${exampleJson}
 }`;
   
   try {
-    const metadata = await callLlmJson(services, prompt, content[0].filtered_text, extractConfig);
+    const metadata = await callLlmJson(services, prompt, content[0].filtered_text, extractLlmConfig);
     
     if (!metadata) {
       await updateProcessStep(services, row.content_id, 'extract_failed');
@@ -709,6 +789,7 @@ async function handleSection(row, app, services) {
   }
   
   const sectionConfig = getStepResource(app, 'pending_section', { temperature: 0.3 });
+  const sectionLlmConfig = { ...sectionConfig, timeout: sectionConfig.timeout ?? 180000 };
   const sectionPrompt = getPrompt(app, 'section', '分析章节结构。只输出一级大章（如"一、前言"、"二、质量要求"、"七、召回和三包"），不要展开子章节；章节标题必须与原文中的##标题行完全一致（含序号），不要改写或省略，便于按标题定位正文范围');
   
   const jsonFormat = `
@@ -720,7 +801,7 @@ async function handleSection(row, app, services) {
 }`;
   
   try {
-    const result = await callLlmJson(services, sectionPrompt + jsonFormat, content[0].filtered_text, sectionConfig);
+    const result = await callLlmJson(services, sectionPrompt + jsonFormat, content[0].filtered_text, sectionLlmConfig);
     const sections = result?.sections || result;
     
     if (!Array.isArray(sections)) {
@@ -780,13 +861,17 @@ async function handleClassify(row, app, services) {
     const conditions = ["d.doc_type = 'contract'", 'd.id != (SELECT document_id FROM app_contract_mgr_v2_content WHERE content_id = ?)'];
     params.push(row.content_id);
 
+    const fieldConditions = [];
     if (contractNumber) {
-      conditions.push("(JSON_EXTRACT(d.metadata, '$.contract_number') = ? OR d.title LIKE ?)");
+      fieldConditions.push("(JSON_EXTRACT(d.metadata, '$.contract_number') = ? OR d.title LIKE ?)");
       params.push(contractNumber, `%${contractNumber}%`);
     }
     if (partyA) {
-      conditions.push("(d.title LIKE ? OR JSON_EXTRACT(d.metadata, '$.party_a') = ?)");
+      fieldConditions.push("(d.title LIKE ? OR JSON_EXTRACT(d.metadata, '$.party_a') = ?)");
       params.push(`%${partyA}%`, partyA);
+    }
+    if (fieldConditions.length > 0) {
+      conditions.push(`(${fieldConditions.join(' OR ')})`);
     }
 
     const whereClause = conditions.join(' AND ');

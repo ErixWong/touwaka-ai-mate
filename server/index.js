@@ -20,6 +20,16 @@ if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
 }
 
+// 启动前校验 JWT 密钥配置（Issue #1051）：缺失则立即失败，禁止任何默认兜底密钥
+const requiredJwtSecrets = ['JWT_SECRET', 'JWT_REFRESH_SECRET'];
+const missingJwtSecrets = requiredJwtSecrets.filter(key => !process.env[key]);
+if (missingJwtSecrets.length > 0) {
+  throw new Error(
+    `JWT 密钥配置缺失: ${missingJwtSecrets.join(', ')}\n` +
+    `请在 .env 或环境变量中设置强随机密钥，禁止使用默认密钥。`
+  );
+}
+
 // 调试：打印数据库配置来源
 console.log('=== Database Configuration Debug ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);

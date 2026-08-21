@@ -1674,7 +1674,10 @@ class StandardMgrService {
     }
 
     // 3. 生成长期 token 替代用户短期 JWT，防止工具回调 401
-    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET is not configured');
+    }
     const taskToken = jwt.sign(
       { userId, role: session.roles?.[0] || 'user' },
       jwtSecret,

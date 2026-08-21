@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useContractV2Store } from '@/stores/contract-v2'
 import { uploadAttachmentFormData } from '@/api/attachment'
 import type { OrgNode } from '@/api/contract-v2'
@@ -7,6 +8,7 @@ import { useToastStore } from '@/stores/toast'
 import Pagination from '@/components/Pagination.vue'
 
 const APP_ID = 'contract-mgr-v2'
+const { t } = useI18n()
 const toast = useToastStore()
 
 const emit = defineEmits<{
@@ -106,6 +108,9 @@ function handlePageChange(page: number) {
   store.loadContracts({
     org_node_id: store.selectedNodeId || undefined,
     include_children: true,
+    status: store.filterStatus || undefined,
+    contract_type: store.filterType || undefined,
+    keyword: store.searchText.trim() || undefined,
     page,
     page_size: store.contractsPageSize,
   })
@@ -136,7 +141,7 @@ function clearFile() {
 async function handleCreate() {
   if (!createForm.value.contract_name.trim()) return
   if (!createForm.value.contract_type) {
-    toast.error('请选择合同类型')
+    toast.error(t('contractV2.form.contractTypePlaceholder'))
     return
   }
   creating.value = true
@@ -170,11 +175,31 @@ async function handleCreate() {
       emit('click-contract', newContract.id)
     }
   } catch (e: unknown) {
-    toast.error((e as Error).message || '创建失败')
+    toast.error((e as Error).message || t('contractV2.toast.createContractFailed'))
   } finally {
     creating.value = false
   }
 }
+
+let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null
+function reloadContractsWithFilters(page = 1) {
+  if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
+  filterDebounceTimer = setTimeout(() => {
+    store.loadContracts({
+      org_node_id: store.selectedNodeId || undefined,
+      include_children: true,
+      status: store.filterStatus || undefined,
+      contract_type: store.filterType || undefined,
+      keyword: store.searchText.trim() || undefined,
+      page,
+      page_size: store.contractsPageSize,
+    })
+  }, 300)
+}
+
+watch([() => store.filterStatus, () => store.filterType, () => store.searchText], () => {
+  reloadContractsWithFilters(1)
+})
 
 function flatTreeNodes(nodes: OrgNode[]): OrgNode[] {
   const result: OrgNode[] = []
@@ -221,6 +246,9 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
       </el-button>
     </div>
 
+    <div v-if="searchText" class="contract-list-search-hint">
+      {{ $t('contractV2.list.searchCurrentPageOnly') }}
+    </div>
     <div class="contract-list-cards" v-loading="store.contractsLoading">
       <div v-if="filteredContracts.length === 0 && !store.contractsLoading" class="contract-list-empty">
         <el-empty :description="$t('contractV2.list.noContract')" />
@@ -423,6 +451,12 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
   justify-content: center;
   margin-top: 16px;
   padding-top: 12px;
+}
+
+.contract-list-search-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 8px;
 }
 
 .create-file-upload {

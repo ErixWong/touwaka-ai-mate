@@ -37,8 +37,21 @@ const getUserPermissionCodes = async (ctx, userId) => {
 };
 
 // 延迟读取环境变量（因为 ES Modules 的 import 会在 dotenv.config() 之前执行）
-const getJwtSecret = () => process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
+// 启动/首次使用前必须配置 JWT_SECRET/JWT_REFRESH_SECRET，绝不允许使用硬编码兜底密钥
+const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET 环境变量未配置，请在 .env 文件中设置强随机密钥');
+  }
+  return secret;
+};
+const getJwtRefreshSecret = () => {
+  const secret = process.env.JWT_REFRESH_SECRET;
+  if (!secret) {
+    throw new Error('JWT_REFRESH_SECRET 环境变量未配置，请在 .env 文件中设置强随机密钥');
+  }
+  return secret;
+};
 
 /**
  * 必须认证中间件

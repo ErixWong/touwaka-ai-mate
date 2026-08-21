@@ -664,6 +664,7 @@ class ContractV2Service {
             options.version_name || `版本 ${versionNumber}`,
             JSON.stringify({ contract_id: contractId }),
           ],
+          transaction: t,
         }
       );
 
@@ -691,10 +692,10 @@ class ContractV2Service {
       // 直接写入 content 表，不经过 mini-app.service.js
       await this.db.sequelize.query(`
         INSERT INTO app_contract_mgr_v2_content 
-        (row_id, content_id, process_step, file_id, created_at, updated_at)
-        VALUES (?, ?, 'pending_ocr', ?, NOW(), NOW())
+        (row_id, content_id, document_id, process_step, file_id, created_at, updated_at)
+        VALUES (?, ?, ?, 'pending_ocr', ?, NOW(), NOW())
       `, {
-        replacements: [rowId, contentId, fileId],
+        replacements: [rowId, contentId, documentId, fileId],
         transaction: t
       });
 
@@ -1039,7 +1040,7 @@ class ContractV2Service {
     const chunks = await DocChunk.findAll({
       where: { revision_id: version.revision_id },
       attributes: ['content'],
-      order: [['chunk_index', 'ASC']],
+      order: [['seq', 'ASC']],
       raw: true
     });
 
@@ -1080,7 +1081,7 @@ ${fullText.substring(0, 8000)}`;
 
     // 调用 LLM 提取
     try {
-      const InternalLLMService = (await import('../../lib/internal-llm-service.js')).default;
+      const InternalLLMService = (await import('../../../../lib/internal-llm-service.js')).default;
       const llmService = new InternalLLMService(this.db);
       
       const result = await llmService.chat({
