@@ -348,6 +348,11 @@ export interface LlmCompareStoredResult extends LlmCompareData {
 // qwen3.6:35b（ErixAI relay）
 export const CONTRACT_LLM_COMPARE_MODEL_ID = 'mojfh2d7cvgl6uam7fnx'
 
+/** LLM 语义比对默认参数（组件层应引用这些常量，避免两边默认值分叉） */
+export const CONTRACT_LLM_COMPARE_DEFAULT_TEMPERATURE = 0.3
+export const CONTRACT_LLM_COMPARE_DEFAULT_CONCURRENCY = 3
+export const CONTRACT_LLM_COMPARE_TIMEOUT_MS = 1800000
+
 export async function compareVersionsWithLlm(
   rowIdA: string,
   rowIdB: string,
@@ -360,10 +365,10 @@ export async function compareVersionsWithLlm(
         row_id_a: rowIdA,
         row_id_b: rowIdB,
         model_id: options?.model_id || CONTRACT_LLM_COMPARE_MODEL_ID,
-        temperature: options?.temperature ?? 0.3,
-        concurrency: options?.concurrency ?? 3,
+        temperature: options?.temperature ?? CONTRACT_LLM_COMPARE_DEFAULT_TEMPERATURE,
+        concurrency: options?.concurrency ?? CONTRACT_LLM_COMPARE_DEFAULT_CONCURRENCY,
       },
-      { timeout: 1800000 },
+      { timeout: CONTRACT_LLM_COMPARE_TIMEOUT_MS },
     ),
   )
 }

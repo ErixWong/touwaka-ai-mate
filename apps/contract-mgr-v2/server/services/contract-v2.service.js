@@ -352,65 +352,6 @@ class ContractV2Service {
     await contract.destroy();
   }
 
-  async createVersion(contractId, data, userId) {
-    this.ensureModels();
-    await this.ensureContractOwner(contractId, userId);
-
-    const t = await this.db.sequelize.transaction();
-    try {
-      const contract = await this.models.MainRecord.findByPk(contractId, { transaction: t, lock: true });
-      if (!contract) throw new Error('合同不存在');
-
-      const existingCount = contract.version_count || 0;
-      const versionNumber = data.version_number || `v${existingCount + 1}.0`;
-
-      const existing = await this.models.Version.findOne({
-        where: { contract_id: contractId, version_number: versionNumber },
-        transaction: t,
-      });
-      if (existing) throw new Error(`版本号 ${versionNumber} 已存在`);
-
-      const rowId = Utils.newID(20);
-      const contentId = Utils.newID(20);
-      const isFirst = existingCount === 0;
-      
-      const version = await this.models.Version.create({
-        id: Utils.newID(20),
-        contract_id: contractId,
-        row_id: rowId,
-        file_id: data.file_id || null,
-        version_number: versionNumber,
-        version_name: data.version_name || null,
-        version_type: data.version_type || 'draft',
-        version_status: 'draft',
-        is_current: isFirst ? 1 : 0,
-        created_by: userId,
-      }, { transaction: t });
-
-      // 创建 content 记录，启动处理流程
-      await this.db.sequelize.query(`
-        INSERT INTO app_contract_mgr_v2_content 
-        (row_id, content_id, process_step, file_id, created_at, updated_at)
-        VALUES (?, ?, 'pending_ocr', ?, NOW(), NOW())
-      `, {
-        replacements: [rowId, contentId, data.file_id || null],
-        transaction: t
-      });
-
-      await contract.update({
-        version_count: existingCount + 1,
-        current_version_id: isFirst ? version.id : contract.current_version_id,
-        status: 'active',
-      }, { transaction: t });
-
-      await t.commit();
-      return { ...version.toJSON(), row_id: rowId };
-    } catch (e) {
-      await t.rollback();
-      throw e;
-    }
-  }
-
   /**
    * 获取合同类型配置（从 app config 中读取）
    */

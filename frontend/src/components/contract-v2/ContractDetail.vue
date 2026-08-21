@@ -3,8 +3,21 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useContractV2Store, getProcessingStatusLabel } from '@/stores/contract-v2'
-import type { ContractVersion, LlmCompareRunResponse } from '@/api/contract-v2'
+import type { ContractVersion, LlmCompareRunResponse, LlmCompareStoredResult } from '@/api/contract-v2'
 import { getVersionContent, CONTRACT_LLM_COMPARE_MODEL_ID } from '@/api/contract-v2'
+import {
+  type StatusTagEntry,
+  DEFAULT_LLM_COMPARE_TEMPERATURE,
+  COMPARE_CONCURRENCY_MIN,
+  COMPARE_CONCURRENCY_MAX,
+  COMPARE_CONCURRENCY_DEFAULT,
+  COMPARE_ESTIMATE_MIN_MINUTES_PER_SECTION,
+  COMPARE_ESTIMATE_MAX_MINUTES_PER_SECTION,
+  CONFIDENCE_HIGH_THRESHOLD,
+  CONFIDENCE_MEDIUM_THRESHOLD,
+  METADATA_DISPLAY_FIELDS,
+  escapeHtml,
+} from './constants'
 import { uploadAttachmentFormData } from '@/api/attachment'
 import { getRevisions, getDocumentPermissions, type DocRevision, type DocPermissions } from '@/api/docs'
 import { getAvailableResources } from '@/api/mini-apps'
@@ -58,8 +71,8 @@ const comparePhase = ref<'config' | 'running' | 'result'>('config')
 const compareModels = ref<Array<{ id: string; name: string; provider_name?: string }>>([])
 const compareModelId = ref('')
 const compareSwapped = ref(false)
-const compareTemperature = ref(0.3)
-const compareConcurrency = ref(3)
+const compareTemperature = ref(DEFAULT_LLM_COMPARE_TEMPERATURE)
+const compareConcurrency = ref(COMPARE_CONCURRENCY_DEFAULT)
 const sortedCompareVersions = ref<ContractVersion[]>([])
 const compareVersionA = computed(() => sortedCompareVersions.value[compareSwapped.value ? 1 : 0] || null)
 const compareVersionB = computed(() => sortedCompareVersions.value[compareSwapped.value ? 0 : 1] || null)
@@ -89,8 +102,8 @@ const compareEstimatedDuration = computed(() => {
   const section_count = compareSectionCount.value
   if (!section_count) return t('contractV2.compare.estimatedDurationUnknown')
 
-  const min_minutes = Math.max(1, Math.ceil(section_count * 0.5))
-  const max_minutes = Math.max(min_minutes + 2, Math.ceil(section_count * 0.8))
+  const min_minutes = Math.max(1, Math.ceil(section_count * COMPARE_ESTIMATE_MIN_MINUTES_PER_SECTION))
+  const max_minutes = Math.max(min_minutes + 2, Math.ceil(section_count * COMPARE_ESTIMATE_MAX_MINUTES_PER_SECTION))
   return t('contractV2.compare.estimatedDuration', {
     minutes: `${min_minutes}-${max_minutes}`,
     sections: section_count,
@@ -193,7 +206,7 @@ const contractTypeOptions = computed(() =>
   Object.entries(contractTypeLabels.value).map(([value, label]) => ({ value, label }))
 )
 
-const versionStatusLabels = computed<Record<string, { label: string; type: string }>>(() => ({
+const versionStatusLabels = computed<Record<string, StatusTagEntry>>(() => ({
   draft: { label: t('contractV2.versionStatuses.draft'), type: 'info' },
   reviewing: { label: t('contractV2.versionStatuses.reviewing'), type: 'warning' },
   approved: { label: t('contractV2.versionStatuses.approved'), type: 'success' },
@@ -201,7 +214,7 @@ const versionStatusLabels = computed<Record<string, { label: string; type: strin
   archived: { label: t('contractV2.versionStatuses.archived'), type: '' },
 }))
 
-const processingStatusLabels = computed<Record<string, { label: string; type: string }>>(() => ({
+const processingStatusLabels = computed<Record<string, StatusTagEntry>>(() => ({
   pending_ocr: { label: t('contractV2.processingStatuses.processing'), type: 'info' },
   ocr_processing: { label: t('contractV2.processingStatuses.processing'), type: 'warning' },
   pending_clean: { label: t('contractV2.processingStatuses.processing'), type: 'info' },
@@ -212,7 +225,7 @@ const processingStatusLabels = computed<Record<string, { label: string; type: st
   error: { label: t('contractV2.processingStatuses.error'), type: 'danger' },
 }))
 
-const revisionStatusLabels = computed<Record<string, { label: string; type: string }>>(() => ({
+const revisionStatusLabels = computed<Record<string, StatusTagEntry>>(() => ({
   draft: { label: t('contractV2.revisionStatuses.draft'), type: 'info' },
   review: { label: t('contractV2.revisionStatuses.review'), type: 'warning' },
   approved: { label: t('contractV2.revisionStatuses.approved'), type: 'success' },
@@ -221,7 +234,7 @@ const revisionStatusLabels = computed<Record<string, { label: string; type: stri
   archived: { label: t('contractV2.revisionStatuses.archived'), type: '' },
 }))
 
-const compareChangeTypeLabels = computed<Record<string, { label: string; type: string }>>(() => ({
+const compareChangeTypeLabels = computed<Record<string, StatusTagEntry>>(() => ({
   identical: { label: t('contractV2.compareChangeTypes.identical'), type: 'success' },
   modified: { label: t('contractV2.compareChangeTypes.modified'), type: 'warning' },
   semantic_change: { label: t('contractV2.compareChangeTypes.semantic_change'), type: 'danger' },
@@ -229,7 +242,7 @@ const compareChangeTypeLabels = computed<Record<string, { label: string; type: s
   removed: { label: t('contractV2.compareChangeTypes.removed'), type: 'danger' },
 }))
 
-const compareRiskLevelLabels = computed<Record<string, { label: string; type: string }>>(() => ({
+const compareRiskLevelLabels = computed<Record<string, StatusTagEntry>>(() => ({
   none: { label: t('contractV2.compareRiskLevels.none'), type: '' },
   low: { label: t('contractV2.compareRiskLevels.low'), type: 'info' },
   medium: { label: t('contractV2.compareRiskLevels.medium'), type: 'warning' },
@@ -246,7 +259,7 @@ const processingInfo = computed(() => {
   const entry = map[contract.value.document_id]
   const status = entry?.status || contract.value.processing_status
   if (!status) return null
-  const label = processingStatusLabels.value[status] || { label: status, type: 'info' }
+  const label = processingStatusLabels.value[status] || ({ label: status, type: 'info' } as StatusTagEntry)
   return {
     status,
     label: label.label,
@@ -255,9 +268,9 @@ const processingInfo = computed(() => {
   }
 })
 
-const classificationConfidenceType = (confidence: number): string => {
-  if (confidence >= 0.8) return 'success'
-  if (confidence >= 0.5) return 'warning'
+const classificationConfidenceType = (confidence: number): StatusTagEntry['type'] => {
+  if (confidence >= CONFIDENCE_HIGH_THRESHOLD) return 'success'
+  if (confidence >= CONFIDENCE_MEDIUM_THRESHOLD) return 'warning'
   return 'info'
 }
 
@@ -379,14 +392,37 @@ async function handleExtractMetadata(versionId: string) {
   try {
     const result = await store.doExtractMetadata(versionId)
     if (result?.metadata) {
-      // 仅展示业务元数据，不暴露 document_id/revision_id 等内部 ID
-      const metaLines = Object.entries(result.metadata)
-        .map(([key, value]) => `${key}: ${value || '-'}`)
-        .join('<br>')
+      // 仅展示已知业务字段，不暴露 document_id/revision_id 等内部 ID；对象值 JSON.stringify，纯文本展示
+      const metaLines = METADATA_DISPLAY_FIELDS
+        .filter(key => Object.prototype.hasOwnProperty.call(result.metadata, key))
+        .map((key) => {
+          const raw = result.metadata[key]
+          let text: string
+          if (raw === null || raw === undefined) {
+            text = '-'
+          } else if (typeof raw === 'object') {
+            text = JSON.stringify(raw)
+          } else {
+            text = String(raw)
+          }
+          const label = (() => {
+            switch (key) {
+              case 'contract_number': return t('contractV2.metadata.contractNumber')
+              case 'contract_type': return t('contractV2.contractType')
+              case 'contract_date': return t('contractV2.metadata.contractDate')
+              case 'parent_company': return t('contractV2.metadata.parentCompany')
+              case 'party_a': return t('contractV2.metadata.partyA')
+              case 'party_b': return t('contractV2.metadata.partyB')
+              case 'contract_amount': return t('contractV2.metadata.contractAmount')
+              default: return key
+            }
+          })()
+          return `${label}: ${escapeHtml(text)}`
+        })
       await ElMessageBox.alert(
-        metaLines,
+        metaLines.join('\n'),
         t('contractV2.businessVersions.extractResultTitle'),
-        { confirmButtonText: t('common.confirm'), dangerouslyUseHTMLString: true }
+        { confirmButtonText: t('common.confirm') }
       )
     }
   } catch {
@@ -429,7 +465,7 @@ async function handleSaveMetadata() {
       contract_amount: editableMetadata.value.contract_amount,
     })
     showMetadataDialog.value = false
-  } catch (e: unknown) {
+  } catch {
     ElMessage.error(t('common.operationFailed'))
   } finally {
     savingMetadata.value = false
@@ -541,8 +577,12 @@ async function exportCompareExcel() {
       { header: t('contractV2.compare.colBase'), key: 'base', width: 30 },
       { header: t('contractV2.compare.colTarget'), key: 'target', width: 30 },
     ]
+    const storedCompareResult = compareResult.value as LlmCompareRunResponse | LlmCompareStoredResult
+    const compare_time = storedCompareResult.compared_at
+      ? new Date(storedCompareResult.compared_at).toLocaleString()
+      : new Date(compareStartedAt.value || Date.now()).toLocaleString()
     const metadata_text = t('contractV2.compare.exportMetadata', {
-      compare_time: new Date(compareStartedAt.value || Date.now()).toLocaleString(),
+      compare_time,
       model_name: selectedModelName.value || t('contractV2.compare.defaultModel'),
       version_a: formatCompareVersion(compareVersionA.value),
       version_b: formatCompareVersion(compareVersionB.value),
@@ -713,7 +753,7 @@ async function handleFileUpload(event: Event) {
       </div>
       <div v-if="processingInfo" class="processing-status-area">
         <div class="processing-status-row">
-          <el-tag :type="(processingInfo.type as any)" size="large" effect="plain">
+          <el-tag :type="processingInfo.type" size="large" effect="plain">
             {{ processingInfo.label }}
           </el-tag>
           <el-button
@@ -764,7 +804,7 @@ async function handleFileUpload(event: Event) {
         </el-table-column>
         <el-table-column prop="revision_status" :label="$t('contractV2.businessVersions.columnVersionStatus')" width="90" align="center">
           <template #default="{ row }">
-            <el-tag size="small" :type="(revisionStatusLabels[row.revision_status]?.type as any) || 'info'" disable-transitions>
+            <el-tag size="small" :type="revisionStatusLabels[row.revision_status]?.type || ''" disable-transitions>
               {{ revisionStatusLabels[row.revision_status]?.label || row.revision_status }}
             </el-tag>
           </template>
@@ -846,7 +886,7 @@ async function handleFileUpload(event: Event) {
         </el-table-column>
         <el-table-column prop="version_status" :label="$t('contractV2.businessVersions.columnVersionStatus')" width="90" align="center">
           <template #default="{ row }">
-            <el-tag size="small" :type="(versionStatusLabels[row.version_status]?.type as any) || 'info'" disable-transitions>
+            <el-tag size="small" :type="versionStatusLabels[row.version_status]?.type || ''" disable-transitions>
               {{ versionStatusLabels[row.version_status]?.label || row.version_status }}
             </el-tag>
           </template>
@@ -864,7 +904,7 @@ async function handleFileUpload(event: Event) {
                 </template>
                 <el-tag
                   size="small"
-                  :type="(versionProcessingStatus[row.id]?.type as any) ?? 'info'"
+                  :type="versionProcessingStatus[row.id]?.type ?? ''"
                   disable-transitions
                 >
                   {{ versionProcessingStatus[row.id]?.label ?? $t('contractV2.businessVersions.loading') }}
@@ -1011,6 +1051,9 @@ async function handleFileUpload(event: Event) {
           <el-form-item :label="$t('contractV2.compare.temperature')">
             <el-slider v-model="compareTemperature" :min="0" :max="1" :step="0.1" style="width: 320px;" />
           </el-form-item>
+          <el-form-item :label="$t('contractV2.compare.concurrency')">
+            <el-slider v-model="compareConcurrency" :min="COMPARE_CONCURRENCY_MIN" :max="COMPARE_CONCURRENCY_MAX" :step="1" show-stops style="width: 320px;" />
+          </el-form-item>
         </el-form>
         <div style="text-align: right;">
           <el-button type="primary" @click="startCompareRun">{{ $t('contractV2.compare.startCompare') }}</el-button>
@@ -1058,14 +1101,14 @@ async function handleFileUpload(event: Event) {
           </el-table-column>
           <el-table-column prop="change_type" :label="$t('contractV2.compare.columnChangeType')" width="130">
             <template #default="{ row }">
-              <el-tag size="small" :type="(compareChangeTypeLabels[row.change_type]?.type as any) || 'info'" disable-transitions>
+              <el-tag size="small" :type="compareChangeTypeLabels[row.change_type]?.type || ''" disable-transitions>
                 {{ compareChangeTypeLabels[row.change_type]?.label || row.change_type }}
               </el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="risk_level" :label="$t('contractV2.compare.columnRiskLevel')" width="100">
             <template #default="{ row }">
-              <el-tag v-if="row.risk_level" size="small" :type="(compareRiskLevelLabels[row.risk_level]?.type as any) || 'info'" disable-transitions>
+              <el-tag v-if="row.risk_level" size="small" :type="compareRiskLevelLabels[row.risk_level]?.type || ''" disable-transitions>
                 {{ compareRiskLevelLabels[row.risk_level]?.label || row.risk_level }}
               </el-tag>
               <span v-else>-</span>

@@ -10,9 +10,9 @@ export async function importBackup(context, payload, options = {}) {
   const stats = { imported: 0, skipped: 0, errors: 0, details: [] };
 
   const tableOrder = [
-    'contract_v2_org_node',
-    'contract_v2_main_record',
-    'contract_v2_version',
+    'contract_v2_org_nodes',
+    'contract_v2_main_records',
+    'contract_v2_versions',
     'app_contract_mgr_v2_rows',
     'app_contract_mgr_v2_content',
   ];

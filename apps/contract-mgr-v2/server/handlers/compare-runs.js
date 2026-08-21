@@ -9,6 +9,13 @@ function getUserId(ctx) {
   return ctx.state.session?.id || null;
 }
 
+function resolveErrorStatus(err) {
+  const msg = err?.message || '';
+  if (msg.includes('不存在')) return 404;
+  if (msg.includes('无权限')) return 403;
+  return 500;
+}
+
 export async function get(ctx, deps) {
   try {
     const userId = getUserId(ctx);
@@ -18,7 +25,7 @@ export async function get(ctx, deps) {
     ctx.success(result);
   } catch (err) {
     logger.error(`[contract-mgr-v2] getCompareRunResult error: ${err.message}`);
-    ctx.error(err.message, 403);
+    ctx.error(err.message, resolveErrorStatus(err));
   }
 }
 

@@ -6,6 +6,7 @@ import { uploadAttachmentFormData } from '@/api/attachment'
 import type { OrgNode } from '@/api/contract-v2'
 import { useToastStore } from '@/stores/toast'
 import Pagination from '@/components/Pagination.vue'
+import { type StatusTagEntry } from './constants'
 
 const APP_ID = 'contract-mgr-v2'
 const { t } = useI18n()
@@ -36,14 +37,14 @@ const contractTypeLabels: Record<string, string> = {
   other: '其他',
 }
 
-const statusLabels: Record<string, { label: string; type: string }> = {
+const statusLabels: Record<string, StatusTagEntry> = {
   draft: { label: '草稿', type: 'info' },
   active: { label: '生效', type: 'success' },
   expired: { label: '过期', type: 'warning' },
   terminated: { label: '终止', type: 'danger' },
 }
 
-const processingStatusLabels: Record<string, { label: string; type: string }> = {
+const processingStatusLabels: Record<string, StatusTagEntry> = {
   // 处理中（多阶段统一映射为"处理中"）
   pending_ocr: { label: '处理中', type: 'info' },
   ocr_processing: { label: '处理中', type: 'warning' },
@@ -96,7 +97,7 @@ const filteredContracts = computed(() => {
   return list
 })
 
-function getProcessingLabel(contract: typeof store.contracts[number]): { label: string; type: string } | null {
+function getProcessingLabel(contract: typeof store.contracts[number]): StatusTagEntry | null {
   if (!contract.document_id) return null
   const map = store.processingStatusMap
   const entry = map[contract.document_id]
@@ -265,13 +266,13 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
             <el-tag
               v-if="getProcessingLabel(contract)"
               size="small"
-              :type="(getProcessingLabel(contract)!.type as any)"
+              :type="getProcessingLabel(contract)!.type"
               disable-transitions
               class="contract-card-processing"
             >
               {{ getProcessingLabel(contract)!.label }}
             </el-tag>
-            <el-tag size="small" :type="(statusLabels[contract.status]?.type as any) || 'info'" disable-transitions>
+            <el-tag size="small" :type="statusLabels[contract.status]?.type || ''" disable-transitions>
               {{ statusLabels[contract.status]?.label || contract.status }}
             </el-tag>
           </span>

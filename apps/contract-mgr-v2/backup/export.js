@@ -21,25 +21,25 @@ export async function exportBackup(context, options = {}) {
   const OrgNode = context.db.getModel('contract_v2_org_node');
   if (OrgNode) {
     const nodes = await OrgNode.findAll({ raw: true });
-    tables.push({ name: 'contract_v2_org_node', rows: nodes });
+    tables.push({ name: 'contract_v2_org_nodes', rows: nodes });
   } else {
-    tables.push({ name: 'contract_v2_org_node', rows: [], error: 'model not available' });
+    tables.push({ name: 'contract_v2_org_nodes', rows: [], error: 'model not available' });
   }
 
   const MainRecord = context.db.getModel('contract_v2_main_record');
   if (MainRecord) {
     const records = await MainRecord.findAll({ raw: true });
-    tables.push({ name: 'contract_v2_main_record', rows: records });
+    tables.push({ name: 'contract_v2_main_records', rows: records });
   } else {
-    tables.push({ name: 'contract_v2_main_record', rows: [], error: 'model not available' });
+    tables.push({ name: 'contract_v2_main_records', rows: [], error: 'model not available' });
   }
 
   const Version = context.db.getModel('contract_v2_version');
   if (Version) {
     const versions = await Version.findAll({ raw: true });
-    tables.push({ name: 'contract_v2_version', rows: versions });
+    tables.push({ name: 'contract_v2_versions', rows: versions });
   } else {
-    tables.push({ name: 'contract_v2_version', rows: [], error: 'model not available' });
+    tables.push({ name: 'contract_v2_versions', rows: [], error: 'model not available' });
   }
 
   return {

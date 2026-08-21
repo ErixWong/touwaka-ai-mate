@@ -25,6 +25,28 @@ function sectionsAreIdentical(textA, textB) {
   return normalizeForCompare(textA) === normalizeForCompare(textB) && normalizeForCompare(textA).length > 0;
 }
 
+const COMPARE_CACHE_TTL_MS = 30 * 60 * 1000;
+const COMPARE_CACHE_MAX_SIZE = 50;
+const COMPARE_CACHE = new Map();
+
+function buildCompareCacheKey(rowIdA, rowIdB, modelId) {
+  return `${rowIdA}:${rowIdB}:${modelId}`;
+}
+
+function evictOldestCompareCacheEntry() {
+  let oldestKey = null;
+  let oldestCachedAt = Infinity;
+  for (const [key, entry] of COMPARE_CACHE.entries()) {
+    if (entry.cachedAt < oldestCachedAt) {
+      oldestCachedAt = entry.cachedAt;
+      oldestKey = key;
+    }
+  }
+  if (oldestKey !== null) {
+    COMPARE_CACHE.delete(oldestKey);
+  }
+}
+
 const APPS_DIR = path.join(process.cwd(), 'apps');
 const CUSTOM_HANDLERS_CACHE = new Map();
 
@@ -623,6 +645,13 @@ async batchUpload(appId, userId, attachmentIds) {
 
     logger.info(`[compareRecords] Starting compare: ${rowIdA} vs ${rowIdB}`);
 
+    const cacheKey = buildCompareCacheKey(rowIdA, rowIdB, options.model_id || null);
+    const cached = COMPARE_CACHE.get(cacheKey);
+    if (cached && (Date.now() - cached.cachedAt) <= COMPARE_CACHE_TTL_MS) {
+      logger.info(`[compareRecords] Cache hit for key ${cacheKey}`);
+      return { results: cached.results, summary: cached.summary, duration_ms: cached.duration_ms };
+    }
+
     const startTime = Date.now();
 
     const [contentA, contentB] = await Promise.all([
@@ -756,6 +785,20 @@ async batchUpload(appId, userId, attachmentIds) {
     const durationMs = Date.now() - startTime;
 
     logger.info(`[compareRecords] Complete: ${summary.total} sections, ${summary.identical} identical, ${summary.modified} modified, ${summary.added} added, ${summary.removed} removed, ${summary.error} error (${durationMs}ms)`);
+
+    const shouldCache = summary.total > 0 && summary.error < summary.total;
+    if (shouldCache) {
+      if (COMPARE_CACHE.size >= COMPARE_CACHE_MAX_SIZE) {
+        evictOldestCompareCacheEntry();
+      }
+      COMPARE_CACHE.set(cacheKey, {
+        results,
+        summary,
+        duration_ms: durationMs,
+        cachedAt: Date.now(),
+      });
+      logger.info(`[compareRecords] Cache stored for key ${cacheKey}`);
+    }
 
     if (options.save !== false) {
       try {
