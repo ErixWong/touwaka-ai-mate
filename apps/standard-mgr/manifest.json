@@ -41,9 +41,15 @@
       "name": "app_standard_anchored_section",
       "type": "content",
       "description": "按 section 组织的带锚点文本副本"
+    },
+    {
+      "name": "app_enterprise",
+      "type": "config",
+      "description": "企业花名册（标准归属）"
     }
   ],
   "migrations": {
-    "install": "migrations/install.js"
+    "install": "migrations/install.js",
+    "uninstall": "migrations/uninstall.js"
   }
 }

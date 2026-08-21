@@ -2,7 +2,7 @@
   "id": "resume-fast-screening",
   "name": "简历快筛",
   "version": "0.1.0",
-  "description": "AI 驱动简历智能筛选：双引擎（手动对照+自动召回）、可解释评分、人才库管理",
+  "description": "AI 驱动简历智能筛选（演示版）：仅含前端 UI 与 mock 数据，无后端实现，不可实际运行",
   "icon": "🔍",
   "type": "workflow",
   "author": "Touwaka Team",
@@ -47,5 +47,6 @@
       "entry": "frontend/views/AppRuntimeView.vue"
     }
   },
-  "visibility": "all"
+  "visibility": "all",
+  "demo": true
 }

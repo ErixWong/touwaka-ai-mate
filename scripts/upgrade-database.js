@@ -3299,60 +3299,6 @@ const MIGRATIONS = [
     },
   },
 
-  // 40. current-feature-analyzer 规则集持久化表
-  {
-    name: 'app_current_feature_rule_sets & app_current_feature_rule_stages tables',
-    check: async (conn) =>
-      await hasTable(conn, 'app_current_feature_rule_sets') &&
-      await hasTable(conn, 'app_current_feature_rule_stages'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE app_current_feature_rule_sets (
-          id VARCHAR(32) NOT NULL COMMENT '主键ID，使用 Utils.newID()',
-          rule_set_name VARCHAR(128) NOT NULL COMMENT '规则集名称',
-          description TEXT NULL COMMENT '规则集描述',
-          business_context TEXT NULL COMMENT '业务背景说明',
-          prompt_template LONGTEXT NOT NULL COMMENT '阶段识别 Prompt 模板',
-          output_json_schema LONGTEXT NULL COMMENT '期望输出 JSON Schema 文本',
-          llm_instructions LONGTEXT NULL COMMENT '对 LLM 的额外约束说明',
-          is_default BIT(1) NOT NULL DEFAULT b'0' COMMENT '是否默认规则集',
-          is_enabled BIT(1) NOT NULL DEFAULT b'1' COMMENT '是否启用',
-          created_by VARCHAR(32) NULL COMMENT '创建人ID',
-          updated_by VARCHAR(32) NULL COMMENT '更新人ID',
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-          PRIMARY KEY (id),
-          KEY idx_app_current_feature_rule_sets_default (is_default),
-          KEY idx_app_current_feature_rule_sets_enabled (is_enabled)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='电流采样特征分析-规则集主表'
-      `);
-      console.log('  ✓ Created app_current_feature_rule_sets table');
-
-      await conn.execute(`
-        CREATE TABLE app_current_feature_rule_stages (
-          id VARCHAR(32) NOT NULL COMMENT '主键ID，使用 Utils.newID()',
-          rule_set_id VARCHAR(32) NOT NULL COMMENT '所属规则集ID',
-          stage_code VARCHAR(64) NOT NULL COMMENT '阶段编码',
-          stage_name VARCHAR(128) NOT NULL COMMENT '阶段名称',
-          stage_order INT NOT NULL COMMENT '阶段顺序',
-          semantic_definition TEXT NOT NULL COMMENT '语义定义',
-          expected_signal_features LONGTEXT NULL COMMENT '期望信号特征，可为 JSON 文本',
-          required BIT(1) NOT NULL DEFAULT b'1' COMMENT '是否必选阶段',
-          allow_repeat BIT(1) NOT NULL DEFAULT b'0' COMMENT '是否允许重复',
-          allow_overlap BIT(1) NOT NULL DEFAULT b'0' COMMENT '是否允许与其他阶段重叠',
-          min_duration_ms INT NULL COMMENT '最小时长毫秒',
-          max_duration_ms INT NULL COMMENT '最大时长毫秒',
-          notes TEXT NULL COMMENT '备注',
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-          PRIMARY KEY (id),
-          KEY idx_app_current_feature_rule_stages_rule_set_id (rule_set_id),
-          KEY idx_app_current_feature_rule_stages_stage_order (rule_set_id, stage_order)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='电流采样特征分析-规则集阶段定义表'
-      `);
-      console.log('  ✓ Created app_current_feature_rule_stages table');
-    }
-  },
 
   // ==================== 文档流水线阶段事实模型 ====================
   // 审计 AUDIT-ROUND01: 为 documents 增加 current_stage_started_at 字段
@@ -3385,130 +3331,8 @@ const MIGRATIONS = [
     }
   },
 
-  // 41. current-feature-analyzer 规则集表字段收敛
-  {
-    name: 'remove deprecated columns from app_current_feature_rule_sets',
-    check: async (conn) => {
-      const hasRuleSetTable = await hasTable(conn, 'app_current_feature_rule_sets');
-      if (!hasRuleSetTable) return false;
 
-      const [rows] = await conn.execute(`
-        SELECT COLUMN_NAME
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'app_current_feature_rule_sets'
-          AND COLUMN_NAME IN ('business_context', 'prompt_template', 'output_json_schema', 'llm_instructions')
-      `);
-      return rows.length === 0;
-    },
-    migrate: async (conn) => {
-      const [rows] = await conn.execute(`
-        SELECT COLUMN_NAME
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'app_current_feature_rule_sets'
-          AND COLUMN_NAME IN ('business_context', 'prompt_template', 'output_json_schema', 'llm_instructions')
-      `);
 
-      const columnNames = rows.map(row => row.COLUMN_NAME);
-      if (columnNames.length === 0) {
-        console.log('  ✓ No deprecated columns found in app_current_feature_rule_sets');
-        return;
-      }
-
-      const dropSql = columnNames.map(name => `DROP COLUMN ${name}`).join(', ');
-      await conn.execute(`ALTER TABLE app_current_feature_rule_sets ${dropSql}`);
-      console.log(`  ✓ Removed deprecated columns from app_current_feature_rule_sets: ${columnNames.join(', ')}`);
-    }
-  },
-
-  // 42. current-feature-analyzer 阶段表字段收敛
-  {
-    name: 'remove deprecated columns from app_current_feature_rule_stages',
-    check: async (conn) => {
-      const hasStageTable = await hasTable(conn, 'app_current_feature_rule_stages');
-      if (!hasStageTable) return false;
-
-      const [rows] = await conn.execute(`
-        SELECT COLUMN_NAME
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'app_current_feature_rule_stages'
-          AND COLUMN_NAME IN (
-            'expected_signal_features',
-            'required',
-            'allow_repeat',
-            'allow_overlap',
-            'min_duration_ms',
-            'max_duration_ms',
-            'notes'
-          )
-      `);
-      return rows.length === 0;
-    },
-    migrate: async (conn) => {
-      const [rows] = await conn.execute(`
-        SELECT COLUMN_NAME
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'app_current_feature_rule_stages'
-          AND COLUMN_NAME IN (
-            'expected_signal_features',
-            'required',
-            'allow_repeat',
-            'allow_overlap',
-            'min_duration_ms',
-            'max_duration_ms',
-            'notes'
-          )
-      `);
-
-      const columnNames = rows.map(row => row.COLUMN_NAME);
-      if (columnNames.length === 0) {
-        console.log('  ✓ No deprecated columns found in app_current_feature_rule_stages');
-        return;
-      }
-
-      const dropSql = columnNames.map(name => `DROP COLUMN ${name}`).join(', ');
-      await conn.execute(`ALTER TABLE app_current_feature_rule_stages ${dropSql}`);
-      console.log(`  ✓ Removed deprecated columns from app_current_feature_rule_stages: ${columnNames.join(', ')}`);
-    }
-  },
-
-  // 43. app_current_feature_rule_stages 新增 stage_color 字段
-  {
-    name: 'add stage_color column to app_current_feature_rule_stages',
-    check: async (conn) => {
-      const hasStageTable = await hasTable(conn, 'app_current_feature_rule_stages');
-      if (!hasStageTable) return true;
-      const [rows] = await conn.execute(`
-        SELECT COLUMN_NAME
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'app_current_feature_rule_stages'
-          AND COLUMN_NAME = 'stage_color'
-      `);
-      return rows.length > 0;
-    },
-    migrate: async (conn) => {
-      const DEFAULT_COLORS = ['#3b82f6', '#14b8a6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-      await conn.execute(`
-        ALTER TABLE app_current_feature_rule_stages
-        ADD COLUMN stage_color VARCHAR(32) NULL COMMENT '阶段标识颜色' AFTER stage_order
-      `);
-      const [stages] = await conn.execute(`
-        SELECT id, stage_order FROM app_current_feature_rule_stages ORDER BY rule_set_id, stage_order
-      `);
-      for (const stage of stages) {
-        const color = DEFAULT_COLORS[stage.stage_order % DEFAULT_COLORS.length];
-        await conn.execute(
-          `UPDATE app_current_feature_rule_stages SET stage_color = ? WHERE id = ?`,
-          [color, stage.id]
-        );
-      }
-      console.log('  ✓ Added stage_color column to app_current_feature_rule_stages');
-    }
-  },
 
   // 44. doc_content_units.version_id 外键重绑到 document_revisions
   {
@@ -4008,27 +3832,7 @@ const MIGRATIONS = [
     }
   },
 
-  // ==================== standard-mgr: 企业花名册 ====================
-  {
-    name: 'app_enterprise create table',
-    check: async (conn) => await hasTable(conn, 'app_enterprise'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE app_enterprise (
-          id VARCHAR(32) PRIMARY KEY COMMENT '主键，Utils.newID(32)',
-          name VARCHAR(100) NOT NULL COMMENT '企业名称（如：吉利、小鹏、比亚迪）',
-          name_en VARCHAR(200) NULL COMMENT '企业英文名',
-          description TEXT NULL COMMENT '备注',
-          is_active BIT(1) DEFAULT b'1' COMMENT '是否启用',
-          created_by VARCHAR(32) NULL COMMENT '创建人 users.id',
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          UNIQUE KEY uk_app_enterprise_name (name)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='企业花名册（标准归属）'
-      `);
-      console.log('  ✓ Created app_enterprise table');
-    }
-  },
+  // ==================== standard-mgr: app_standard.enterprise_id FK（兜底） ====================
 
   {
     name: 'app_standard enterprise FK to app_enterprise',
@@ -4050,55 +3854,9 @@ const MIGRATIONS = [
     }
   },
 
-  // ==================== standard-mgr: 企业标准编号前缀 ====================
-  {
-    name: 'app_enterprise add code_prefixes',
-    check: async (conn) => await hasColumn(conn, 'app_enterprise', 'code_prefixes'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        ALTER TABLE app_enterprise
-          ADD COLUMN code_prefixes TEXT NULL COMMENT '标准编号前缀（逗号分隔，如 Q-JL,Q-JLY；用于企业标准识别与归属推断）'
-      `);
-      console.log('  ✓ Added code_prefixes to app_enterprise');
-    }
-  },
 
-  // 注意：企业前缀初始数据通过 scripts/seed-enterprises.mjs 或管理后台配置，
   // 不硬编码在迁移脚本中，保持迁移脚本无业务数据。
 
-  // ==================== standard-mgr: app_enterprise.id 统一为 VARCHAR(32) ====================
-  {
-    name: 'app_enterprise id length to 32',
-    check: async (conn) => {
-      const [rows] = await conn.execute(
-        `SELECT CHARACTER_MAXIMUM_LENGTH AS len
-         FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_enterprise' AND COLUMN_NAME = 'id'`
-      );
-      return rows.length > 0 && rows[0].len >= 32;
-    },
-    migrate: async (conn) => {
-      // 1. 先移除外键约束（app_standard.enterprise_id -> app_enterprise.id）
-      await conn.execute(`
-        ALTER TABLE app_standard DROP FOREIGN KEY fk_standard_enterprise
-      `);
-      console.log('  - Dropped fk_standard_enterprise');
-
-      // 2. 放宽企业表 id 长度并保留注释
-      await conn.execute(`ALTER TABLE app_enterprise MODIFY COLUMN id VARCHAR(32) NOT NULL COMMENT '主键，Utils.newID(32)'`);
-      console.log('  - Widened app_enterprise.id to VARCHAR(32)');
-
-      // 3. 重新添加外键
-      await conn.execute(`
-        ALTER TABLE app_standard
-          ADD CONSTRAINT fk_standard_enterprise
-          FOREIGN KEY (enterprise_id) REFERENCES app_enterprise(id)
-      `);
-      console.log('  - Re-added fk_standard_enterprise');
-
-      console.log('  ✓ app_enterprise.id widened to VARCHAR(32)');
-    }
-  },
 
 ];
 

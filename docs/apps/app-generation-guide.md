@@ -31,12 +31,12 @@
 
 - `apps/{appId}/manifest.json`：app 的声明式描述入口。
 - `apps/{appId}/migrations/*.js`：安装/卸载时的数据库迁移脚本。
-- `apps/{appId}/handlers/*`：状态处理器。
+- `apps/{appId}/server/handlers/*`：wildcard handler（约定大于配置，见 wildcard-handler-spec.md）。
 - `apps/{appId}/tick/index.js`：后台轮询入口。
 - `server/services/app-market.service.js`：app 安装/卸载核心服务。
 - `server/services/mini-app.service.js`：app 运行期的数据和配置服务。
 - `lib/app-clock.js`：统一 tick 调度器。
-- `frontend/src/views/AppDetailView.vue`：app 详情页装配入口（当前通过硬编码 `AppComponentMap` 装配专用前端组件）。
+- `frontend/src/views/AppDetailView.vue`：app 详情页装配入口（通过 `import.meta.glob('@apps/*/frontend/views/*.vue')` + `runtime.frontend.entry` 动态装配专用前端组件）。
 - `frontend/src/components/apps/ReExtractDialog.vue`：仍保留的共享兼容组件示例。
 
 ### 核心数据表
@@ -70,7 +70,7 @@
 
 - `id`：app 唯一标识，通常与 `apps/{appId}` 目录名一致。
 - `name` / `description` / `icon` / `type`：基础展示信息。
-- `component`：前端组件名；当前 `AppDetailView.vue` 只会装配 `AppComponentMap` 中已注册的组件，未命中时显示“未配置前端组件”空态。
+- `component`：前端组件名（兼容字段）；当前 `AppDetailView.vue` 实际依据 `runtime.frontend.entry` 动态装配 `apps/{appId}/frontend/views/*.vue`，未命中时显示“未配置前端组件”空态。
 - `fields`：字段定义 JSON。
 - `views`：视图定义 JSON。
 - `config`：运行配置 JSON。
@@ -187,7 +187,9 @@ await this.models.AppClockRegistry.create({
 - `apps/contract-mgr/tick/index.js`
 - `apps/ocr-tool/tick/index.js`
 - `apps/invoice-mgr/tick/index.js`
-- `lib/doc-pipeline-worker.js`
+- `apps/els/tick/index.js`
+- `apps/current-feature-analyzer/tick/index.js`
+- `lib/doc-pipeline-worker.js`（平台内部流水线，非业务 app）
 
 ### tick 上下文里有什么
 
@@ -266,8 +268,8 @@ await this.models.AppClockRegistry.create({
 2. `apps/{appId}/migrations/install.js`
 3. `apps/{appId}/migrations/uninstall.js`
 4. `apps/{appId}/tick/index.js`，如果这个 app 需要后台轮询
-5. `apps/{appId}/handlers/*`，如果该 app 自己需要 handler 机制
-6. `apps/{appId}/states.js`，如果该 app 想把状态定义集中到单独模块（推荐；对 `invoice-mgr`、`contract-mgr` 这类严格状态 app 当前为必需）
+5. `apps/{appId}/server/handlers/*`，如果这个 app 需要自定义 API（wildcard 模式，见 wildcard-handler-spec.md）
+6. `apps/{appId}/states.js`，如果该 app 想把状态定义集中到单独模块（推荐，非强制）
 
 ### manifest 里最重要的内容
 
@@ -303,9 +305,9 @@ await this.models.AppClockRegistry.create({
 2. app 自己的 service 模块中
 3. app 自己的 routes / runtime 模块中
 
-需要补充一条当前仓库事实：
+需要补充一条当前仓库事实（已更新）：
 
-- `server/services/mini-app.service.js` 中的 `STRICT_STATE_APP_IDS` 目前把 `invoice-mgr` 和 `contract-mgr` 视为严格状态 app；这两个 app 若缺失 `states.js` 或缺失关键导出，会在运行时报错。
+- 早期 `server/services/mini-app.service.js` 中的 `STRICT_STATE_APP_IDS`（把 `invoice-mgr` 和 `contract-mgr` 视为严格状态 app、缺失 `states.js` 即报错）**已移除**。当前自治主路径下，app 初始状态取自安装时展开的 `config.step_resources` 首个 key（`MiniAppService.getAppInitialState()`），带 `'pending'` 兜底，不再依赖 `states.js` 导出。
 
 关键约束只有一条：
 
@@ -388,10 +390,10 @@ await this.models.AppClockRegistry.create({
 
 流程如下：
 
-1. 根据路由中的 `appId` 调用 `getApp(appId)`。
-2. 读取返回的 `component` 字段。
-3. 如果 `component` 在 `AppComponentMap` 中有映射，则加载专用视图。
-4. 如果 `component` 未命中 `AppComponentMap`，则显示“该应用尚未配置前端组件”的空状态，不再回退到 `GenericMiniApp.vue`。
+1. 根据路由中的 `appId` 调用 `getAppWithRuntime(appId)`。
+2. 读取返回的 `runtime.frontend.entry` 字段。
+3. 通过 `import.meta.glob('@apps/*/frontend/views/*.vue')` 匹配并动态加载对应视图组件。
+4. 若 `runtime.frontend.entry` 未声明或匹配不到，则显示“该应用尚未配置前端组件”的空状态，不再回退到 `GenericMiniApp.vue`。
 
 ### 关于通用前端容器的当前事实
 
@@ -399,8 +401,8 @@ await this.models.AppClockRegistry.create({
 
 这意味着当前前端装配现实是：
 
-1. 平台主路径依赖 `AppDetailView.vue` 中硬编码的 `AppComponentMap`
-2. app 若要在当前前端可用，通常仍需要接入专用视图组件
+1. 平台主路径依赖 `AppDetailView.vue` 的 glob 动态装配（`runtime.frontend.entry` → `frontend/views/*.vue`）
+2. app 若要在当前前端可用，需要提供 `frontend/views/*.vue` 专用视图组件并声明 `runtime.frontend.entry`
 3. “通用容器覆盖大多数 app”的思路属于历史方案，不应再当作当前实现假设
 
 ### 自定义前端组件当前如何工作
@@ -416,14 +418,14 @@ await this.models.AppClockRegistry.create({
 
 并返回代码、样式和版本信息。
 
-但当前默认详情页 `AppDetailView.vue` 并没有直接消费这个动态组件 API，而是维护了一个硬编码的 `AppComponentMap`。这意味着：
+但当前默认详情页 `AppDetailView.vue` **已经不再依赖硬编码组件映射**：它通过 `getAppWithRuntime(appId)` 获取 `runtime.frontend.entry`，再用 `import.meta.glob('@apps/*/frontend/views/*.vue')` 动态加载 `apps/{appId}/frontend/views/*.vue`。这意味着：
 
-- 新 app 若想挂载专用前端，通常仍要修改主前端工程并发布。
-- 后端提供的“动态组件接口”还没有真正成为默认装配通路。
+- 新 app 只要在 `apps/{appId}/frontend/views/` 下放置视图组件，并在 manifest 的 `runtime.frontend.entry` 声明入口，即可自动装配，无需修改主前端工程。
+- 后端提供的 `/api/app-market/component/:appId` 动态组件接口与 glob 装配属于两条并行链路，当前默认主路径是 glob 装配。
 
 ### 这意味着什么
 
-从第一性原则看，真正的 app 平台应尽量让“新 app 接入”不依赖修改平台主前端代码。当前系统已经有了后端动态组件基础，但前端最后一公里尚未完成。
+从第一性原则看，真正的 app 平台应尽量让“新 app 接入”不依赖修改平台主前端代码。当前系统已经通过 `import.meta.glob` + `runtime.frontend.entry` 实现了这一闭环：前端最后一公里已经打通，新 app 接入前端不再需要改主前端工程。
 
 ## 五、如何按当前实现生成一个新 app
 
@@ -441,8 +443,9 @@ apps/{appId}/
     uninstall.js
   tick/
     index.js
-  handlers/
-    ...
+  server/
+    handlers/
+    services/
   frontend/
     ... 可选
 ```
@@ -490,13 +493,13 @@ apps/{appId}/
 
 ### 步骤 5：决定是否走通用前端
 
-当前不应再以复用 `GenericMiniApp.vue` 作为新 app 的默认前端方案。
+当前不应再以复用 `GenericMiniApp.vue` 作为新 app 的默认前端方案（该组件已删除）。
 
 按当前实现，优先策略应是：
 
-1. 明确 app 是否已有专用视图组件
-2. 若需要在现有前端可访问，则把组件接入 `AppDetailView.vue` 的 `AppComponentMap`
-3. 动态组件加载链路仍是后续优化方向，不是现行默认主路径
+1. 在 `apps/{appId}/frontend/views/` 下实现专用视图组件
+2. 在 manifest 的 `runtime.frontend.entry` 声明入口路径（如 `frontend/views/AppRuntimeView.vue`）
+3. `AppDetailView.vue` 通过 `import.meta.glob` 自动装配，无需修改主前端工程
 
 只有在以下情况才建议做专用组件：
 
@@ -531,19 +534,17 @@ apps/{appId}/
 
 ## 六、值得优先优化和重构的方向
 
-### 1. 打通自定义前端动态加载闭环
+### 1. 前端装配现状（已闭环）
 
 现状：
 
-- 后端有动态组件 API
-- 前端仍靠 `AppComponentMap` 硬编码映射
+- `AppDetailView.vue` 已通过 `import.meta.glob('@apps/*/frontend/views/*.vue')` + `runtime.frontend.entry` 动态装配 app 专用视图
+- 新 app 放置 `frontend/views/*.vue` 并声明 manifest `runtime.frontend.entry` 即可自动接入，无需修改主前端工程
 
-建议：
+遗留优化：
 
-- 让 `AppDetailView.vue` 优先根据 `app.component` 调用 `/api/app-market/component/:appId` 获取组件包
-- 将当前硬编码映射仅保留为兼容兜底
-
-这是最直接提升“平台化”的一步。
+- `/api/app-market/component/:appId`（UMD 组件包）与 glob 装配是两条并行链路，可考虑收敛为单一主路径
+- 动态组件版本管理与热更新仍可增强
 
 ### 2. 收敛 `AppClock` 配置来源
 
@@ -570,17 +571,16 @@ apps/{appId}/
 - 要么正式支持 manifest 自定义 tick 脚本路径
 - 要么删除该历史预留，减少误导
 
-### 4. 收敛前端装配入口
+### 4. 前端装配入口已收敛为 glob 动态加载
 
 现状：
 
-- `AppDetailView.vue` 仍依赖硬编码 `AppComponentMap`
-- 动态组件加载 API 已存在，但尚未成为默认主路径
+- `AppDetailView.vue` 已统一走 `import.meta.glob` + `runtime.frontend.entry` 装配，硬编码组件映射已移除
+- `component` 字段与 UMD 动态组件接口仍作为兼容能力保留，但不是默认主路径
 
-建议：
+遗留优化：
 
-- 让 `AppDetailView.vue` 优先消费动态组件加载链路
-- 将当前硬编码映射收敛为兼容兜底，而不是长期主路径
+- 可将 `/api/app-market/component/:appId` 收敛为 glob 装配的兜底，或明确弃用其中一条链路
 
 ### 5. 将文档补齐到“manifest 契约级”
 

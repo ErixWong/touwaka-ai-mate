@@ -67,8 +67,9 @@ app 自己负责：
 需要特别说明：
 
 1. 对多数新 app，`states.js` 仍是推荐而非必选。
-2. 但对已经走自治主路径、且服务层显式声明为严格状态 app 的存量 app（如 `invoice-mgr`、`contract-mgr`），当前实现里**已经把 `states.js` 当作必需依赖**。
-3. 因此这里的“非强制”应理解为“不是平台对所有 app 一刀切强制”，而不是“所有 app 都可以省略”。
+2. 早期服务层的 `STRICT_STATE_APP_IDS`（曾把 `invoice-mgr`、`contract-mgr` 列为严格状态 app，缺失 `states.js` 即报错）**已移除**，当前不存在“缺失 states.js 即报错”的平台级强制。
+3. 当前自治主路径下，app 初始状态取自安装时展开的 `config.step_resources` 首个 key（`MiniAppService.getAppInitialState()`），带 `'pending'` 兜底，不再依赖 `states.js` 导出。
+4. 因此这里的“非强制”应理解为“平台不再把任何 app 的状态语义来源当作强制依赖”，状态完全由 app 自己代码负责。
 
 只要状态语义由 app 自己负责，也可以放在：
 
@@ -87,7 +88,8 @@ apps/{appId}/
   tick/
     index.js
   server/
-    routes.js         # 如果 app 需要自定义 API
+    handlers/         # wildcard handler（约定大于配置，见 wildcard-handler-spec.md）
+    services/         # 可选：app 自己的 service 模块
   states.js           # 推荐：集中定义状态语义
 ```
 

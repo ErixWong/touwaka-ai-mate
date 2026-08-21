@@ -32,8 +32,24 @@
   },
   "custom_handlers": {},
   "fields": [],
-  "extension_tables": [],
-  "migrations": {},
+  "extension_tables": [
+    {
+      "name": "app_current_feature_rule_sets",
+      "type": "config",
+      "description": "规则集主表（阶段识别 Prompt/Schema 配置）",
+      "managed_by": "server/handlers/rule-sets.js"
+    },
+    {
+      "name": "app_current_feature_rule_stages",
+      "type": "config",
+      "description": "规则集阶段定义表",
+      "managed_by": "server/handlers/rule-sets.js"
+    }
+  ],
+  "migrations": {
+    "install": "migrations/install.js",
+    "uninstall": "migrations/uninstall.js"
+  },
   "config": {
     "enabled": true,
     "features": [
