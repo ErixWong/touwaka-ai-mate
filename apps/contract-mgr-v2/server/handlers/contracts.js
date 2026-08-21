@@ -15,6 +15,13 @@ function isAdmin(ctx) {
   return session.isAdmin || false;
 }
 
+function resolveErrorStatus(err, fallback = 500) {
+  const msg = err?.message || '';
+  if (msg.includes('不存在') || msg.toLowerCase().includes('not found')) return 404;
+  if (msg.includes('无权限')) return 403;
+  return fallback;
+}
+
 export async function get(ctx, deps) {
   try {
     const service = new ContractV2Service(deps.db);
@@ -32,7 +39,7 @@ export async function get(ctx, deps) {
     ctx.success(contracts);
   } catch (err) {
     logger.error(`[contract-mgr-v2] contracts GET error: ${err.message}`);
-    ctx.error(err.message, err.message.includes('not found') ? 404 : 500);
+    ctx.error(err.message, resolveErrorStatus(err));
   }
 }
 
@@ -65,7 +72,7 @@ export async function put(ctx, deps) {
     ctx.success(contract);
   } catch (err) {
     logger.error(`[contract-mgr-v2] updateContract error: ${err.message}`);
-    ctx.error(err.message, 400);
+    ctx.error(err.message, resolveErrorStatus(err, 400));
   }
 }
 
@@ -83,7 +90,7 @@ async function del(ctx, deps) {
     ctx.success(null, '删除成功');
   } catch (err) {
     logger.error(`[contract-mgr-v2] deleteContract error: ${err.message}`);
-    ctx.error(err.message, 400);
+    ctx.error(err.message, resolveErrorStatus(err, 400));
   }
 }
 

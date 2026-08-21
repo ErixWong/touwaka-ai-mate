@@ -21,12 +21,16 @@ import {
   updateVersionMetadata,
   createCompareRun,
   getCompareRunResult,
+  compareVersionsWithLlm,
+  getVersionCompareResult,
   type OrgNode,
   type ContractMainRecord,
   type ContractVersion,
   type ContractListResult,
   type DashboardData,
   type CompareRunResult,
+  type LlmCompareRunResponse,
+  type LlmCompareStoredResult,
   type VersionMetadata,
 } from '@/api/contract-v2'
 import {
@@ -35,6 +39,9 @@ import {
   setCurrentRevision,
 } from '@/api/docs'
 import { useToastStore } from './toast'
+import { i18n } from '@/i18n'
+
+const t = i18n.global.t
 
 export function getProcessingStatusLabel(status: string) {
   const processingStatusLabels: Record<string, { label: string; type: string }> = {
@@ -106,7 +113,7 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     try {
       tree.value = await getOrgTree()
     } catch (e: unknown) {
-      toast.error((e as Error).message || '加载组织树失败')
+      toast.error((e as Error).message || t('contractV2.toast.loadTreeFailed'))
     } finally {
       treeLoading.value = false
     }
@@ -118,7 +125,7 @@ export const useContractV2Store = defineStore('contract-v2', () => {
       await loadTree()
       return node
     } catch (e: unknown) {
-      toast.error((e as Error).message || '创建节点失败')
+      toast.error((e as Error).message || t('contractV2.toast.createNodeFailed'))
       throw e
     }
   }
@@ -129,7 +136,7 @@ export const useContractV2Store = defineStore('contract-v2', () => {
       await loadTree()
       return node
     } catch (e: unknown) {
-      toast.error((e as Error).message || '更新节点失败')
+      toast.error((e as Error).message || t('contractV2.toast.updateNodeFailed'))
       throw e
     }
   }
@@ -141,9 +148,9 @@ export const useContractV2Store = defineStore('contract-v2', () => {
         selectedNodeId.value = null
       }
       await loadTree()
-      toast.success('删除成功')
+      toast.success(t('contractV2.toast.deleteNodeSuccess'))
     } catch (e: unknown) {
-      toast.error((e as Error).message || '删除节点失败')
+      toast.error((e as Error).message || t('contractV2.toast.deleteNodeFailed'))
     }
   }
 
@@ -152,6 +159,7 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     include_children?: boolean
     contract_type?: string
     status?: string
+    keyword?: string
     page?: number
     page_size?: number
   }) {
@@ -163,7 +171,7 @@ export const useContractV2Store = defineStore('contract-v2', () => {
       contractsPage.value = result.pagination.page
       contractsPageSize.value = result.pagination.size
     } catch (e: unknown) {
-      toast.error((e as Error).message || '加载合同列表失败')
+      toast.error((e as Error).message || t('contractV2.toast.loadContractsFailed'))
     } finally {
       contractsLoading.value = false
     }
@@ -175,14 +183,14 @@ export const useContractV2Store = defineStore('contract-v2', () => {
       currentContract.value = contract
       currentContractVersions.value = contract.versions || []
     } catch (e: unknown) {
-      toast.error((e as Error).message || '加载合同详情失败')
+      toast.error((e as Error).message || t('contractV2.toast.loadContractDetailFailed'))
     }
   }
 
   async function addContract(data: { org_node_id: string; contract_name: string; contract_type?: string }) {
     try {
       const contract = await createContract(data)
-      toast.success('创建成功')
+      toast.success(t('contractV2.toast.createContractSuccess'))
       await loadContracts({
         org_node_id: selectedNodeId.value || undefined,
         page: contractsPage.value,
@@ -190,7 +198,7 @@ export const useContractV2Store = defineStore('contract-v2', () => {
       })
       return contract
     } catch (e: unknown) {
-      toast.error((e as Error).message || '创建合同失败')
+      // 错误由调用组件统一提示，避免双 toast
       throw e
     }
   }
@@ -198,10 +206,10 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   async function editContract(contractId: string, data: Record<string, unknown>) {
     try {
       const contract = await updateContract(contractId, data)
-      toast.success('更新成功')
+      toast.success(t('contractV2.toast.updateContractSuccess'))
       return contract
     } catch (e: unknown) {
-      toast.error((e as Error).message || '更新合同失败')
+      toast.error((e as Error).message || t('contractV2.toast.updateContractFailed'))
       throw e
     }
   }
@@ -209,14 +217,14 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   async function removeContract(contractId: string) {
     try {
       await deleteContract(contractId)
-      toast.success('删除成功')
+      toast.success(t('contractV2.toast.deleteContractSuccess'))
       await loadContracts({
         org_node_id: selectedNodeId.value || undefined,
         page: contractsPage.value,
         page_size: contractsPageSize.value,
       })
     } catch (e: unknown) {
-      toast.error((e as Error).message || '删除合同失败')
+      toast.error((e as Error).message || t('contractV2.toast.deleteContractFailed'))
     }
   }
 
@@ -231,11 +239,11 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   }) {
     try {
       const version = await createVersionFromAttachment(contractId, data)
-      toast.success('版本创建成功')
+      toast.success(t('contractV2.toast.createVersionSuccess'))
       await loadContractDetail(contractId)
       return version
     } catch (e: unknown) {
-      toast.error((e as Error).message || '创建版本失败')
+      // 错误由调用组件统一提示，避免双 toast
       throw e
     }
   }
@@ -243,36 +251,36 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   async function setVersionCurrent(versionId: string) {
     try {
       await setCurrentVersion(versionId)
-      toast.success('已设为当前版本')
+      toast.success(t('contractV2.toast.setCurrentSuccess'))
       if (currentContract.value) {
         await loadContractDetail(currentContract.value.id)
       }
     } catch (e: unknown) {
-      toast.error((e as Error).message || '设置失败')
+      toast.error((e as Error).message || t('contractV2.toast.setCurrentFailed'))
     }
   }
 
   async function approveVersionAction(versionId: string) {
     try {
       await approveVersion(versionId)
-      toast.success('审批通过')
+      toast.success(t('contractV2.toast.approveSuccess'))
       if (currentContract.value) {
         await loadContractDetail(currentContract.value.id)
       }
     } catch (e: unknown) {
-      toast.error((e as Error).message || '审批失败')
+      toast.error((e as Error).message || t('contractV2.toast.approveFailed'))
     }
   }
 
   async function removeVersion(versionId: string) {
     try {
       await deleteVersion(versionId)
-      toast.success('版本已删除')
+      toast.success(t('contractV2.toast.deleteVersionSuccess'))
       if (currentContract.value) {
         await loadContractDetail(currentContract.value.id)
       }
     } catch (e: unknown) {
-      toast.error((e as Error).message || '删除版本失败')
+      toast.error((e as Error).message || t('contractV2.toast.deleteVersionFailed'))
     }
   }
 
@@ -281,7 +289,7 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     try {
       dashboard.value = await getDashboard()
     } catch (e: unknown) {
-      toast.error((e as Error).message || '加载Dashboard失败')
+      toast.error((e as Error).message || t('contractV2.toast.loadDashboardFailed'))
     } finally {
       dashboardLoading.value = false
     }
@@ -318,21 +326,21 @@ export const useContractV2Store = defineStore('contract-v2', () => {
         errorCode: null,
         updatedAt: new Date().toISOString(),
       }
-      toast.success('已重新提交处理')
+      toast.success(t('contractV2.toast.retryProcessingSuccess'))
     } catch (e: unknown) {
-      toast.error((e as Error).message || '重试失败')
+      toast.error((e as Error).message || t('contractV2.toast.retryProcessingFailed'))
     }
   }
 
   async function setDocRevisionCurrent(revisionId: string) {
     try {
       await setCurrentRevision(revisionId)
-      toast.success('已设为当前版本')
+      toast.success(t('contractV2.toast.setCurrentSuccess'))
       if (currentContract.value) {
         await loadContractDetail(currentContract.value.id)
       }
     } catch (e: unknown) {
-      toast.error((e as Error).message || '设置失败')
+      toast.error((e as Error).message || t('contractV2.toast.setCurrentFailed'))
     }
   }
 
@@ -343,10 +351,10 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   async function doExtractMetadata(versionId: string) {
     try {
       const result = await extractMetadata(versionId)
-      toast.success('元数据提取成功')
+      toast.success(t('contractV2.toast.extractMetadataSuccess'))
       return result
     } catch (e: unknown) {
-      toast.error((e as Error).message || '元数据提取失败')
+      // 错误由调用组件统一提示，避免双 toast
       throw e
     }
   }
@@ -355,7 +363,7 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     try {
       return await getVersionMetadata(versionId)
     } catch (e: unknown) {
-      toast.error((e as Error).message || '获取元数据失败')
+      toast.error((e as Error).message || t('contractV2.toast.getMetadataFailed'))
       throw e
     }
   }
@@ -368,27 +376,48 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   }) {
     try {
       const result = await updateVersionMetadata(versionId, metadata)
-      toast.success('元数据保存成功')
+      toast.success(t('contractV2.toast.updateMetadataSuccess'))
       return result
     } catch (e: unknown) {
-      toast.error((e as Error).message || '保存元数据失败')
+      // 错误由调用组件统一提示，避免双 toast
       throw e
     }
   }
 
   async function doCreateCompareRun(versionIdA: string, versionIdB: string) {
     try {
+      // v2 已切换到 LLM 语义比对（qwen3.6:35b）：compare 接口需要 row_id，
+      // 由调用方（组件）从 versions 映射后传入；此处保留旧签名兼容
       const result = await createCompareRun(versionIdA, versionIdB)
-      toast.success('比对任务已创建')
+      toast.success(t('contractV2.toast.createCompareRunSuccess'))
       return result
     } catch (e: unknown) {
-      toast.error((e as Error).message || '创建比对失败')
+      toast.error((e as Error).message || t('contractV2.toast.createCompareRunFailed'))
+      throw e
+    }
+  }
+
+  async function doCompareVersionsWithLlm(
+    rowIdA: string,
+    rowIdB: string,
+    options?: { model_id?: string; temperature?: number; concurrency?: number },
+  ): Promise<LlmCompareRunResponse> {
+    try {
+      const result = await compareVersionsWithLlm(rowIdA, rowIdB, options)
+      toast.success(t('contractV2.toast.compareSuccess'))
+      return result
+    } catch (e: unknown) {
+      // 错误由调用组件统一提示，避免双 toast
       throw e
     }
   }
 
   async function doGetCompareRunResult(runId: string): Promise<CompareRunResult> {
     return await getCompareRunResult(runId)
+  }
+
+  async function doGetVersionCompareResult(rowId: string): Promise<LlmCompareStoredResult | null> {
+    return await getVersionCompareResult(rowId)
   }
 
   return {
@@ -432,6 +461,8 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     doUpdateVersionMetadata,
     doCreateCompareRun,
     doGetCompareRunResult,
+    doCompareVersionsWithLlm,
+    doGetVersionCompareResult,
     retryDocProcessing,
     setDocRevisionCurrent,
   }

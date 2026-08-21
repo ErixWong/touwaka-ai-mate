@@ -1,6 +1,6 @@
 import logger from '../../../../lib/logger.js';
 import Utils from '../../../../lib/utils.js';
-import { Op } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import modelRegistry from '../../../../lib/model-registry.js';
 import DocumentIntakeService from '../../../../lib/document-intake.service.js';
 import CollectionAccessService from '../../../../lib/collection-access-service.js';
@@ -352,65 +352,6 @@ class ContractV2Service {
     await contract.destroy();
   }
 
-  async createVersion(contractId, data, userId) {
-    this.ensureModels();
-    await this.ensureContractOwner(contractId, userId);
-
-    const t = await this.db.sequelize.transaction();
-    try {
-      const contract = await this.models.MainRecord.findByPk(contractId, { transaction: t, lock: true });
-      if (!contract) throw new Error('合同不存在');
-
-      const existingCount = contract.version_count || 0;
-      const versionNumber = data.version_number || `v${existingCount + 1}.0`;
-
-      const existing = await this.models.Version.findOne({
-        where: { contract_id: contractId, version_number: versionNumber },
-        transaction: t,
-      });
-      if (existing) throw new Error(`版本号 ${versionNumber} 已存在`);
-
-      const rowId = Utils.newID(20);
-      const contentId = Utils.newID(20);
-      const isFirst = existingCount === 0;
-      
-      const version = await this.models.Version.create({
-        id: Utils.newID(20),
-        contract_id: contractId,
-        row_id: rowId,
-        file_id: data.file_id || null,
-        version_number: versionNumber,
-        version_name: data.version_name || null,
-        version_type: data.version_type || 'draft',
-        version_status: 'draft',
-        is_current: isFirst ? 1 : 0,
-        created_by: userId,
-      }, { transaction: t });
-
-      // 创建 content 记录，启动处理流程
-      await this.db.sequelize.query(`
-        INSERT INTO app_contract_mgr_v2_content 
-        (row_id, content_id, process_step, file_id, created_at, updated_at)
-        VALUES (?, ?, 'pending_ocr', ?, NOW(), NOW())
-      `, {
-        replacements: [rowId, contentId, data.file_id || null],
-        transaction: t
-      });
-
-      await contract.update({
-        version_count: existingCount + 1,
-        current_version_id: isFirst ? version.id : contract.current_version_id,
-        status: 'active',
-      }, { transaction: t });
-
-      await t.commit();
-      return { ...version.toJSON(), row_id: rowId };
-    } catch (e) {
-      await t.rollback();
-      throw e;
-    }
-  }
-
   /**
    * 获取合同类型配置（从 app config 中读取）
    */
@@ -421,8 +362,17 @@ class ContractV2Service {
     try {
       const MiniApp = this.db.getModel('mini_app');
       const app = await MiniApp.findByPk(APP_ID, { attributes: ['config'], raw: true });
-      if (app?.config?.contract_types) {
-        this._contractTypeConfig = app.config.contract_types;
+      // mini_app.config 为 TEXT 列，raw 查询返回 JSON 字符串，需解析后再读取
+      let config = app?.config;
+      if (typeof config === 'string') {
+        try {
+          config = JSON.parse(config);
+        } catch {
+          config = null;
+        }
+      }
+      if (config?.contract_types) {
+        this._contractTypeConfig = config.contract_types;
         return this._contractTypeConfig;
       }
     } catch (e) {
@@ -443,9 +393,11 @@ class ContractV2Service {
    */
   async getOrCreateCollection(contractType, userId) {
     const types = await this.getContractTypeConfig();
-    const typeConfig = types.find(t => t.id === contractType);
+    let typeConfig = types.find(t => t.id === contractType);
     if (!typeConfig) {
-      throw new Error(`未知的合同类型: ${contractType}`);
+      // 兜底：配置缺失/未知类型时不阻断业务，回退到 other（或首个类型）
+      logger.warn(`[ContractV2Service] 未知的合同类型: ${contractType}, fallback 到 other`);
+      typeConfig = types.find(t => t.id === 'other') || types[0] || { id: 'other' };
     }
 
     // 使用“每用户 + 合同类型”维度的私有 collection，避免跨用户串用
@@ -517,7 +469,7 @@ class ContractV2Service {
    * @param {string} contractId - 合同ID
    * @param {string} fileId - 附件ID（必须已上传到 attachments 表）
    * @param {Object} options - 版本选项
-   * @param {string} options.contract_type - 合同类型 (sales|supply)，必填
+   * @param {string} options.contract_type - 合同类型（strategy|framework|development|sales|supply|purchase|quality|nda|technical|other），必填
    * @param {string} options.version_number - 版本号，默认 v{n+1}.0
    * @param {string} options.version_name - 版本名称
    * @param {string} options.version_type - 版本类型 (draft|signed|amendment|supplement)
@@ -547,13 +499,88 @@ class ContractV2Service {
       logger.warn('[ContractV2Service] Cannot verify attachment - model not available');
     }
 
-    const t = await this.db.sequelize.transaction();
+    // 事务外预读：计算版本号/是否首版（intake 在独立事务中执行，需在外部事务之前完成，
+    // 避免 MariaDB 11.7 在“外部事务 + 内部嵌套独立事务”组合下 INSERT 报
+    // ER_CHECKREAD (1117) "Record has changed since last read" 的问题）
+    const preContract = await this.models.MainRecord.findByPk(contractId);
+    if (!preContract) throw new Error('合同不存在');
+
+    const preCount = preContract.version_count || 0;
+    const versionNumber = options.version_number || `v${preCount + 1}.0`;
+    const isFirst = preCount === 0;
+
+    const documentMode = options.document_mode === 'existing' ? 'existing' : 'new';
+    const existingDocumentId = options.existing_document_id || null;
+
+    // 复用公共文档 intake 入口（独立事务，自动提交）
+    let documentId = null;
+    let revisionId = null;
     try {
+      const intakeService = new DocumentIntakeService(this.db);
+      const collectionAccessService = new CollectionAccessService(this.db);
+
+      await intakeService.validateIntakeRequest({
+        appId: APP_ID,
+        collectionId: collection.id,
+        attachmentIds: [fileId],
+        userId,
+        collectionAccessService,
+      });
+
+      let intakeResult;
+      if (documentMode === 'existing') {
+        if (!existingDocumentId) {
+          throw new Error('沿用已有 document 时，existing_document_id 必填');
+        }
+
+        const Document = this.db.getModel('document');
+        const existingDocument = await Document.findByPk(existingDocumentId, {
+          attributes: ['id', 'collection_id'],
+          raw: true,
+        });
+        if (!existingDocument) {
+          throw new Error('指定的 document 不存在');
+        }
+        if (existingDocument.collection_id !== collection.id) {
+          throw new Error('指定的 document 不属于当前合同类型集合');
+        }
+
+        intakeResult = await intakeService.createIntakeRevision({
+          documentId: existingDocumentId,
+          attachments: [{ id: fileId }],
+          userId,
+          revisionLabel: options.version_number || undefined,
+          changeSummary: options.version_name || 'Contract version upload',
+        });
+      } else {
+        intakeResult = await intakeService.createIntakeDocument({
+          appId: APP_ID,
+          collectionId: collection.id,
+          attachments: [{ id: fileId }],
+          userId,
+        });
+      }
+
+      documentId = intakeResult.document_id;
+      revisionId = intakeResult.revision_id;
+      logger.info(`[ContractV2Service] Created doc intake ${documentId}/${revisionId} for version ${versionNumber}`);
+    } catch (intakeError) {
+      // 如果创建 intake 失败，整体失败，不允许创建没有 document_id 的版本
+      logger.error('[ContractV2Service] Failed to create doc intake:', intakeError.message);
+      throw new Error(`文档创建失败: ${intakeError.message}`);
+    }
+
+    const runTxnOnce = async () => {
+      const t = await this.db.sequelize.transaction({
+        // MariaDB 11.7 + REPEATABLE READ 下，先独立 intake 再开外部事务时偶发出现
+        // ER_CHECKREAD (1117) "Record has changed since last read"，用 READ_COMMITTED 规避
+        isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
+      });
+      try {
       const contract = await this.models.MainRecord.findByPk(contractId, { transaction: t, lock: true });
       if (!contract) throw new Error('合同不存在');
 
       const existingCount = contract.version_count || 0;
-      const versionNumber = options.version_number || `v${existingCount + 1}.0`;
 
       const existing = await this.models.Version.findOne({
         where: { contract_id: contractId, version_number: versionNumber },
@@ -566,66 +593,20 @@ class ContractV2Service {
       const contentId = Utils.newID(20);
       const isFirst = existingCount === 0;
 
-      const documentMode = options.document_mode === 'existing' ? 'existing' : 'new';
-      const existingDocumentId = options.existing_document_id || null;
-
-      // 复用公共文档 intake 入口
-      let documentId = null;
-      let revisionId = null;
-      try {
-        const intakeService = new DocumentIntakeService(this.db);
-        const collectionAccessService = new CollectionAccessService(this.db);
-
-        await intakeService.validateIntakeRequest({
-          appId: APP_ID,
-          collectionId: collection.id,
-          attachmentIds: [fileId],
-          userId,
-          collectionAccessService,
-        });
-
-        let intakeResult;
-        if (documentMode === 'existing') {
-          if (!existingDocumentId) {
-            throw new Error('沿用已有 document 时，existing_document_id 必填');
-          }
-
-          const Document = this.db.getModel('document');
-          const existingDocument = await Document.findByPk(existingDocumentId, {
-            attributes: ['id', 'collection_id'],
-            raw: true,
-          });
-          if (!existingDocument) {
-            throw new Error('指定的 document 不存在');
-          }
-          if (existingDocument.collection_id !== collection.id) {
-            throw new Error('指定的 document 不属于当前合同类型集合');
-          }
-
-          intakeResult = await intakeService.createIntakeRevision({
-            documentId: existingDocumentId,
-            attachments: [{ id: fileId }],
-            userId,
-            revisionLabel: options.version_number || undefined,
-            changeSummary: options.version_name || 'Contract version upload',
-          });
-        } else {
-          intakeResult = await intakeService.createIntakeDocument({
-            appId: APP_ID,
-            collectionId: collection.id,
-            attachments: [{ id: fileId }],
-            userId,
-          });
+      await this.db.sequelize.query(
+        `INSERT INTO app_doc_bindings
+           (id, app_id, row_id, document_id, current_revision_id, binding_status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'active', NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+           document_id = VALUES(document_id),
+           current_revision_id = VALUES(current_revision_id),
+           binding_status = 'active',
+           updated_at = NOW()`,
+        {
+          replacements: [Utils.newID(), APP_ID, rowId, documentId, revisionId],
+          transaction: t,
         }
-
-        documentId = intakeResult.document_id;
-        revisionId = intakeResult.revision_id;
-        logger.info(`[ContractV2Service] Created doc intake ${documentId}/${revisionId} for version ${versionNumber}`);
-      } catch (intakeError) {
-        // 如果创建 intake 失败，整体回滚，不允许创建没有 document_id 的版本
-        logger.error('[ContractV2Service] Failed to create doc intake, rolling back:', intakeError.message);
-        throw new Error(`文档创建失败: ${intakeError.message}`);
-      }
+      );
 
       const version = await this.models.Version.create({
         id: Utils.newID(20),
@@ -651,10 +632,10 @@ class ContractV2Service {
       // 直接写入 content 表，不经过 mini-app.service.js
       await this.db.sequelize.query(`
         INSERT INTO app_contract_mgr_v2_content 
-        (row_id, content_id, process_step, file_id, created_at, updated_at)
-        VALUES (?, ?, 'pending_ocr', ?, NOW(), NOW())
+        (row_id, content_id, document_id, process_step, file_id, created_at, updated_at)
+        VALUES (?, ?, ?, 'pending_ocr', ?, NOW(), NOW())
       `, {
-        replacements: [rowId, contentId, fileId],
+        replacements: [rowId, contentId, documentId, fileId],
         transaction: t
       });
 
@@ -678,8 +659,21 @@ class ContractV2Service {
       await t.commit();
       logger.info(`[ContractV2Service] Created version ${versionNumber} for contract ${contractId} with row_id ${rowId} (no mini_app_rows dependency)`);
        return { ...version.toJSON(), row_id: rowId, document_id: documentId, revision_id: revisionId };
+      } catch (e) {
+        await t.rollback();
+        throw e;
+      }
+    };
+
+    // 事务外已创建 intake（独立提交），事务内失败仅回滚本事务数据；
+    // MariaDB 11.7 偶发 ER_CHECKREAD (1117)，重试一次
+    try {
+      return await runTxnOnce();
     } catch (e) {
-      await t.rollback();
+      if (/Record has changed since last read/.test(e?.message || '')) {
+        logger.warn(`[ContractV2Service] ER_CHECKREAD detected, retrying version creation once`);
+        return await runTxnOnce();
+      }
       throw e;
     }
   }
@@ -690,9 +684,9 @@ class ContractV2Service {
     return await this.loadVersionsByContractIds([contractId]);
   }
 
-  async updateVersion(versionId, data, userId) {
+  async updateVersion(versionId, data, userId, skipOwnerCheck = false) {
     this.ensureModels();
-    await this.ensureVersionOwner(versionId, userId);
+    if (!skipOwnerCheck) await this.ensureVersionOwner(versionId, userId);
     const version = await this.models.Version.findByPk(versionId);
 
     const updates = {};
@@ -747,9 +741,9 @@ class ContractV2Service {
     return version.toJSON();
   }
 
-  async deleteVersion(versionId, userId) {
+  async deleteVersion(versionId, userId, skipOwnerCheck = false) {
     this.ensureModels();
-    await this.ensureVersionOwner(versionId, userId);
+    if (!skipOwnerCheck) await this.ensureVersionOwner(versionId, userId);
     const version = await this.models.Version.findByPk(versionId);
 
     const contractId = version.contract_id;
@@ -986,7 +980,7 @@ class ContractV2Service {
     const chunks = await DocChunk.findAll({
       where: { revision_id: version.revision_id },
       attributes: ['content'],
-      order: [['chunk_index', 'ASC']],
+      order: [['seq', 'ASC']],
       raw: true
     });
 
@@ -1027,7 +1021,7 @@ ${fullText.substring(0, 8000)}`;
 
     // 调用 LLM 提取
     try {
-      const InternalLLMService = (await import('../../lib/internal-llm-service.js')).default;
+      const InternalLLMService = (await import('../../../../lib/internal-llm-service.js')).default;
       const llmService = new InternalLLMService(this.db);
       
       const result = await llmService.chat({

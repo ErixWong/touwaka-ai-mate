@@ -28,15 +28,8 @@
   "compatibility": {
     "min_platform_version": "2.0.0",
     "requires": {
-      "mcp": [
-        "markitdown",
-        "mineru"
-      ],
       "skills": []
     }
-  },
-  "custom_handlers": {
-    "batch_upload": "controllers/batch-upload.js"
   },
   "fields": [
     {
@@ -192,6 +185,27 @@
     ],
     "contract_types": [
       {
+        "id": "strategy",
+        "name": "战略合同",
+        "description": "与战略合作伙伴签订的合同",
+        "collection_name": "战略合同",
+        "metadata_fields": ["合同名称", "合作方", "合同编号", "生效日期", "版本号"]
+      },
+      {
+        "id": "framework",
+        "name": "框架合同",
+        "description": "约定合作框架的合同",
+        "collection_name": "框架合同",
+        "metadata_fields": ["合同名称", "框架甲方", "框架乙方", "生效日期", "版本号"]
+      },
+      {
+        "id": "development",
+        "name": "开发合同",
+        "description": "软件开发/定制开发合同",
+        "collection_name": "开发合同",
+        "metadata_fields": ["合同名称", "委托方", "开发方", "合同金额", "交付日期", "版本号"]
+      },
+      {
         "id": "sales",
         "name": "销售合同",
         "description": "与客户签订的合同",
@@ -217,6 +231,41 @@
           "合同金额",
           "版本号"
         ]
+      },
+      {
+        "id": "purchase",
+        "name": "采购合同",
+        "description": "采购货物或服务的合同",
+        "collection_name": "采购合同",
+        "metadata_fields": ["供应商", "采购金额", "交货日期", "版本号"]
+      },
+      {
+        "id": "quality",
+        "name": "质量合同",
+        "description": "质量协议/质量保证合同",
+        "collection_name": "质量合同",
+        "metadata_fields": ["供应商", "质量条款", "生效日期", "版本号"]
+      },
+      {
+        "id": "nda",
+        "name": "保密协议",
+        "description": "保密协议 NDA",
+        "collection_name": "保密协议",
+        "metadata_fields": ["双方名称", "保密期限", "生效日期", "版本号"]
+      },
+      {
+        "id": "technical",
+        "name": "技术合同",
+        "description": "技术服务/技术许可合同",
+        "collection_name": "技术合同",
+        "metadata_fields": ["合同名称", "技术方", "合同金额", "生效日期", "版本号"]
+      },
+      {
+        "id": "other",
+        "name": "其他合同",
+        "description": "其他类型的合同",
+        "collection_name": "其他合同",
+        "metadata_fields": ["合同名称", "对方名称", "合同金额", "生效日期", "版本号"]
       }
     ],
     "supported_formats": [
@@ -230,27 +279,6 @@
     "batch_enabled": true,
     "batch_limit": 50,
     "step_resources": {
-      "pending_ocr": {
-        "type": "mcp",
-        "mcp": {
-          "server": "markitdown",
-          "tool": "create_task",
-          "params_mapping": {
-            "file_base64": "file.base64",
-            "file_name": "file.name"
-          }
-        }
-      },
-      "ocr_submitted": {
-        "type": "mcp",
-        "mcp": {
-          "server": "markitdown",
-          "tool": "get_task_status",
-          "hide_params_mapping": true
-        },
-        "judge_model_id": null,
-        "judge_temperature": 0.1
-      },
       "pending_filter": {
         "type": "internal_llm",
         "model_id": null,
@@ -272,7 +300,7 @@
     {
       "name": "pending_ocr",
       "label": "等待OCR",
-      "description": "提交OCR任务",
+      "description": "等待文档平台 OCR 结果",
       "sort_order": 1,
       "is_initial": true,
       "is_terminal": false,
@@ -284,7 +312,7 @@
     {
       "name": "ocr_submitted",
       "label": "OCR处理中",
-      "description": "检查OCR状态并持久化OCR文本到扩展表",
+      "description": "读取文档平台 OCR 结果并持久化到扩展表",
       "sort_order": 2,
       "is_initial": false,
       "is_terminal": false,
@@ -326,13 +354,25 @@
       "is_terminal": false,
       "is_error": false,
       "handler": "contract-v2-text-section",
-      "success_next": "pending_review",
+      "success_next": "pending_classify",
       "failure_next": "section_failed"
+    },
+    {
+      "name": "pending_classify",
+      "label": "等待分类",
+      "description": "LLM分类匹配历史版本",
+      "sort_order": 6,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": null,
+      "success_next": "pending_review",
+      "failure_next": null
     },
     {
       "name": "pending_review",
       "label": "等待确认",
-      "sort_order": 6,
+      "sort_order": 7,
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
@@ -343,7 +383,7 @@
     {
       "name": "confirmed",
       "label": "已确认",
-      "sort_order": 7,
+      "sort_order": 8,
       "is_initial": false,
       "is_terminal": true,
       "is_error": false,
@@ -394,71 +434,6 @@
       "handler": null,
       "success_next": null,
       "failure_next": null
-    }
-  ],
-  "apis": [
-    {
-      "path": "/org-nodes/tree",
-      "methods": [
-        "GET"
-      ],
-      "handler": "server/controllers/org-nodes.js"
-    },
-    {
-      "path": "/org-nodes",
-      "methods": [
-        "POST"
-      ],
-      "handler": "server/controllers/org-nodes.js"
-    },
-    {
-      "path": "/contracts",
-      "methods": [
-        "GET"
-      ],
-      "handler": "server/controllers/contracts.js"
-    },
-    {
-      "path": "/contracts",
-      "methods": [
-        "POST"
-      ],
-      "handler": "server/controllers/contracts.js"
-    },
-    {
-      "path": "/contracts/:contractId",
-      "methods": [
-        "GET"
-      ],
-      "handler": "server/controllers/contracts.js"
-    },
-    {
-      "path": "/contracts/:contractId",
-      "methods": [
-        "PUT"
-      ],
-      "handler": "server/controllers/contracts.js"
-    },
-    {
-      "path": "/contracts/:contractId",
-      "methods": [
-        "DELETE"
-      ],
-      "handler": "server/controllers/contracts.js"
-    },
-    {
-      "path": "/contracts/:contractId/versions/from-attachment",
-      "methods": [
-        "POST"
-      ],
-      "handler": "server/controllers/version-from-attachment.js"
-    },
-    {
-      "path": "/dashboard",
-      "methods": [
-        "GET"
-      ],
-      "handler": "server/controllers/dashboard.js"
     }
   ],
   "visibility": "all"

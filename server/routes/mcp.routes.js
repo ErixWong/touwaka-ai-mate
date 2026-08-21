@@ -73,6 +73,19 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
     return `不支持的 transport_type: ${resolvedType}`;
   }
 
+  /**
+   * 脱敏 MCP Server 对象
+   * headers / env_template 等敏感字段仅对管理员可见
+   */
+  function sanitizeMcpServer(server, isAdmin) {
+    if (isAdmin || !server) return server;
+    return {
+      ...server,
+      headers: null,
+      env_template: null,
+    };
+  }
+
   // ============== MCP Server 管理 ==============
 
   /**
@@ -102,11 +115,12 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
       });
 
       // 组装结果
+      const isAdmin = ctx.state.session?.isAdmin || false;
       const result = servers.map(server => {
         const hasUserCredential = userCredentials.some(c => c.mcp_server_id === server.id);
         const hasDefaultCredential = defaultCredentials.some(c => c.mcp_server_id === server.id);
 
-        return {
+        return sanitizeMcpServer({
           id: server.id,
           name: server.name,
           display_name: server.display_name,
@@ -126,7 +140,7 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
           // 凭证状态
           has_credential: hasUserCredential || hasDefaultCredential,
           credential_source: hasUserCredential ? 'user' : (hasDefaultCredential ? 'default' : null),
-        };
+        }, isAdmin);
       });
 
       ctx.success({ servers: result });
@@ -156,7 +170,8 @@ export default function createMcpRoutes(db, authMiddleware, residentSkillManager
         return;
       }
 
-      ctx.success({ server });
+      const isAdmin = ctx.state.session?.isAdmin || false;
+      ctx.success({ server: sanitizeMcpServer(server, isAdmin) });
 
     } catch (error) {
       logger.error('Get MCP server error:', error);

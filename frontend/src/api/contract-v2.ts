@@ -1,5 +1,7 @@
 import apiClient, { apiRequest } from './client'
 
+const COMPARE_BASE = '/mini-apps/contract-mgr-v2'
+
 export interface OrgNode {
   id: string
   parent_id: string | null
@@ -117,6 +119,7 @@ export async function listContracts(params?: {
   include_children?: boolean
   contract_type?: string
   status?: string
+  keyword?: string
   page?: number
   page_size?: number
 }): Promise<ContractListResult> {
@@ -301,6 +304,81 @@ export async function createCompareRun(versionIdA: string, versionIdB: string): 
 
 export async function getCompareRunResult(runId: string): Promise<CompareRunResult> {
   return apiRequest<CompareRunResult>(apiClient.get(`/apps/contract-mgr-v2/compare-runs/${runId}`))
+}
+
+// ===== LLM 语义比对（qwen3.6:35b，替代旧 compare-runs 纯文本比对）=====
+export interface LlmCompareKeyChange {
+  description?: string
+  old?: string
+  new?: string
+}
+
+export interface LlmCompareSectionResult {
+  type: 'matched' | 'added' | 'removed'
+  title: string
+  change_type: 'identical' | 'modified' | 'semantic_change' | 'added' | 'removed' | 'error'
+  summary: string
+  key_changes?: LlmCompareKeyChange[]
+  risk_level?: string
+  content_preview?: string
+}
+
+export interface LlmCompareData {
+  results: LlmCompareSectionResult[]
+  summary: {
+    total: number
+    identical: number
+    modified: number
+    added: number
+    removed: number
+  }
+  duration_ms: number
+}
+
+/** POST /compare 实时运行结果（target_row_id 可选） */
+export interface LlmCompareRunResponse extends LlmCompareData {
+  target_row_id?: string
+}
+
+/** GET /data/:rowId/compare 已存储结果 */
+export interface LlmCompareStoredResult extends LlmCompareData {
+  target_row_id: string
+  model_name?: string
+  compared_at?: string
+}
+
+// qwen3.6:35b（ErixAI relay）
+export const CONTRACT_LLM_COMPARE_MODEL_ID = 'mojfh2d7cvgl6uam7fnx'
+
+/** LLM 语义比对默认参数（组件层应引用这些常量，避免两边默认值分叉） */
+export const CONTRACT_LLM_COMPARE_DEFAULT_TEMPERATURE = 0.3
+export const CONTRACT_LLM_COMPARE_DEFAULT_CONCURRENCY = 3
+export const CONTRACT_LLM_COMPARE_TIMEOUT_MS = 1800000
+
+export async function compareVersionsWithLlm(
+  rowIdA: string,
+  rowIdB: string,
+  options?: { model_id?: string; temperature?: number; concurrency?: number },
+): Promise<LlmCompareRunResponse> {
+  return apiRequest<LlmCompareRunResponse>(
+    apiClient.post(
+      `${COMPARE_BASE}/compare`,
+      {
+        row_id_a: rowIdA,
+        row_id_b: rowIdB,
+        model_id: options?.model_id || CONTRACT_LLM_COMPARE_MODEL_ID,
+        temperature: options?.temperature ?? CONTRACT_LLM_COMPARE_DEFAULT_TEMPERATURE,
+        concurrency: options?.concurrency ?? CONTRACT_LLM_COMPARE_DEFAULT_CONCURRENCY,
+      },
+      { timeout: CONTRACT_LLM_COMPARE_TIMEOUT_MS },
+    ),
+  )
+}
+
+export async function getVersionCompareResult(rowId: string): Promise<LlmCompareStoredResult | null> {
+  return apiRequest<LlmCompareStoredResult | null>(
+    apiClient.get(`${COMPARE_BASE}/data/${rowId}/compare`),
+  )
 }
 
 export interface VersionContent {

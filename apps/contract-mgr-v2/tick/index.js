@@ -1,99 +1,7 @@
 import logger from '../../../lib/logger.js';
+import fs from 'fs/promises';
 import path from 'path';
 import { splitIntoChunks, getStepResource, getPrompt, callLlmJson } from '../server/handlers/shared.js';
-
-const MAX_LOG_STRING_LENGTH = parseInt(process.env.CONTRACT_MGR_V2_LOG_MAX_LENGTH || '1000', 10);
-const MAX_EXTRACT_TEXT_LENGTH = parseInt(process.env.CONTRACT_MGR_V2_EXTRACT_TEXT_MAX_LENGTH || '200000', 10);
-
-function truncateString(value, maxLength = MAX_LOG_STRING_LENGTH) {
-  if (typeof value !== 'string') return value;
-  if (value.length <= maxLength) return value;
-  return `${value.slice(0, maxLength)}...[truncated ${value.length - maxLength} chars]`;
-}
-
-function looksLikeDataUrl(value) {
-  return typeof value === 'string' && /^data:[^;]+;base64,/i.test(value);
-}
-
-function looksLikeLargeBase64(value) {
-  return typeof value === 'string' && value.length > 1024 && /^[A-Za-z0-9+/=\r\n]+$/.test(value);
-}
-
-function sanitizeString(value, maxLength = MAX_LOG_STRING_LENGTH) {
-  if (looksLikeDataUrl(value)) return `[data-url omitted length=${value.length}]`;
-  if (looksLikeLargeBase64(value)) return `[base64 omitted length=${value.length}]`;
-  return truncateString(value, maxLength);
-}
-
-function summarizeForLog(value, depth = 0, seen = new WeakSet()) {
-  if (value == null) return value;
-  if (typeof value === 'string') return sanitizeString(value);
-  if (typeof value === 'number' || typeof value === 'boolean') return value;
-  if (typeof value === 'function') return `[function ${value.name || 'anonymous'}]`;
-
-  if (depth >= 3) {
-    if (Array.isArray(value)) return `[array(${value.length}) truncated]`;
-    return '[object truncated]';
-  }
-
-  if (typeof value === 'object') {
-    if (seen.has(value)) return '[circular]';
-    seen.add(value);
-
-    if (Array.isArray(value)) {
-      const items = value.slice(0, 8).map(item => summarizeForLog(item, depth + 1, seen));
-      if (value.length > 8) items.push(`[+${value.length - 8} more items]`);
-      return items;
-    }
-
-    const keys = Object.keys(value);
-    const result = {};
-    for (const key of keys.slice(0, 16)) {
-      result[key] = summarizeForLog(value[key], depth + 1, seen);
-    }
-    if (keys.length > 16) result.__truncated_keys__ = keys.length - 16;
-    return result;
-  }
-
-  return truncateString(String(value));
-}
-
-function stringifyForLog(value, maxLength = MAX_LOG_STRING_LENGTH) {
-  try {
-    return truncateString(JSON.stringify(summarizeForLog(value)), maxLength);
-  } catch (error) {
-    return `[unserializable: ${error.message}]`;
-  }
-}
-
-function safeParseJson(value) {
-  if (!value) return null;
-  if (typeof value === 'object') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-}
-
-function extractTextValue(value, maxLength = MAX_EXTRACT_TEXT_LENGTH) {
-  if (value == null) return '';
-  if (typeof value === 'string') return sanitizeString(value, maxLength);
-  if (Array.isArray(value)) {
-    return truncateString(value.map(item => extractTextValue(item, maxLength)).filter(Boolean).join('\n'), maxLength);
-  }
-  if (typeof value === 'object') {
-    const preferredKeys = ['text', 'content', 'markdown', 'md', 'result', 'output', 'message'];
-    for (const key of preferredKeys) {
-      if (value[key]) {
-        const extracted = extractTextValue(value[key], maxLength);
-        if (extracted) return extracted;
-      }
-    }
-    return truncateString(JSON.stringify(summarizeForLog(value)), maxLength);
-  }
-  return truncateString(String(value), maxLength);
-}
 
 const CONTENT_TABLE = 'app_contract_mgr_v2_content';
 const ROWS_TABLE = 'app_contract_mgr_v2_rows';
@@ -103,11 +11,29 @@ const CONTRACT_FIELDS = [
   { name: 'party_a', label: '甲方', guide: '查找甲方名称' },
   { name: 'party_b', label: '乙方', guide: '查找乙方名称' },
   { name: 'parent_company', label: '上级公司', guide: '如果甲方是子公司，推断上级公司' },
-  { name: 'contract_amount', label: '合同金额', guide: '查找合同总金额' },
+  { name: 'contract_amount', label: '合同金额', guide: '查找合同总金额，去除 RMB/人民币/￥/$ 前缀和千分位，优先输出阿拉伯数字' },
   { name: 'contract_date', label: '签订日期', guide: '查找签订日期，格式 YYYY-MM-DD' },
 ];
 
-const DEFAULT_CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 50000;
+const DEFAULT_CHUNK_MAX_LENGTH = parseInt(process.env.TEXT_FILTER_MAX_LENGTH) || 12000;
+
+function parseContractAmount(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== 'string') return null;
+
+  const normalized = value
+    .trim()
+    .replace(/^(?:rmb|cny|usd|人民币|美元)\s*/i, '')
+    .replace(/^[¥￥$]\s*/, '')
+    .replace(/[,，\s]/g, '');
+  const match = normalized.match(/[-+]?\d+(?:\.\d+)?/);
+  if (!match) return null;
+
+  const amount = Number(match[0]);
+  return Number.isFinite(amount) ? amount : null;
+}
 
 const JSON_FORMAT_PROMPT = `
 返回JSON格式：
@@ -116,8 +42,55 @@ const JSON_FORMAT_PROMPT = `
   "carried_over": "末尾不完整章节的原文"
 }`;
 
+/**
+ * 归一化标题：去掉所有空白，便于 `## 标题行` 与 LLM 输出标题的匹配
+ */
+function normalizeTitle(t) {
+  return (t || '').replace(/\s+/g, '').toLowerCase();
+}
+
+/**
+ * 根据清洗后文本（markdown，含 `## 章节标题` 行）计算每个 section 的行号范围。
+ * 分 section 比对依赖 start_line/end_line 从 filtered_text 中切片，
+ * 否则比对时 slice(undefined, undefined) 会退化为全文比对（慢且重复）。
+ */
+function computeSectionLines(filteredText, sections) {
+  // 存量数据可能把换行存成了字面 `\n`（split 后是单行），先还原为真实换行
+  const normalized = (filteredText || '').replace(/\\n/g, '\n');
+  const lines = normalized.split('\n');
+  // 收集所有 `##` 标题行（注意跳过正文中非标题的 `##` 引用，只认行首 `##`）
+  const headingLines = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^#{1,3}\s+/.test(line)) {
+      headingLines.push({ lineNo: i, title: line.replace(/^#+\s*/, '').trim() });
+    }
+  }
+
+  const result = sections.map((s) => {
+    const titleNorm = normalizeTitle(s.title);
+    let start = -1;
+    for (const h of headingLines) {
+      const hNorm = normalizeTitle(h.title);
+      if (titleNorm && (hNorm.includes(titleNorm) || titleNorm.includes(hNorm))) {
+        start = h.lineNo;
+        break;
+      }
+    }
+    return { ...s, start_line: start >= 0 ? start : 0, end_line: 0 };
+  });
+
+  // end_line = 下一个 section 的 start_line（未找到则取全文末尾）
+  for (let i = 0; i < result.length; i++) {
+    const next = result[i + 1];
+    const nextStart = next && next.start_line > 0 ? next.start_line : lines.length;
+    result[i].end_line = nextStart;
+  }
+  return result;
+}
+
 export async function tick(context) {
-  const { app, registry, services } = context;
+  const { app, services } = context;
   
   if (!app) {
     logger.info('[tick] No app found');
@@ -125,7 +98,7 @@ export async function tick(context) {
   }
   
   const pending = await services.query(`
-    SELECT row_id, content_id, process_step, ocr_task_id, file_id, filter_carried_over, filter_chunk_index
+    SELECT row_id, content_id, document_id, process_step, filter_carried_over, filter_chunk_index
     FROM ${CONTENT_TABLE}
     WHERE process_step IN ('pending_ocr', 'ocr_submitted', 'pending_filter', 'pending_extract', 'pending_section', 'pending_classify')
     ORDER BY created_at ASC
@@ -155,10 +128,10 @@ export async function tick(context) {
 async function processRow(row, app, services) {
   switch (row.process_step) {
     case 'pending_ocr':
-      await handleOcrSubmit(row, app, services);
+      await handleOcrSubmit(row, services);
       break;
     case 'ocr_submitted':
-      await handleOcrCheck(row, app, services);
+      await handleOcrCheck(row, services);
       break;
     case 'pending_filter':
       await handleFilter(row, app, services);
@@ -175,233 +148,176 @@ async function processRow(row, app, services) {
   }
 }
 
-async function handleOcrSubmit(row, app, services) {
-  logger.info(`[tick] Submitting OCR for ${row.row_id}`);
-  
-  if (!row.file_id) {
-    await updateProcessStep(services, row.content_id, 'ocr_failed');
-    return;
-  }
-  
-  // 获取文件信息（用于 params_mapping）
-  const fileInfo = await services.query(`
-    SELECT a.id, a.file_name, a.file_path
-    FROM attachments a
-    WHERE a.id = ?
-  `, [row.file_id]);
-  
-  if (!fileInfo || fileInfo.length === 0) {
-    await updateProcessStep(services, row.content_id, 'ocr_failed');
-    return;
-  }
-  
-  const file = fileInfo[0];
-  
-  // 读取文件为 base64
-  const fullPath = path.join(process.cwd(), 'data', 'attachments', file.file_path);
-  const fs = await import('fs/promises');
-  const buffer = await fs.readFile(fullPath);
-  const base64 = buffer.toString('base64');
-  
-  const config = getStepResource(app, 'pending_ocr', {});
-  const mcp = config.mcp || { server: 'markitdown', tool: 'submit_conversion_task' };
-  
-  logger.info(`[tick] OCR MCP config: server=${mcp.server}, tool=${mcp.tool}`);
-  logger.info(`[tick] OCR file: ${file.file_name}, size=${buffer.length} bytes`);
-  
-  try {
-    const params = {};
-    if (mcp.params_mapping) {
-      for (const [paramKey, sourcePath] of Object.entries(mcp.params_mapping)) {
-        if (sourcePath === 'file.base64') {
-          params[paramKey] = base64;
-        } else if (sourcePath === 'file.name') {
-          params[paramKey] = file.file_name;
-        }
-      }
-    } else {
-      params.content = base64;
-      params.filename = file.file_name;
-    }
-    
-    logger.info(`[tick] OCR request params: filename=${params.filename || params.name}, base64_length=${base64.length}`);
-    logger.debug(`[tick] OCR request full params keys: ${Object.keys(params).join(', ')}`);
-    
-    const result = await services.callMcp(mcp.server, mcp.tool, params);
-    
-    logger.info(`[tick] OCR response type: ${typeof result}`);
-    logger.debug(`[tick] OCR response: ${stringifyForLog(result, 500)}`);
-    
-    let taskId = '';
-    
-    const parsePrompt = `从以下 MCP 工具调用结果中提取 task_id（任务ID）。
-如果结果中包含任务ID，返回JSON格式：{"task_id": "提取的ID值"}
-如果没有找到task_id但有其他标识符（如id、job_id等），也提取出来。
-如果完全无法提取，返回：{"task_id": ""}
+const DOC_OCR_WAITING_STATUSES = new Set(['pending_ocr', 'ocr_processing']);
+const DOC_OCR_RESULT_STATUSES = new Set([
+  'pending_clean',
+  'pending_outline',
+  'pending_chunk',
+  'pending_embedding',
+  'ready',
+  'error',
+]);
 
-MCP返回结果：
-${stringifyForLog(result, 1000)}`;
-
-    try {
-      const parsed = await services.llm.extractJson(parsePrompt, '', {
-        modelId: config.parse_model_id || null,
-        temperature: 0.1,
-        defaultValue: { task_id: '' },
-      });
-
-      if (parsed && parsed.task_id) {
-        taskId = parsed.task_id;
-        logger.info(`[tick] OCR task_id extracted by LLM: ${taskId}`);
-      }
-    } catch (e) {
-      logger.warn(`[tick] LLM parse failed, fallback to hardcoded: ${e.message}`);
-    }
-    
-    if (!taskId) {
-      if (typeof result === 'string') {
-        taskId = result;
-      } else if (typeof result === 'object' && result !== null) {
-        taskId = result.task_id || result.id || result.result?.task_id || '';
-        if (!taskId && result.content) {
-          try {
-            const parsed = JSON.parse(result.content);
-            taskId = parsed.task_id || parsed.id || '';
-          } catch (e) {
-            logger.warn(`[tick] Failed to parse result.content: ${e.message}`);
-          }
-        }
-      }
-    }
-    
-    if (!taskId) {
-      logger.error(`[tick] OCR returned no task_id for ${row.row_id}, result: ${stringifyForLog(result, 200)}`);
-      await updateProcessStep(services, row.content_id, 'ocr_failed');
-      return;
-    }
-    
-    await services.execute(`
-      UPDATE ${CONTENT_TABLE} 
-      SET process_step = 'ocr_submitted', ocr_task_id = ?
-      WHERE content_id = ?
-    `, [taskId, row.content_id]);
-
-    await advanceDocStatus(services, row.row_id, 'ocr_submitted');
-    
-    logger.info(`[tick] OCR submitted for ${row.row_id}, task_id=${taskId}`);
-  } catch (e) {
-    await updateProcessStep(services, row.content_id, 'ocr_failed');
-    await advanceDocStatus(services, row.row_id, 'ocr_failed', true);
-    logger.error(`[tick] OCR submit failed for ${row.row_id}: ${e.message}`);
-    logger.error(`[tick] OCR submit error stack: ${e.stack}`);
-    logger.error(`[tick] OCR submit error details: ${JSON.stringify({ name: e.name, message: e.message, code: e.code, cause: e.cause })}`);
-  }
+async function getActiveDocumentBinding(services, rowId) {
+  const bindings = await services.query(
+    `SELECT document_id
+     FROM app_doc_bindings
+     WHERE app_id = 'contract-mgr-v2' AND row_id = ? AND binding_status = 'active'
+     LIMIT 1`,
+    [rowId]
+  );
+  return bindings?.[0] || null;
 }
 
-async function handleOcrCheck(row, app, services) {
-  logger.info(`[tick] Checking OCR for ${row.row_id}`);
-  
-  const taskId = row.ocr_task_id;
-  if (!taskId) {
-    await updateProcessStep(services, row.content_id, 'ocr_failed');
-    return;
+async function readAttachmentText(services, attachmentId) {
+  if (!attachmentId) {
+    throw new Error('OCR completed without main markdown attachment');
   }
-  
-  const config = getStepResource(app, 'ocr_submitted', {});
-  const mcp = config.mcp || { server: 'markitdown', tool: 'get_task' };
-  
-  try {
-    const mcpResult = await services.callMcp(mcp.server, mcp.tool || 'get_task', { task_id: taskId });
-    
-    const taskInfo = stringifyForLog(mcpResult, 1000);
-    
-    const judgePrompt = `判断OCR任务是否完成。
-任务返回信息：
-${taskInfo}
 
-返回JSON：{"status": "completed|pending|failed", "progress": 0-100}`;
-    
-    const judgeResult = await services.llm.extractJson(judgePrompt, '', {
-      modelId: config.judge_model_id || null,
-      temperature: config.judge_temperature || 0.1,
-      defaultValue: { status: 'pending', progress: 0 },
-    });
-
-    const parsed = { ...judgeResult };
-    if (!parsed.status) parsed.status = 'pending';
-    
-    if (parsed.status === 'completed') {
-      // OCR 任务完成后，通过交付物协议获取真实文本：
-      // 1. list_deliverables 列出产物（primary markdown）
-      // 2. download_deliverable 下载并提取 content 文本
-      // 说明：get_task_status 只返回状态 JSON，不包含解析文本。
-      let ocrText = '';
-      try {
-        // OCR 交付物协议：list_deliverables -> download_deliverable
-        // 响应可能多层包装：{result:{content:"<json>"}} / {content:"<json>"} / 直接字符串
-        const unwrapContent = (input) => {
-          let cur = input;
-          for (let i = 0; i < 3 && cur && typeof cur === 'object'; i++) {
-            if (cur.result && typeof cur.result === 'object') { cur = cur.result; continue; }
-            if (typeof cur.content === 'string') {
-              const parsed = safeParseJson(cur.content);
-              if (parsed && typeof parsed === 'object') cur = parsed;
-            }
-            break;
-          }
-          return cur;
-        };
-
-        const deliverables = await services.callMcp(mcp.server, 'list_deliverables', { task_id: taskId });
-        const deliverablesObj = unwrapContent(deliverables);
-        const artifacts = (deliverablesObj && (deliverablesObj.artifacts || deliverablesObj.result?.artifacts)) || [];
-        const primary =
-          artifacts.find(a => a.is_default) ||
-          artifacts.find(a => a.artifact_type === 'markdown') ||
-          artifacts.find(a => a.role === 'primary') ||
-          artifacts[0];
-        if (primary?.download_key) {
-          const dl = await services.callMcp(mcp.server, 'download_deliverable', {
-            task_id: taskId,
-            download_key: primary.download_key,
-            include_content: true,
-          });
-          const dlObj = unwrapContent(dl);
-          ocrText = (dlObj && (dlObj.content || dlObj.text)) || extractTextFromMcpResult(dl);
-        } else {
-          logger.warn(`[tick] No downloadable deliverable for ${row.row_id}`);
-        }
-      } catch (dlErr) {
-        logger.warn(`[tick] OCR deliverable download failed for ${row.row_id}: ${dlErr.message}, falling back to status text`);
-      }
-      if (!ocrText) ocrText = extractTextFromMcpResult(mcpResult);
-      ocrText = ocrText.replace(/\\n/g, '\n');
-      
-      await services.execute(`
-        UPDATE ${CONTENT_TABLE} 
-        SET process_step = 'pending_filter', ocr_text = ?, ocr_service = ?, ocr_at = NOW()
-        WHERE content_id = ?
-      `, [ocrText, mcp.server, row.content_id]);
-      
-      await advanceDocStatus(services, row.row_id, 'pending_filter');
-      logger.info(`[tick] OCR completed for ${row.row_id}, text length=${ocrText.length}`);
-    } else if (parsed.status === 'pending') {
-      logger.info(`[tick] OCR pending for ${row.row_id}, progress=${parsed.progress}`);
-    } else {
-      await updateProcessStep(services, row.content_id, 'ocr_failed');
-      await advanceDocStatus(services, row.row_id, 'ocr_submitted_failed', true);
-    }
-  } catch (e) {
-    logger.error(`[tick] OCR check failed for ${row.row_id}: ${e.message}`);
+  const attachments = await services.query(
+    `SELECT file_path FROM attachments WHERE id = ? LIMIT 1`,
+    [attachmentId]
+  );
+  const filePath = attachments?.[0]?.file_path;
+  if (!filePath) {
+    throw new Error(`OCR markdown attachment not found: ${attachmentId}`);
   }
+
+  const basePath = process.env.ATTACHMENT_BASE_PATH || './data/attachments';
+  return fs.readFile(path.resolve(basePath, filePath), 'utf8');
 }
 
-function extractTextFromMcpResult(mcpResult) {
-  if (!mcpResult) return '';
-  if (typeof mcpResult === 'string') return extractTextValue(mcpResult);
-  if (mcpResult.result) return extractTextValue(mcpResult.result);
-  if (mcpResult.content) return extractTextValue(mcpResult.content);
-  if (mcpResult.text) return extractTextValue(mcpResult.text);
-  return extractTextValue(mcpResult);
+async function markOcrFailed(services, row, errorCode, errorMessage, provider = null, taskId = null) {
+  await services.execute(
+    `UPDATE ${CONTENT_TABLE}
+     SET process_step = 'ocr_failed',
+         ocr_service = COALESCE(?, ocr_service),
+         ocr_task_id = COALESCE(?, ocr_task_id)
+     WHERE content_id = ?`,
+    [provider, taskId, row.content_id]
+  );
+  logger.error(`[tick] OCR failed for ${row.row_id}: ${errorCode} - ${errorMessage}`);
+}
+
+async function handleOcrSubmit(row, services) {
+  logger.info(`[tick] Waiting for document platform OCR for ${row.row_id}`);
+
+  let binding;
+  try {
+    binding = await getActiveDocumentBinding(services, row.row_id);
+  } catch (error) {
+    logger.warn(`[tick] Cannot read document binding for ${row.row_id}; keeping pending_ocr: ${error.message}`);
+    return;
+  }
+
+  if (!binding?.document_id) {
+    logger.warn(`[tick] No active document binding for ${row.row_id}; keeping pending_ocr`);
+    return;
+  }
+
+  const documents = await services.query(
+    `SELECT processing_status FROM documents WHERE id = ? LIMIT 1`,
+    [binding.document_id]
+  );
+  const processingStatus = documents?.[0]?.processing_status;
+  if (!processingStatus) {
+    logger.warn(`[tick] Document ${binding.document_id} not found for ${row.row_id}; keeping pending_ocr`);
+    return;
+  }
+
+  if (DOC_OCR_WAITING_STATUSES.has(processingStatus)) {
+    logger.info(`[tick] Document platform OCR pending for ${row.row_id}: ${processingStatus}`);
+    return;
+  }
+
+  if (!DOC_OCR_RESULT_STATUSES.has(processingStatus)) {
+    logger.warn(`[tick] Unexpected document status for ${row.row_id}: ${processingStatus}; keeping pending_ocr`);
+    return;
+  }
+
+  await updateProcessStep(services, row.content_id, 'ocr_submitted');
+  await handleOcrCheck(row, services);
+}
+
+async function handleOcrCheck(row, services) {
+  logger.info(`[tick] Reading document platform OCR result for ${row.row_id}`);
+
+  let binding;
+  try {
+    binding = await getActiveDocumentBinding(services, row.row_id);
+  } catch (error) {
+    logger.warn(`[tick] Cannot read document binding for ${row.row_id}; keeping ocr_submitted: ${error.message}`);
+    return;
+  }
+
+  const documentId = binding?.document_id || row.document_id;
+  if (!documentId) {
+    logger.warn(`[tick] No document binding or document_id for ${row.row_id}; keeping ocr_submitted`);
+    return;
+  }
+  if (!binding) {
+    logger.warn(`[tick] No active document binding for ${row.row_id}; using content document_id ${documentId}`);
+  }
+
+  const results = await services.query(
+    `SELECT provider, task_id, status, main_markdown_attachment_id, error_code, error_message
+     FROM doc_ocr_results
+     WHERE document_id = ?
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [documentId]
+  );
+  const ocrResult = results?.[0];
+  if (!ocrResult) {
+    logger.warn(`[tick] No document platform OCR result for ${row.row_id}; keeping ocr_submitted`);
+    return;
+  }
+
+  if (ocrResult.status === 'pending' || ocrResult.status === 'processing') {
+    logger.info(`[tick] Document platform OCR pending for ${row.row_id}: ${ocrResult.status}`);
+    return;
+  }
+
+  if (ocrResult.status === 'failed') {
+    await markOcrFailed(
+      services,
+      row,
+      ocrResult.error_code || 'doc_ocr_failed',
+      ocrResult.error_message || 'Document platform OCR failed',
+      'mineru',
+      ocrResult.task_id
+    );
+    return;
+  }
+
+  if (ocrResult.status !== 'completed') {
+    logger.warn(`[tick] Unknown document platform OCR status for ${row.row_id}: ${ocrResult.status}; keeping ocr_submitted`);
+    return;
+  }
+
+  try {
+    const ocrText = (await readAttachmentText(services, ocrResult.main_markdown_attachment_id)).replace(/\\n/g, '\n');
+    if (!ocrText.trim()) {
+      throw new Error('OCR markdown attachment is empty');
+    }
+
+    await services.execute(
+      `UPDATE ${CONTENT_TABLE}
+       SET process_step = 'pending_filter', ocr_text = ?, ocr_service = 'mineru', ocr_at = NOW()
+       WHERE content_id = ?`,
+      [ocrText, row.content_id]
+    );
+    logger.info(`[tick] Document platform OCR completed for ${row.row_id}, text length=${ocrText.length}`);
+  } catch (error) {
+    await markOcrFailed(
+      services,
+      row,
+      'doc_ocr_text_read_failed',
+      error.message,
+      'mineru',
+      ocrResult.task_id
+    );
+  }
 }
 
 async function handleFilter(row, app, services) {
@@ -422,46 +338,47 @@ async function handleFilter(row, app, services) {
   const existingChunkIndex = content[0].filter_chunk_index || 0;
   
   const filterConfig = getStepResource(app, 'pending_filter', { temperature: 0.3 });
-  const filterPrompt = getPrompt(app, 'filter', '去除页码、水印、乱码，保留正文');
+  const filterPrompt = getPrompt(app, 'filter', '去除页码、水印、乱码，保留正文。必须保留章节标题行（以##开头的markdown标题，如"## 一、前言 Preface"），标题行不要修改、不要删除，它们是后续章节定位的依据');
   const maxLen = filterConfig.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
-  
+  const filterLlmConfig = { ...filterConfig, timeout: filterConfig.timeout ?? 300000 };
+
   let filteredText;
-  
+
   if (ocrText.length <= maxLen) {
     try {
-      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, ocrText, filterConfig);
+      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, ocrText, filterLlmConfig);
       filteredText = parsed?.processed_text || ocrText;
     } catch (e) {
+      logger.error(`[tick] Filter failed for ${row.row_id}: ${e.message}`);
       filteredText = ocrText;
     }
-    
+
     await services.execute(`
-      UPDATE ${CONTENT_TABLE} 
+      UPDATE ${CONTENT_TABLE}
       SET process_step = 'pending_extract', filtered_text = ?, filter_at = NOW(),
           filter_carried_over = NULL, filter_chunk_index = 0
       WHERE content_id = ?
     `, [filteredText, row.content_id]);
-    
+
     logger.info(`[tick] Filter completed for ${row.row_id}, length=${filteredText.length}`);
   } else {
-    const result = await filterWithSlidingWindow(ocrText, filterPrompt, filterConfig, services, row.row_id, existingCarriedOver, existingChunkIndex);
-    
+    const result = await filterWithSlidingWindow(ocrText, filterPrompt, filterLlmConfig, services, row.row_id, existingCarriedOver, existingChunkIndex);
+
     if (result.completed) {
       await services.execute(`
-        UPDATE ${CONTENT_TABLE} 
+        UPDATE ${CONTENT_TABLE}
         SET process_step = 'pending_extract', filtered_text = ?, filter_at = NOW(),
             filter_carried_over = NULL, filter_chunk_index = 0
         WHERE content_id = ?
       `, [result.filteredText, row.content_id]);
-      await advanceDocStatus(services, row.row_id, 'pending_extract');
-      logger.info(`[tick] Filter completed for ${row.row_id}, length=${result.filteredText.length}`);
+      logger.info(`[tick] Filter completed for ${row.row_id}, length=${result.filteredText.length}, chunk_failures=${result.failureCount || 0}`);
     } else {
       await services.execute(`
-        UPDATE ${CONTENT_TABLE} 
+        UPDATE ${CONTENT_TABLE}
         SET filter_carried_over = ?, filter_chunk_index = ?
         WHERE content_id = ?
       `, [result.carriedOver, result.chunkIndex, row.content_id]);
-      logger.info(`[tick] Filter progress for ${row.row_id}, chunk ${result.chunkIndex}`);
+      logger.info(`[tick] Filter progress for ${row.row_id}, chunk ${result.chunkIndex}, chunk_failures=${result.failureCount || 0}`);
     }
   }
 }
@@ -469,40 +386,49 @@ async function handleFilter(row, app, services) {
 async function filterWithSlidingWindow(ocrText, filterPrompt, filterConfig, services, rowId, existingCarriedOver, existingChunkIndex) {
   const maxLen = filterConfig.chunk_max_length || DEFAULT_CHUNK_MAX_LENGTH;
   const chunks = splitIntoChunks(ocrText, maxLen);
-  
+
   const allProcessed = [];
   let carriedOver = existingCarriedOver || '';
   let startIndex = existingChunkIndex || 0;
-  
+  let failureCount = 0;
+
+  async function processChunk(chunkInput, label) {
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, chunkInput, filterConfig);
+        return { processed: parsed?.processed_text || chunkInput, carriedOver: parsed?.carried_over || '' };
+      } catch (e) {
+        lastError = e;
+        logger.warn(`[tick] Chunk ${label} attempt ${attempt + 1} failed for ${rowId}: ${e.message}`);
+      }
+    }
+    failureCount += 1;
+    logger.error(`[tick] Chunk ${label} ultimately failed for ${rowId}: ${lastError?.message}`);
+    return { processed: chunkInput, carriedOver: '' };
+  }
+
   for (let i = startIndex; i < chunks.length; i++) {
     const chunkInput = carriedOver + (carriedOver ? '\n' : '') + chunks[i];
-    
-    try {
-      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, chunkInput, filterConfig);
-      allProcessed.push(parsed?.processed_text || chunkInput);
-      carriedOver = parsed?.carried_over || '';
-      
-      logger.info(`[tick] Chunk ${i + 1}/${chunks.length} done for ${rowId}`);
-    } catch (e) {
-      allProcessed.push(chunkInput);
-      carriedOver = '';
-    }
+    const chunkResult = await processChunk(chunkInput, `${i + 1}/${chunks.length}`);
+    allProcessed.push(chunkResult.processed);
+    carriedOver = chunkResult.carriedOver;
+
+    logger.info(`[tick] Chunk ${i + 1}/${chunks.length} done for ${rowId}`);
   }
-  
+
   if (carriedOver) {
-    try {
-      const parsed = await callLlmJson(services, filterPrompt + JSON_FORMAT_PROMPT, carriedOver, filterConfig);
-      allProcessed.push(parsed?.processed_text || carriedOver);
-    } catch (e) {
-      allProcessed.push(carriedOver);
-    }
+    const tailResult = await processChunk(carriedOver, 'tail');
+    allProcessed.push(tailResult.processed);
+    carriedOver = tailResult.carriedOver;
   }
-  
+
   return {
     completed: true,
     filteredText: allProcessed.join('\n'),
-    carriedOver: '',
-    chunkIndex: chunks.length
+    carriedOver,
+    chunkIndex: chunks.length,
+    failureCount,
   };
 }
 
@@ -520,6 +446,7 @@ async function handleExtract(row, app, services) {
   }
   
   const extractConfig = getStepResource(app, 'pending_extract', { temperature: 0.3 });
+  const extractLlmConfig = { ...extractConfig, timeout: extractConfig.timeout ?? 180000 };
   
   const fieldDefs = CONTRACT_FIELDS.map(f => `- ${f.name} (${f.label}): ${f.guide}`).join('\n');
   const exampleJson = CONTRACT_FIELDS.map(f => `  "${f.name}": "值"`).join(',\n');
@@ -534,7 +461,7 @@ ${exampleJson}
 }`;
   
   try {
-    const metadata = await callLlmJson(services, prompt, content[0].filtered_text, extractConfig);
+    const metadata = await callLlmJson(services, prompt, content[0].filtered_text, extractLlmConfig);
     
     if (!metadata) {
       await updateProcessStep(services, row.content_id, 'extract_failed');
@@ -547,8 +474,8 @@ ${exampleJson}
       if (!value) continue;
       
       if (field.name === 'contract_amount') {
-        const num = Number(String(value).replace(/[,，]/g, ''));
-        if (!isNaN(num)) cleanMetadata[field.name] = num;
+        const amount = parseContractAmount(value);
+        if (amount !== null) cleanMetadata[field.name] = amount;
       } else if (field.name === 'contract_date') {
         const dateStr = String(value).replace(/年/g, '-').replace(/月/g, '-').replace(/日/g, '');
         if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) cleanMetadata[field.name] = dateStr;
@@ -579,17 +506,6 @@ ${exampleJson}
     `, [JSON.stringify(cleanMetadata), extractConfig.model_id || null, 
         extractConfig.temperature || 0.3, row.content_id]);
 
-    try {
-      const docId = await getDocumentId(services, row.row_id);
-      if (docId) {
-        await services.execute(
-          `UPDATE documents SET metadata = ?, updated_at = NOW() WHERE id = ?`,
-          [JSON.stringify({ contract_number: cleanMetadata.contract_number || null, contract_date: cleanMetadata.contract_date || null, party_a: cleanMetadata.party_a || null }), docId]
-        );
-      }
-    } catch (e) {}
-
-    await advanceDocStatus(services, row.row_id, 'pending_section');
     logger.info(`[tick] Extract completed for ${row.row_id}`);
   } catch (e) {
     await updateProcessStep(services, row.content_id, 'extract_failed');
@@ -611,7 +527,8 @@ async function handleSection(row, app, services) {
   }
   
   const sectionConfig = getStepResource(app, 'pending_section', { temperature: 0.3 });
-  const sectionPrompt = getPrompt(app, 'section', '分析章节结构');
+  const sectionLlmConfig = { ...sectionConfig, timeout: sectionConfig.timeout ?? 180000 };
+  const sectionPrompt = getPrompt(app, 'section', '分析章节结构。只输出一级大章（如"一、前言"、"二、质量要求"、"七、召回和三包"），不要展开子章节；章节标题必须与原文中的##标题行完全一致（含序号），不要改写或省略，便于按标题定位正文范围');
   
   const jsonFormat = `
 返回JSON:
@@ -622,21 +539,24 @@ async function handleSection(row, app, services) {
 }`;
   
   try {
-    const result = await callLlmJson(services, sectionPrompt + jsonFormat, content[0].filtered_text, sectionConfig);
+    const result = await callLlmJson(services, sectionPrompt + jsonFormat, content[0].filtered_text, sectionLlmConfig);
     const sections = result?.sections || result;
     
     if (!Array.isArray(sections)) {
       await updateProcessStep(services, row.content_id, 'section_failed');
       return;
     }
-    
+
+    // 关键：为 section 计算 start_line/end_line（基于清洗后文本的 `## 标题` 行），
+    // 分 section 比对依赖行号切片，缺失会退化为全文比对
+    const sectionsWithLines = computeSectionLines(content[0].filtered_text, sections);
+
     await services.execute(`
       UPDATE ${CONTENT_TABLE} 
       SET process_step = 'pending_classify', sections = ?
       WHERE content_id = ?
-    `, [JSON.stringify(sections), row.content_id]);
+    `, [JSON.stringify(sectionsWithLines), row.content_id]);
 
-    await advanceDocStatus(services, row.row_id, 'pending_classify');
     logger.info(`[tick] Section completed for ${row.row_id}, found ${sections.length} sections`);
   } catch (e) {
     await updateProcessStep(services, row.content_id, 'section_failed');
@@ -678,13 +598,17 @@ async function handleClassify(row, app, services) {
     const conditions = ["d.doc_type = 'contract'", 'd.id != (SELECT document_id FROM app_contract_mgr_v2_content WHERE content_id = ?)'];
     params.push(row.content_id);
 
+    const fieldConditions = [];
     if (contractNumber) {
-      conditions.push("(JSON_EXTRACT(d.metadata, '$.contract_number') = ? OR d.title LIKE ?)");
+      fieldConditions.push("(JSON_EXTRACT(d.metadata, '$.contract_number') = ? OR d.title LIKE ?)");
       params.push(contractNumber, `%${contractNumber}%`);
     }
     if (partyA) {
-      conditions.push("(d.title LIKE ? OR JSON_EXTRACT(d.metadata, '$.party_a') = ?)");
+      fieldConditions.push("(d.title LIKE ? OR JSON_EXTRACT(d.metadata, '$.party_a') = ?)");
       params.push(`%${partyA}%`, partyA);
+    }
+    if (fieldConditions.length > 0) {
+      conditions.push(`(${fieldConditions.join(' OR ')})`);
     }
 
     const whereClause = conditions.join(' AND ');
@@ -750,56 +674,4 @@ async function updateProcessStep(services, contentId, newStep) {
   await services.execute(`
     UPDATE ${CONTENT_TABLE} SET process_step = ? WHERE content_id = ?
   `, [newStep, contentId]);
-}
-
-async function getDocumentId(services, rowId) {
-  try {
-    const bindings = await services.query(
-      `SELECT document_id FROM app_doc_bindings WHERE app_id = 'contract-mgr-v2' AND row_id = ? AND binding_status = 'active' LIMIT 1`,
-      [rowId]
-    );
-    return bindings && bindings.length > 0 ? bindings[0].document_id : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-const DOC_STATUS_MAP = {
-  'ocr_submitted': 'ocr_processing',
-  'pending_filter': 'pending_clean',
-  'pending_extract': 'pending_outline',
-  'pending_section': 'pending_chunk',
-  'pending_review': 'pending_embedding',
-  'pending_classify': 'pending_embedding',
-  'confirmed': 'ready',
-};
-
-async function advanceDocStatus(services, rowId, appProcessStep, isError = false) {
-  try {
-    const bindings = await services.query(
-      `SELECT b.document_id FROM app_doc_bindings b
-       WHERE b.app_id = 'contract-mgr-v2' AND b.row_id = ? AND b.binding_status = 'active'
-       LIMIT 1`,
-      [rowId]
-    );
-    if (!bindings || bindings.length === 0) return;
-
-    const documentId = bindings[0].document_id;
-
-    if (isError) {
-      await services.execute(
-        `UPDATE documents SET processing_status = 'error', processing_error_code = ?, processing_updated_at = NOW() WHERE id = ?`,
-        [appProcessStep, documentId]
-      );
-    } else {
-      const targetStatus = DOC_STATUS_MAP[appProcessStep];
-      if (!targetStatus) return;
-      await services.execute(
-        `UPDATE documents SET processing_status = ?, processing_updated_at = NOW() WHERE id = ?`,
-        [targetStatus, documentId]
-      );
-    }
-  } catch (e) {
-    // Doc platform sync failure is non-blocking
-  }
 }

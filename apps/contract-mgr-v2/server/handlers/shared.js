@@ -99,9 +99,13 @@ export function buildLlmParams(stepConfig) {
 }
 
 export async function callLlmJson(services, systemPrompt, userPrompt, stepConfig = {}) {
-  return await services.llm.extractJson(systemPrompt, userPrompt, {
+  const options = {
     modelId: stepConfig.model_id || null,
     temperature: stepConfig.temperature ?? 0.3,
     defaultValue: null,
-  });
+  };
+  if (stepConfig.timeout) {
+    options.timeout = stepConfig.timeout;
+  }
+  return await services.llm.extractJson(systemPrompt, userPrompt, options);
 }

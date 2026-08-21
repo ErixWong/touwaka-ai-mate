@@ -19,7 +19,30 @@ import { shallowRef, ref, onMounted, defineAsyncComponent, type Component } from
 import { useRoute, useRouter } from 'vue-router'
 import { getAppWithRuntime, type AppRuntimeFrontend, type MiniApp } from '@/api/mini-apps'
 
-const RuntimeComponentModules = import.meta.glob('@apps/*/frontend/views/*.vue')
+// 注意：这里用顶层静态 import（不能用 import.meta.glob / 动态 import），
+// 因为 script setup 编译后的虚拟模块中 alias 与 glob 均不可靠；
+// 静态 import 走标准 resolve（与 '@/api/...' 同机制）。
+import ContractMgrRuntimeView from '@apps/contract-mgr/frontend/views/AppRuntimeView.vue'
+import ContractMgrV2RuntimeView from '@apps/contract-mgr-v2/frontend/views/AppRuntimeView.vue'
+import CurrentFeatureAnalyzerRuntimeView from '@apps/current-feature-analyzer/frontend/views/CurrentFeatureAnalyzerView.vue'
+import DowntimeAnalyzerRuntimeView from '@apps/downtime-analyzer/frontend/views/AppRuntimeView.vue'
+import ElsRuntimeView from '@apps/els/frontend/views/AppRuntimeView.vue'
+import InvoiceMgrRuntimeView from '@apps/invoice-mgr/frontend/views/AppRuntimeView.vue'
+import OcrToolRuntimeView from '@apps/ocr-tool/frontend/views/AppRuntimeView.vue'
+import ResumeFastScreeningRuntimeView from '@apps/resume-fast-screening/frontend/views/AppRuntimeView.vue'
+import StandardMgrRuntimeView from '@apps/standard-mgr/frontend/views/AppRuntimeView.vue'
+
+const RuntimeComponentModules: Record<string, Component> = {
+  'contract-mgr': ContractMgrRuntimeView,
+  'contract-mgr-v2': ContractMgrV2RuntimeView,
+  'current-feature-analyzer': CurrentFeatureAnalyzerRuntimeView,
+  'downtime-analyzer': DowntimeAnalyzerRuntimeView,
+  'els': ElsRuntimeView,
+  'invoice-mgr': InvoiceMgrRuntimeView,
+  'ocr-tool': OcrToolRuntimeView,
+  'resume-fast-screening': ResumeFastScreeningRuntimeView,
+  'standard-mgr': StandardMgrRuntimeView,
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -48,15 +71,10 @@ function resolveAppComponent(app: MiniApp | null): Component | null {
 function resolveRuntimeFrontendComponent(appId: string, frontend?: AppRuntimeFrontend | null): Component | null {
   if (!frontend?.entry) return null
 
-  const entry = frontend.entry.replace(/^\.?\//, '')
-  const loader = [
-    `@apps/${appId}/${entry}`,
-    `../apps/${appId}/${entry}`,
-  ].map((moduleKey) => RuntimeComponentModules[moduleKey]).find(Boolean)
-
+  const loader = RuntimeComponentModules[appId]
   if (!loader) return null
 
-  return defineAsyncComponent(loader as () => Promise<Component>)
+  return loader
 }
 
 function goBack() {

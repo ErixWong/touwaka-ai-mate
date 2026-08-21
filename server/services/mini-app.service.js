@@ -11,6 +11,42 @@ import {
 import ExtensionTableService from './extension-table.service.js';
 import InternalLLMService from '../../lib/internal-llm-service.js';
 
+function normalizeForCompare(text) {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .replace(/[\s\n\r\t]+/g, '')
+    .replace(/[\u3000\u200b\ufeff]/g, '')
+    .replace(/[\p{P}\p{S}]/gu, '')
+    .normalize('NFKC');
+}
+
+function sectionsAreIdentical(textA, textB) {
+  return normalizeForCompare(textA) === normalizeForCompare(textB) && normalizeForCompare(textA).length > 0;
+}
+
+const COMPARE_CACHE_TTL_MS = 30 * 60 * 1000;
+const COMPARE_CACHE_MAX_SIZE = 50;
+const COMPARE_CACHE = new Map();
+
+function buildCompareCacheKey(rowIdA, rowIdB, modelId) {
+  return `${rowIdA}:${rowIdB}:${modelId}`;
+}
+
+function evictOldestCompareCacheEntry() {
+  let oldestKey = null;
+  let oldestCachedAt = Infinity;
+  for (const [key, entry] of COMPARE_CACHE.entries()) {
+    if (entry.cachedAt < oldestCachedAt) {
+      oldestCachedAt = entry.cachedAt;
+      oldestKey = key;
+    }
+  }
+  if (oldestKey !== null) {
+    COMPARE_CACHE.delete(oldestKey);
+  }
+}
+
 const APPS_DIR = path.join(process.cwd(), 'apps');
 const CUSTOM_HANDLERS_CACHE = new Map();
 
@@ -522,25 +558,52 @@ async batchUpload(appId, userId, attachmentIds) {
     }
     const isAdmin = await this.isAdmin(userId);
 
-    const where = { app_id: appId };
-    if (!isAdmin) {
-      where.user_id = userId;
-    }
-    if (createdAfter) {
-      where.created_at = { [Op.gte]: createdAfter };
-    }
-
-    const results = await this.db.sequelize.query(
-      `SELECT status, COUNT(*) as count FROM mini_app_rows WHERE app_id = ? ${!isAdmin ? 'AND user_id = ?' : ''} ${createdAfter ? 'AND created_at >= ?' : ''} GROUP BY status`,
-      {
-        replacements: [
-          appId,
-          ...(!isAdmin ? [userId] : []),
-          ...(createdAfter ? [createdAfter] : []),
-        ],
-        type: Sequelize.QueryTypes.SELECT,
+    let results;
+    if (appId === 'contract-mgr-v2') {
+      const conditions = [];
+      const replacements = [];
+      if (!isAdmin) {
+        conditions.push('m.created_by = ?');
+        replacements.push(userId);
       }
-    );
+      if (createdAfter) {
+        conditions.push('c.created_at >= ?');
+        replacements.push(createdAfter);
+      }
+
+      results = await this.db.sequelize.query(
+        `SELECT c.process_step AS status, COUNT(*) AS count
+         FROM app_contract_mgr_v2_content c
+         INNER JOIN contract_v2_versions v ON v.row_id = c.row_id
+         INNER JOIN contract_v2_main_records m ON m.id = v.contract_id
+         ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+         GROUP BY c.process_step`,
+        {
+          replacements,
+          type: Sequelize.QueryTypes.SELECT,
+        }
+      );
+    } else {
+      const where = { app_id: appId };
+      if (!isAdmin) {
+        where.user_id = userId;
+      }
+      if (createdAfter) {
+        where.created_at = { [Op.gte]: createdAfter };
+      }
+
+      results = await this.db.sequelize.query(
+        `SELECT status, COUNT(*) as count FROM mini_app_rows WHERE app_id = ? ${!isAdmin ? 'AND user_id = ?' : ''} ${createdAfter ? 'AND created_at >= ?' : ''} GROUP BY status`,
+        {
+          replacements: [
+            appId,
+            ...(!isAdmin ? [userId] : []),
+            ...(createdAfter ? [createdAfter] : []),
+          ],
+          type: Sequelize.QueryTypes.SELECT,
+        }
+      );
+    }
 
     const byStatus = {};
     let total = 0;
@@ -609,6 +672,13 @@ async batchUpload(appId, userId, attachmentIds) {
 
     logger.info(`[compareRecords] Starting compare: ${rowIdA} vs ${rowIdB}`);
 
+    const cacheKey = buildCompareCacheKey(rowIdA, rowIdB, options.model_id || null);
+    const cached = COMPARE_CACHE.get(cacheKey);
+    if (cached && (Date.now() - cached.cachedAt) <= COMPARE_CACHE_TTL_MS) {
+      logger.info(`[compareRecords] Cache hit for key ${cacheKey}`);
+      return { results: cached.results, summary: cached.summary, duration_ms: cached.duration_ms };
+    }
+
     const startTime = Date.now();
 
     const [contentA, contentB] = await Promise.all([
@@ -631,7 +701,7 @@ async batchUpload(appId, userId, attachmentIds) {
 
     const modelId = options.model_id || null;
     const temperature = options.temperature ?? 0.3;
-    const concurrency = Math.max(1, Math.min(options.concurrency || 3, 10));
+    const concurrency = Math.max(1, Math.min(options.concurrency || 6, 10));
     const timeoutCandidate = Number(
       options.timeout_ms ?? appConfig?.compare?.timeout_ms ?? appConfig?.compare_timeout_ms ?? 600000
     );
@@ -643,12 +713,28 @@ async batchUpload(appId, userId, attachmentIds) {
     const matchedSections = await this._matchSectionsWithLlm(contentA.sections, contentB.sections, modelId, temperature, timeoutMs);
 
     const matchedItems = matchedSections.filter(m => m.type === 'matched');
-    const linesA = contentA.filtered_text.split('\n');
-    const linesB = contentB.filtered_text.split('\n');
+    const normalizedA = (contentA.filtered_text || '').replace(/\\n/g, '\n');
+    const normalizedB = (contentB.filtered_text || '').replace(/\\n/g, '\n');
+    const linesA = normalizedA.split('\n');
+    const linesB = normalizedB.split('\n');
 
     const matchedResults = await this._runConcurrent(matchedItems, concurrency, async (match, index) => {
       const textA = linesA.slice(match.sectionA.start_line, match.sectionA.end_line).join('\n');
       const textB = linesB.slice(match.sectionB.start_line, match.sectionB.end_line).join('\n');
+
+      if (sectionsAreIdentical(textA, textB)) {
+        logger.info(`[compareRecords] Section ${index + 1}/${matchedItems.length}: ${match.sectionA.title} -> identical (normalized)`);
+        return {
+          type: 'matched',
+          section_id_a: match.sectionA.id,
+          section_id_b: match.sectionB.id,
+          title: match.sectionA.title,
+          change_type: 'identical',
+          summary: '内容一致',
+          key_changes: [],
+          risk_level: 'low',
+        };
+      }
 
       let result;
       try {
@@ -720,11 +806,26 @@ async batchUpload(appId, userId, attachmentIds) {
       modified: results.filter(r => r.change_type === 'modified' || r.change_type === 'semantic_change').length,
       added: results.filter(r => r.change_type === 'added').length,
       removed: results.filter(r => r.change_type === 'removed').length,
+      error: results.filter(r => r.change_type === 'error').length,
     };
 
     const durationMs = Date.now() - startTime;
 
-    logger.info(`[compareRecords] Complete: ${summary.total} sections, ${summary.identical} identical, ${summary.modified} modified, ${summary.added} added, ${summary.removed} removed (${durationMs}ms)`);
+    logger.info(`[compareRecords] Complete: ${summary.total} sections, ${summary.identical} identical, ${summary.modified} modified, ${summary.added} added, ${summary.removed} removed, ${summary.error} error (${durationMs}ms)`);
+
+    const shouldCache = summary.total > 0 && summary.error < summary.total;
+    if (shouldCache) {
+      if (COMPARE_CACHE.size >= COMPARE_CACHE_MAX_SIZE) {
+        evictOldestCompareCacheEntry();
+      }
+      COMPARE_CACHE.set(cacheKey, {
+        results,
+        summary,
+        duration_ms: durationMs,
+        cachedAt: Date.now(),
+      });
+      logger.info(`[compareRecords] Cache stored for key ${cacheKey}`);
+    }
 
     if (options.save !== false) {
       try {
@@ -887,35 +988,38 @@ ${JSON.stringify(listB, null, 2)}
     const usedA = new Set();
     const usedB = new Set();
 
-    for (const secA of sectionsA) {
+    const listA = sectionsA.map((s, i) => ({ id: s.id || `a-${i}`, section: s }));
+    const listB = sectionsB.map((s, i) => ({ id: s.id || `b-${i}`, section: s }));
+
+    for (const a of listA) {
       let bestMatch = null;
       let bestScore = 0;
 
-      for (const secB of sectionsB) {
-        if (usedB.has(secB.id)) continue;
-        const score = this._titleSimilarity(secA.title, secB.title);
+      for (const b of listB) {
+        if (usedB.has(b.id)) continue;
+        const score = this._titleSimilarity(a.section.title, b.section.title);
         if (score > bestScore && score > 0.4) {
           bestScore = score;
-          bestMatch = secB;
+          bestMatch = b;
         }
       }
 
       if (bestMatch) {
-        matches.push({ type: 'matched', sectionA: secA, sectionB: bestMatch, score: bestScore });
-        usedA.add(secA.id);
+        matches.push({ type: 'matched', sectionA: a.section, sectionB: bestMatch.section, score: bestScore });
+        usedA.add(a.id);
         usedB.add(bestMatch.id);
       }
     }
 
-    for (const secA of sectionsA) {
-      if (!usedA.has(secA.id)) {
-        matches.push({ type: 'removed', section: secA });
+    for (const a of listA) {
+      if (!usedA.has(a.id)) {
+        matches.push({ type: 'removed', section: a.section });
       }
     }
 
-    for (const secB of sectionsB) {
-      if (!usedB.has(secB.id)) {
-        matches.push({ type: 'added', section: secB });
+    for (const b of listB) {
+      if (!usedB.has(b.id)) {
+        matches.push({ type: 'added', section: b.section });
       }
     }
 
