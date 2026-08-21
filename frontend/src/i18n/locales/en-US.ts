@@ -2855,6 +2855,7 @@ export default {
       typeTotal: 'Total Sections',
       summaryResult: '{total} sections, {identical} identical, {modified} changed',
       refreshResult: 'Refresh Result',
+      staleResultWarning: 'The currently displayed comparison result is from a different configuration.',
       columnTitle: 'Section Title',
       columnChangeType: 'Change Type',
       columnRiskLevel: 'Risk Level',

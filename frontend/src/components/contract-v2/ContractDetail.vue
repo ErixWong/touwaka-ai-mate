@@ -298,6 +298,9 @@ async function loadDocPermissions() {
 }
 
 watch(() => contract.value?.id, () => {
+  docRevisions.value = []
+  docPermissions.value = null
+  versionProcessingStatus.value = {}
   if (contract.value) {
     loadDocRevisions()
     loadDocPermissions()
@@ -308,28 +311,30 @@ watch(() => contract.value?.id, () => {
 }, { immediate: true })
 
 // 监听 versions 变化，加载文档处理状态
-watch(() => versions.value, async (newVersions) => {
+watch(() => versions.value, (newVersions) => {
   if (!newVersions?.length) return
-  
-  for (const version of newVersions) {
-    if (version.document_id && !versionProcessingStatus.value[version.id]) {
-      try {
-        const status = await store.fetchVersionProcessingStatus(version.id)
-        if (status.has_document && status.processing_status) {
-          const statusInfo = getProcessingStatusLabel(status.processing_status)
-          versionProcessingStatus.value[version.id] = {
-            status: status.processing_status,
-            label: statusInfo.label,
-            type: statusInfo.type,
-            // status_scope: document_current_revision 表示该版本 revision 即为 document 当前 revision
-            isCurrentRevision: status.status_scope === 'document_current_revision',
+
+  void Promise.all(
+    newVersions
+      .filter(version => version.document_id && !versionProcessingStatus.value[version.id])
+      .map(async (version) => {
+        try {
+          const status = await store.fetchVersionProcessingStatus(version.id)
+          if (status.has_document && status.processing_status) {
+            const statusInfo = getProcessingStatusLabel(status.processing_status)
+            versionProcessingStatus.value[version.id] = {
+              status: status.processing_status,
+              label: statusInfo.label,
+              type: statusInfo.type,
+              // status_scope: document_current_revision 表示该版本 revision 即为 document 当前 revision
+              isCurrentRevision: status.status_scope === 'document_current_revision',
+            }
           }
+        } catch (e) {
+          console.error('Failed to load processing status:', e)
         }
-      } catch (e) {
-        console.error('Failed to load processing status:', e)
-      }
-    }
-  }
+      }),
+  )
 }, { immediate: true })
 
 async function handleSetCurrent(revisionId: string) {
@@ -365,6 +370,37 @@ async function handleRefreshStatus() {
   if (contract.value?.document_id) {
     await store.fetchProcessingStatus(contract.value.document_id)
   }
+  await refreshVersionStatuses()
+}
+
+async function refreshVersionStatuses() {
+  const terminalStatuses = ['ready', 'error', 'failed']
+  const versionsToRefresh = (versions.value || []).filter(v =>
+    v.document_id && (
+      !versionProcessingStatus.value[v.id] ||
+      !terminalStatuses.includes(versionProcessingStatus.value[v.id].status)
+    ),
+  )
+  if (!versionsToRefresh.length) return
+
+  await Promise.all(
+    versionsToRefresh.map(async (version) => {
+      try {
+        const status = await store.fetchVersionProcessingStatus(version.id)
+        if (status.has_document && status.processing_status) {
+          const statusInfo = getProcessingStatusLabel(status.processing_status)
+          versionProcessingStatus.value[version.id] = {
+            status: status.processing_status,
+            label: statusInfo.label,
+            type: statusInfo.type,
+            isCurrentRevision: status.status_scope === 'document_current_revision',
+          }
+        }
+      } catch (e) {
+        console.error('Failed to refresh processing status:', e)
+      }
+    }),
+  )
 }
 
 async function handleSetBusinessCurrent(versionId: string) {
@@ -505,12 +541,13 @@ async function handleStartCompare() {
   comparePhase.value = 'config'
   showCompareDialog.value = true
   void loadCompareSectionEstimate()
-  // 拉取可用的内部 LLM 模型（默认选中 qwen3.6:35b）
+  // 拉取可用的内部 LLM 模型（优先使用后端指定的默认比对模型）
   try {
     const resources = await getAvailableResources(APP_ID)
     compareModels.value = resources.internal_llm?.models || []
+    const defaultModelId = resources.default_compare_model_id
     const qwen = compareModels.value.find(m => m.id === CONTRACT_LLM_COMPARE_MODEL_ID)
-    compareModelId.value = qwen?.id || compareModels.value[0]?.id || ''
+    compareModelId.value = defaultModelId || qwen?.id || compareModels.value[0]?.id || ''
   } catch {
     compareModels.value = []
     compareModelId.value = ''
@@ -553,6 +590,11 @@ async function loadCompareResult() {
     if (r) {
       compareResult.value = r
       comparePhase.value = 'result'
+      const currentTargetRowId = compareVersionB.value?.row_id
+      const resultTargetRowId = (r as { target_row_id?: string }).target_row_id
+      if (currentTargetRowId && resultTargetRowId && resultTargetRowId !== currentTargetRowId) {
+        ElMessage.warning(t('contractV2.compare.staleResultWarning'))
+      }
     }
   } finally {
     compareResultLoading.value = false

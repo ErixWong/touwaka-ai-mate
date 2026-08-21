@@ -160,6 +160,8 @@ export interface AvailableResources {
     available: boolean
     models?: InternalLlmModel[]
   }
+  /** 后端可返回的默认比对模型 ID */
+  default_compare_model_id?: string
   handler_outputs: Record<string, HandlerOutput[]>
   configurable_states?: Record<string, {
     type: string

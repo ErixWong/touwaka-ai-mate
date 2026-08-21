@@ -685,9 +685,9 @@ class ContractV2Service {
     return await this.loadVersionsByContractIds([contractId]);
   }
 
-  async updateVersion(versionId, data, userId) {
+  async updateVersion(versionId, data, userId, skipOwnerCheck = false) {
     this.ensureModels();
-    await this.ensureVersionOwner(versionId, userId);
+    if (!skipOwnerCheck) await this.ensureVersionOwner(versionId, userId);
     const version = await this.models.Version.findByPk(versionId);
 
     const updates = {};
@@ -742,9 +742,9 @@ class ContractV2Service {
     return version.toJSON();
   }
 
-  async deleteVersion(versionId, userId) {
+  async deleteVersion(versionId, userId, skipOwnerCheck = false) {
     this.ensureModels();
-    await this.ensureVersionOwner(versionId, userId);
+    if (!skipOwnerCheck) await this.ensureVersionOwner(versionId, userId);
     const version = await this.models.Version.findByPk(versionId);
 
     const contractId = version.contract_id;

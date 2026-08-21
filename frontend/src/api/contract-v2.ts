@@ -1,5 +1,7 @@
 import apiClient, { apiRequest } from './client'
 
+const COMPARE_BASE = '/mini-apps/contract-mgr-v2'
+
 export interface OrgNode {
   id: string
   parent_id: string | null
@@ -360,7 +362,7 @@ export async function compareVersionsWithLlm(
 ): Promise<LlmCompareRunResponse> {
   return apiRequest<LlmCompareRunResponse>(
     apiClient.post(
-      `/mini-apps/contract-mgr-v2/compare`,
+      `${COMPARE_BASE}/compare`,
       {
         row_id_a: rowIdA,
         row_id_b: rowIdB,
@@ -375,7 +377,7 @@ export async function compareVersionsWithLlm(
 
 export async function getVersionCompareResult(rowId: string): Promise<LlmCompareStoredResult | null> {
   return apiRequest<LlmCompareStoredResult | null>(
-    apiClient.get(`/mini-apps/contract-mgr-v2/data/${rowId}/compare`),
+    apiClient.get(`${COMPARE_BASE}/data/${rowId}/compare`),
   )
 }
 

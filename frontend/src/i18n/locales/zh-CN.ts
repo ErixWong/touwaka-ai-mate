@@ -2845,6 +2845,7 @@ export default {
       typeTotal: '总章节数',
       summaryResult: '共 {total} 个章节，一致 {identical} 个，变更 {modified} 个',
       refreshResult: '刷新结果',
+      staleResultWarning: '当前显示的是另一组配置的比对结果',
       columnTitle: '章节标题',
       columnChangeType: '变更类型',
       columnRiskLevel: '风险等级',

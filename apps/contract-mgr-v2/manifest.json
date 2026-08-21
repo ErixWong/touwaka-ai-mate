@@ -34,9 +34,6 @@
       "skills": []
     }
   },
-  "custom_handlers": {
-    "batch_upload": "controllers/batch-upload.js"
-  },
   "fields": [
     {
       "name": "contract_name",
@@ -381,13 +378,25 @@
       "is_terminal": false,
       "is_error": false,
       "handler": "contract-v2-text-section",
-      "success_next": "pending_review",
+      "success_next": "pending_classify",
       "failure_next": "section_failed"
+    },
+    {
+      "name": "pending_classify",
+      "label": "等待分类",
+      "description": "LLM分类匹配历史版本",
+      "sort_order": 6,
+      "is_initial": false,
+      "is_terminal": false,
+      "is_error": false,
+      "handler": null,
+      "success_next": "pending_review",
+      "failure_next": null
     },
     {
       "name": "pending_review",
       "label": "等待确认",
-      "sort_order": 6,
+      "sort_order": 7,
       "is_initial": false,
       "is_terminal": false,
       "is_error": false,
@@ -398,7 +407,7 @@
     {
       "name": "confirmed",
       "label": "已确认",
-      "sort_order": 7,
+      "sort_order": 8,
       "is_initial": false,
       "is_terminal": true,
       "is_error": false,
@@ -449,71 +458,6 @@
       "handler": null,
       "success_next": null,
       "failure_next": null
-    }
-  ],
-  "apis": [
-    {
-      "path": "/org-nodes/tree",
-      "methods": [
-        "GET"
-      ],
-      "handler": "server/controllers/org-nodes.js"
-    },
-    {
-      "path": "/org-nodes",
-      "methods": [
-        "POST"
-      ],
-      "handler": "server/controllers/org-nodes.js"
-    },
-    {
-      "path": "/contracts",
-      "methods": [
-        "GET"
-      ],
-      "handler": "server/controllers/contracts.js"
-    },
-    {
-      "path": "/contracts",
-      "methods": [
-        "POST"
-      ],
-      "handler": "server/controllers/contracts.js"
-    },
-    {
-      "path": "/contracts/:contractId",
-      "methods": [
-        "GET"
-      ],
-      "handler": "server/controllers/contracts.js"
-    },
-    {
-      "path": "/contracts/:contractId",
-      "methods": [
-        "PUT"
-      ],
-      "handler": "server/controllers/contracts.js"
-    },
-    {
-      "path": "/contracts/:contractId",
-      "methods": [
-        "DELETE"
-      ],
-      "handler": "server/controllers/contracts.js"
-    },
-    {
-      "path": "/contracts/:contractId/versions/from-attachment",
-      "methods": [
-        "POST"
-      ],
-      "handler": "server/controllers/version-from-attachment.js"
-    },
-    {
-      "path": "/dashboard",
-      "methods": [
-        "GET"
-      ],
-      "handler": "server/controllers/dashboard.js"
     }
   ],
   "visibility": "all"

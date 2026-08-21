@@ -516,6 +516,7 @@ async getAppWithRuntime(appId) {
       mcp_servers: result,
       internal_llm: {
         available: true,
+        default_compare_model_id: 'mojfh2d7cvgl6uam7fnx',
         models: models.map(m => ({
           id: m.id,
           name: m.name,
