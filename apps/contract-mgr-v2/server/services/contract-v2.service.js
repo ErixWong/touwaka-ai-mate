@@ -593,18 +593,17 @@ class ContractV2Service {
       const contentId = Utils.newID(20);
       const isFirst = existingCount === 0;
 
-      // contract_v2_versions.row_id 外键引用 mini_app_rows.id，需先插入对应行
       await this.db.sequelize.query(
-        `INSERT INTO mini_app_rows (id, app_id, user_id, title, data, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'pending_ocr', NOW(), NOW())`,
+        `INSERT INTO app_doc_bindings
+           (id, app_id, row_id, document_id, current_revision_id, binding_status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'active', NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+           document_id = VALUES(document_id),
+           current_revision_id = VALUES(current_revision_id),
+           binding_status = 'active',
+           updated_at = NOW()`,
         {
-          replacements: [
-            rowId,
-            APP_ID,
-            userId,
-            options.version_name || `版本 ${versionNumber}`,
-            JSON.stringify({ contract_id: contractId }),
-          ],
+          replacements: [Utils.newID(), APP_ID, rowId, documentId, revisionId],
           transaction: t,
         }
       );

@@ -2046,6 +2046,37 @@ const MIGRATIONS = [
   },
 
   {
+    name: 'contract-mgr-v2 remove mini_app_rows foreign keys',
+    check: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT TABLE_NAME, CONSTRAINT_NAME
+        FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME IN ('contract_v2_versions', 'app_contract_mgr_v2_rows')
+          AND COLUMN_NAME = 'row_id'
+          AND REFERENCED_TABLE_NAME = 'mini_app_rows'
+      `);
+      return rows.length === 0;
+    },
+    migrate: async (conn) => {
+      const [rows] = await conn.execute(`
+        SELECT TABLE_NAME, CONSTRAINT_NAME
+        FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME IN ('contract_v2_versions', 'app_contract_mgr_v2_rows')
+          AND COLUMN_NAME = 'row_id'
+          AND REFERENCED_TABLE_NAME = 'mini_app_rows'
+      `);
+      for (const row of rows) {
+        await conn.execute(
+          `ALTER TABLE ${quoteIdentifier(row.TABLE_NAME)} DROP FOREIGN KEY ${quoteIdentifier(row.CONSTRAINT_NAME)}`
+        );
+      }
+      console.log('  ✓ Removed contract-mgr-v2 row_id foreign keys to mini_app_rows');
+    }
+  },
+
+  {
     name: 'contract-mgr-v2 versions add document_id',
     check: async (conn) => {
       if (!await hasTable(conn, 'contract_v2_versions')) return true;

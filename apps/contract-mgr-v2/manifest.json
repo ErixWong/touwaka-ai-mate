@@ -28,9 +28,6 @@
   "compatibility": {
     "min_platform_version": "2.0.0",
     "requires": {
-      "mcp": [
-        "mineru"
-      ],
       "skills": []
     }
   },
@@ -282,27 +279,6 @@
     "batch_enabled": true,
     "batch_limit": 50,
     "step_resources": {
-      "pending_ocr": {
-        "type": "mcp",
-        "mcp": {
-          "server": "mineru",
-          "tool": "create_task",
-          "params_mapping": {
-            "file_base64": "file.base64",
-            "file_name": "file.name"
-          }
-        }
-      },
-      "ocr_submitted": {
-        "type": "mcp",
-        "mcp": {
-          "server": "mineru",
-          "tool": "get_task_status",
-          "hide_params_mapping": true
-        },
-        "judge_model_id": null,
-        "judge_temperature": 0.1
-      },
       "pending_filter": {
         "type": "internal_llm",
         "model_id": null,
@@ -324,7 +300,7 @@
     {
       "name": "pending_ocr",
       "label": "等待OCR",
-      "description": "提交OCR任务",
+      "description": "等待文档平台 OCR 结果",
       "sort_order": 1,
       "is_initial": true,
       "is_terminal": false,
@@ -336,7 +312,7 @@
     {
       "name": "ocr_submitted",
       "label": "OCR处理中",
-      "description": "检查OCR状态并持久化OCR文本到扩展表",
+      "description": "读取文档平台 OCR 结果并持久化到扩展表",
       "sort_order": 2,
       "is_initial": false,
       "is_terminal": false,

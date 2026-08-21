@@ -558,25 +558,52 @@ async batchUpload(appId, userId, attachmentIds) {
     }
     const isAdmin = await this.isAdmin(userId);
 
-    const where = { app_id: appId };
-    if (!isAdmin) {
-      where.user_id = userId;
-    }
-    if (createdAfter) {
-      where.created_at = { [Op.gte]: createdAfter };
-    }
-
-    const results = await this.db.sequelize.query(
-      `SELECT status, COUNT(*) as count FROM mini_app_rows WHERE app_id = ? ${!isAdmin ? 'AND user_id = ?' : ''} ${createdAfter ? 'AND created_at >= ?' : ''} GROUP BY status`,
-      {
-        replacements: [
-          appId,
-          ...(!isAdmin ? [userId] : []),
-          ...(createdAfter ? [createdAfter] : []),
-        ],
-        type: Sequelize.QueryTypes.SELECT,
+    let results;
+    if (appId === 'contract-mgr-v2') {
+      const conditions = [];
+      const replacements = [];
+      if (!isAdmin) {
+        conditions.push('m.created_by = ?');
+        replacements.push(userId);
       }
-    );
+      if (createdAfter) {
+        conditions.push('c.created_at >= ?');
+        replacements.push(createdAfter);
+      }
+
+      results = await this.db.sequelize.query(
+        `SELECT c.process_step AS status, COUNT(*) AS count
+         FROM app_contract_mgr_v2_content c
+         INNER JOIN contract_v2_versions v ON v.row_id = c.row_id
+         INNER JOIN contract_v2_main_records m ON m.id = v.contract_id
+         ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+         GROUP BY c.process_step`,
+        {
+          replacements,
+          type: Sequelize.QueryTypes.SELECT,
+        }
+      );
+    } else {
+      const where = { app_id: appId };
+      if (!isAdmin) {
+        where.user_id = userId;
+      }
+      if (createdAfter) {
+        where.created_at = { [Op.gte]: createdAfter };
+      }
+
+      results = await this.db.sequelize.query(
+        `SELECT status, COUNT(*) as count FROM mini_app_rows WHERE app_id = ? ${!isAdmin ? 'AND user_id = ?' : ''} ${createdAfter ? 'AND created_at >= ?' : ''} GROUP BY status`,
+        {
+          replacements: [
+            appId,
+            ...(!isAdmin ? [userId] : []),
+            ...(createdAfter ? [createdAfter] : []),
+          ],
+          type: Sequelize.QueryTypes.SELECT,
+        }
+      );
+    }
 
     const byStatus = {};
     let total = 0;
