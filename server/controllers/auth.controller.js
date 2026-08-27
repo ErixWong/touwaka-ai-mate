@@ -9,6 +9,7 @@ import { generateTokens, verifyRefreshToken } from '../middlewares/auth.js';
 import logger from '../../lib/logger.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
 import Utils from '../../lib/utils.js';
+import { EMAIL_REGEX, isValidUsername, usernameErrorHint } from '../services/user-validation.service.js';
 
 class AuthController {
   constructor(db) {
@@ -250,16 +251,14 @@ class AuthController {
         return;
       }
 
-      // 验证用户名格式：字母开头，仅允许字母、数字、下划线，6-16位
-      const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]{5,15}$/;
-      if (!usernameRegex.test(username)) {
-        ctx.error('用户名格式不正确：需以字母开头，仅允许字母、数字、下划线，长度6-16位', 400);
+      // 验证用户名格式：普通用户名（字母开头，仅字母、数字、下划线，6-16位）或邮箱格式
+      if (!isValidUsername(username)) {
+        ctx.error(usernameErrorHint(), 400);
         return;
       }
 
       // 验证邮箱格式
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
+      if (!EMAIL_REGEX.test(email)) {
         ctx.error('邮箱格式不正确', 400);
         return;
       }
@@ -328,6 +327,22 @@ class AuthController {
       });
       if (existingEmail) {
         ctx.error('邮箱已被注册', 400);
+        return;
+      }
+
+      // 交叉冲突检查：邮箱格式用户名不能与现有用户的 email 相同，
+      // 新 email 也不能与现有用户（邮箱格式）的 username 相同，避免登录时 Op.or 命中歧义
+      const { Op } = this.db;
+      const crossConflict = await this.User.findOne({
+        where: {
+          [Op.or]: [
+            { email: username },
+            { username: email },
+          ],
+        },
+      });
+      if (crossConflict) {
+        ctx.error('用户名或邮箱与现有用户冲突', 400);
         return;
       }
 
