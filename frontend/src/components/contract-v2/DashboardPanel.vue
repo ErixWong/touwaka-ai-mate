@@ -97,7 +97,7 @@ async function handleRefresh() {
           <el-card shadow="hover">
             <template #header>{{ $t('contractV2.dashboard.byStatus') }}</template>
             <div class="dashboard-bar" v-for="(count, status) in store.dashboard.by_status" :key="status">
-              <span class="dashboard-bar-label">{{ status }}</span>
+              <span class="dashboard-bar-label">{{ $t(`contractV2.dashboard.statusLabels.${status}`) || status }}</span>
               <el-progress :percentage="statusTotal ? Math.round((count as number) / statusTotal * 100) : 0" :stroke-width="16" :text-inside="true">
                 <span>{{ count }}</span>
               </el-progress>

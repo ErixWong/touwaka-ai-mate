@@ -25,6 +25,7 @@ export interface ContractMainRecord {
   version_count: number
   status: 'draft' | 'active' | 'expired' | 'terminated'
   party_a?: string | null
+  contract_number?: string | null
   total_amount?: number | null
   document_id?: string
   processing_status?: string

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
 import { useContractV2Store } from '@/stores/contract-v2'
 import type { OrgNode } from '@/api/contract-v2'
+
+const { t } = useI18n()
 
 const store = useContractV2Store()
 
@@ -57,7 +60,7 @@ async function handleAddNode() {
     await store.addNode({ ...addForm.value, parent_id: addForm.value.parent_id || undefined })
     showAddDialog.value = false
   } catch {
-    ElMessage.error('添加节点失败')
+    ElMessage.error(t('contractV2.orgTree.addFailed'))
   }
 }
 
@@ -67,7 +70,7 @@ async function handleRenameNode() {
     await store.editNode(renameForm.value.nodeId, { name: renameForm.value.name.trim() })
     showRenameDialog.value = false
   } catch {
-    ElMessage.error('重命名节点失败')
+    ElMessage.error(t('contractV2.orgTree.renameFailed'))
   }
 }
 
@@ -77,11 +80,15 @@ function handleNodeClick(nodeId: string) {
 
 async function handleDeleteNode(nodeId: string) {
   try {
-    await ElMessageBox.confirm('删除节点将同时删除所有子节点和关联合同，确认删除？', '确认', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(
+      t('contractV2.orgTree.deleteConfirmMessage'),
+      t('contractV2.orgTree.deleteConfirmTitle'),
+      {
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+      },
+    )
     await store.removeNode(nodeId)
   } catch {
     // 用户取消 ElMessageBox 确认时 throw，属于正常流程
@@ -109,7 +116,7 @@ const defaultProps = {
     </div>
 
     <div v-else-if="store.tree.length === 0" class="org-tree-empty">
-      <el-empty description="暂无组织节点" :image-size="48" />
+      <el-empty :description="$t('contractV2.orgTree.noNodes')" :image-size="48" />
       <el-button type="primary" size="small" @click="openAddDialog(null)">{{ $t('contractV2.createGroupNode') }}</el-button>
     </div>
 
@@ -135,7 +142,7 @@ const defaultProps = {
             <el-button size="small" text @click="openAddDialog(data.id)" v-if="data.level < 3">
               <el-icon><Plus /></el-icon>
             </el-button>
-            <el-button size="small" text @click="openRenameDialog(data.id, data.name)">
+            <el-button size="small" text type="primary" @click="openRenameDialog(data.id, data.name)">
               <el-icon><Edit /></el-icon>
             </el-button>
             <el-button size="small" text type="danger" @click="handleDeleteNode(data.id)">
@@ -233,10 +240,8 @@ const defaultProps = {
 }
 
 .tree-node-actions {
-  display: none;
-}
-
-.tree-node:hover .tree-node-actions {
   display: flex;
+  align-items: center;
+  gap: 2px;
 }
 </style>

@@ -188,19 +188,15 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   }
 
   async function addContract(data: { org_node_id: string; contract_name: string; contract_type?: string }) {
-    try {
-      const contract = await createContract(data)
-      toast.success(t('contractV2.toast.createContractSuccess'))
-      await loadContracts({
-        org_node_id: selectedNodeId.value || undefined,
-        page: contractsPage.value,
-        page_size: contractsPageSize.value,
-      })
-      return contract
-    } catch (e: unknown) {
-      // 错误由调用组件统一提示，避免双 toast
-      throw e
-    }
+    // 错误由调用组件统一提示，避免双 toast
+    const contract = await createContract(data)
+    toast.success(t('contractV2.toast.createContractSuccess'))
+    await loadContracts({
+      org_node_id: selectedNodeId.value || undefined,
+      page: contractsPage.value,
+      page_size: contractsPageSize.value,
+    })
+    return contract
   }
 
   async function editContract(contractId: string, data: Record<string, unknown>) {
@@ -237,15 +233,11 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     document_mode?: 'new' | 'existing'
     existing_document_id?: string
   }) {
-    try {
-      const version = await createVersionFromAttachment(contractId, data)
-      toast.success(t('contractV2.toast.createVersionSuccess'))
-      await loadContractDetail(contractId)
-      return version
-    } catch (e: unknown) {
-      // 错误由调用组件统一提示，避免双 toast
-      throw e
-    }
+    // 错误由调用组件统一提示，避免双 toast
+    const version = await createVersionFromAttachment(contractId, data)
+    toast.success(t('contractV2.toast.createVersionSuccess'))
+    await loadContractDetail(contractId)
+    return version
   }
 
   async function setVersionCurrent(versionId: string) {
@@ -349,23 +341,14 @@ export const useContractV2Store = defineStore('contract-v2', () => {
   }
 
   async function doExtractMetadata(versionId: string) {
-    try {
-      const result = await extractMetadata(versionId)
-      toast.success(t('contractV2.toast.extractMetadataSuccess'))
-      return result
-    } catch (e: unknown) {
-      // 错误由调用组件统一提示，避免双 toast
-      throw e
-    }
+    // 错误由调用组件统一提示，避免双 toast
+    const result = await extractMetadata(versionId)
+    toast.success(t('contractV2.toast.extractMetadataSuccess'))
+    return result
   }
 
   async function doGetVersionMetadata(versionId: string): Promise<VersionMetadata> {
-    try {
-      return await getVersionMetadata(versionId)
-    } catch (e: unknown) {
-      toast.error((e as Error).message || t('contractV2.toast.getMetadataFailed'))
-      throw e
-    }
+    return await getVersionMetadata(versionId)
   }
 
   async function doUpdateVersionMetadata(versionId: string, metadata: {
@@ -374,14 +357,10 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     party_b?: string | null
     contract_amount?: number | null
   }) {
-    try {
-      const result = await updateVersionMetadata(versionId, metadata)
-      toast.success(t('contractV2.toast.updateMetadataSuccess'))
-      return result
-    } catch (e: unknown) {
-      // 错误由调用组件统一提示，避免双 toast
-      throw e
-    }
+    // 错误由调用组件统一提示，避免双 toast
+    const result = await updateVersionMetadata(versionId, metadata)
+    toast.success(t('contractV2.toast.updateMetadataSuccess'))
+    return result
   }
 
   async function doCreateCompareRun(versionIdA: string, versionIdB: string) {
@@ -402,14 +381,10 @@ export const useContractV2Store = defineStore('contract-v2', () => {
     rowIdB: string,
     options?: { model_id?: string; temperature?: number; concurrency?: number },
   ): Promise<LlmCompareRunResponse> {
-    try {
-      const result = await compareVersionsWithLlm(rowIdA, rowIdB, options)
-      toast.success(t('contractV2.toast.compareSuccess'))
-      return result
-    } catch (e: unknown) {
-      // 错误由调用组件统一提示，避免双 toast
-      throw e
-    }
+    // 错误由调用组件统一提示，避免双 toast
+    const result = await compareVersionsWithLlm(rowIdA, rowIdB, options)
+    toast.success(t('contractV2.toast.compareSuccess'))
+    return result
   }
 
   async function doGetCompareRunResult(runId: string): Promise<CompareRunResult> {

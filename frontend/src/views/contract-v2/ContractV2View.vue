@@ -57,8 +57,8 @@ async function openStepConfig() {
     <div class="cv2-main">
       <div class="cv2-header">
         <el-tabs v-model="activeTab" class="cv2-tabs">
-          <el-tab-pane label="合同列表" name="list" />
-          <el-tab-pane label="统计概览" name="dashboard" />
+          <el-tab-pane :label="$t('contractV2.tabs.contractList')" name="list" />
+          <el-tab-pane :label="$t('contractV2.tabs.overview')" name="dashboard" />
         </el-tabs>
         <el-button text @click="openStepConfig" class="cv2-setting-btn">
           <el-icon><Setting /></el-icon>

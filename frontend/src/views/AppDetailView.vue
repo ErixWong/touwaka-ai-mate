@@ -15,7 +15,7 @@
 </template>
 
 <script setup lang="ts">
-import { shallowRef, ref, onMounted, defineAsyncComponent, type Component } from 'vue'
+import { shallowRef, ref, onMounted, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getAppWithRuntime, type AppRuntimeFrontend, type MiniApp } from '@/api/mini-apps'
 

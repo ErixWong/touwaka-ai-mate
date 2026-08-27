@@ -3,7 +3,6 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContractV2Store } from '@/stores/contract-v2'
 import { uploadAttachmentFormData } from '@/api/attachment'
-import type { OrgNode } from '@/api/contract-v2'
 import { useToastStore } from '@/stores/toast'
 import Pagination from '@/components/Pagination.vue'
 import { type StatusTagEntry } from './constants'
@@ -80,22 +79,7 @@ const createForm = ref({
 const creating = ref(false)
 const selectedFile = ref<File | null>(null)
 
-const filteredContracts = computed(() => {
-  let list = store.contracts
-  if (searchText.value) {
-    const q = searchText.value.toLowerCase()
-    list = list.filter(c =>
-      c.contract_name.toLowerCase().includes(q)
-    )
-  }
-  if (filterStatus.value) {
-    list = list.filter(c => c.status === filterStatus.value)
-  }
-  if (filterType.value) {
-    list = list.filter(c => c.contract_type === filterType.value)
-  }
-  return list
-})
+const filteredContracts = computed(() => store.contracts)
 
 function getProcessingLabel(contract: typeof store.contracts[number]): StatusTagEntry | null {
   if (!contract.document_id) return null
@@ -202,16 +186,7 @@ watch([() => store.filterStatus, () => store.filterType, () => store.searchText]
   reloadContractsWithFilters(1)
 })
 
-function flatTreeNodes(nodes: OrgNode[]): OrgNode[] {
-  const result: OrgNode[] = []
-  for (const n of nodes) {
-    result.push(n)
-    if (n.children?.length) result.push(...flatTreeNodes(n.children))
-  }
-  return result
-}
 
-const allNodes = computed(() => flatTreeNodes(store.tree))
 </script>
 
 <template>
@@ -247,9 +222,6 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
       </el-button>
     </div>
 
-    <div v-if="searchText" class="contract-list-search-hint">
-      {{ $t('contractV2.list.searchCurrentPageOnly') }}
-    </div>
     <div class="contract-list-cards" v-loading="store.contractsLoading">
       <div v-if="filteredContracts.length === 0 && !store.contractsLoading" class="contract-list-empty">
         <el-empty :description="$t('contractV2.list.noContract')" />
@@ -281,6 +253,12 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
           <span class="contract-card-type">
             {{ contractTypeLabels[contract.contract_type ?? ''] || contract.contract_type || '-' }}
           </span>
+          <span v-if="contract.party_a" class="contract-card-party" :title="$t('contractV2.list.partyA')">
+            {{ $t('contractV2.list.partyA') }}: {{ contract.party_a }}
+          </span>
+          <span v-if="contract.contract_number" class="contract-card-number" :title="$t('contractV2.list.contractNumber')">
+            {{ $t('contractV2.list.contractNumber') }}: {{ contract.contract_number }}
+          </span>
           <span class="contract-card-versions">{{ $t('contractV2.list.versionsCount', { count: contract.version_count }) }}</span>
           <span class="contract-card-date">
             {{ contract.updated_at?.slice(0, 10) }}
@@ -303,20 +281,23 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
         <el-form-item :label="$t('contractV2.form.contractName')" required>
           <el-input v-model="createForm.contract_name" :placeholder="$t('contractV2.form.contractNamePlaceholder')" />
         </el-form-item>
-        <el-form-item :label="$t('contractV2.form.contractType')">
+        <el-form-item :label="$t('contractV2.form.contractType')" required>
           <el-select v-model="createForm.contract_type" :placeholder="$t('contractV2.form.contractTypePlaceholder')" clearable style="width: 100%;">
             <el-option v-for="(v, k) in contractTypeLabels" :key="k" :label="v" :value="k" />
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('contractV2.form.orgNode')">
-          <el-select v-model="createForm.org_node_id" :placeholder="$t('contractV2.form.orgNodePlaceholder')" clearable style="width: 100%;">
-            <el-option
-              v-for="node in allNodes"
-              :key="node.id"
-              :label="'　'.repeat(node.level - 1) + (nodeTypeLabels[node.node_type] || '') + ' ' + node.name"
-              :value="node.id"
-            />
-          </el-select>
+          <el-tree-select
+            v-model="createForm.org_node_id"
+            :data="store.tree"
+            :props="{ label: 'name', children: 'children' }"
+            node-key="id"
+            value-key="id"
+            check-strictly
+            clearable
+            :placeholder="$t('contractV2.form.orgNodePlaceholder')"
+            style="width: 100%;"
+          />
         </el-form-item>
         <el-form-item label="合同文件">
           <div class="create-file-upload">
@@ -439,6 +420,14 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
   border-radius: 4px;
 }
 
+.contract-card-party,
+.contract-card-number {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .contract-card-versions {
   color: var(--el-color-primary);
 }
@@ -452,12 +441,6 @@ const allNodes = computed(() => flatTreeNodes(store.tree))
   justify-content: center;
   margin-top: 16px;
   padding-top: 12px;
-}
-
-.contract-list-search-hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 8px;
 }
 
 .create-file-upload {
