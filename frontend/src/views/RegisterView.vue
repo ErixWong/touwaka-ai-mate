@@ -134,11 +134,26 @@ const form = reactive({
   confirm_password: '',
 })
 
+const usernameValidator = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+  if (!value) {
+    callback(new Error(t('register.usernameRequired')))
+    return
+  }
+  // 普通用户名（字母开头，仅字母、数字、下划线，6-16位）或邮箱格式
+  const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{5,15}$/
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (USERNAME_REGEX.test(value) || EMAIL_REGEX.test(value)) {
+    callback()
+  } else {
+    callback(new Error(t('register.usernameFormatHint')))
+  }
+}
+
 const rules = reactive<FormRules>({
   invitation_code: [{ required: true, message: t('register.invitationCodeRequired'), trigger: 'blur' }],
   username: [
     { required: true, message: t('register.usernameRequired'), trigger: 'blur' },
-    { pattern: /^[a-zA-Z][a-zA-Z0-9_]{5,15}$/, message: t('register.usernameFormatHint'), trigger: 'blur' },
+    { validator: usernameValidator, trigger: 'blur' },
   ],
   email: [
     { required: true, message: t('register.emailRequired'), trigger: 'blur' },
@@ -221,7 +236,16 @@ watch(() => form.invitation_code, (newCode) => {
 
 // 处理用户名输入，过滤非法字符
 const handleUsernameInput = (value: string) => {
-  // 只保留字母、数字、下划线
+  // 输入含 @ 时视为邮箱格式用户名：允许邮箱常见字符，最大 32（与后端 username VARCHAR(32) 对齐）
+  if (value.includes('@')) {
+    let emailValue = value.replace(/[^a-zA-Z0-9._@+-]/g, '')
+    if (emailValue.length > 32) {
+      emailValue = emailValue.substring(0, 32)
+    }
+    form.username = emailValue
+    return
+  }
+  // 普通用户名：只保留字母、数字、下划线
   let filtered = value.replace(/[^a-zA-Z0-9_]/g, '')
   // 确保第一个字符是字母
   const firstChar = filtered[0]

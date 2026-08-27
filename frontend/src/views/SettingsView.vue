@@ -905,19 +905,28 @@ const handleUserAvatarUpload = async (event: Event) => {
   input.value = ''
 }
 
-// 处理用户名输入，过滤非法字符
+// 处理用户名输入：普通用户名只保留字母/数字/下划线，输入含 @ 时视为邮箱格式用户名，允许邮箱字符
 const handleUsernameInput = (event: Event) => {
   const input = event.target as HTMLInputElement
-  // 只保留字母、数字、下划线
-  let value = input.value.replace(/[^a-zA-Z0-9_]/g, '')
-  // 确保第一个字符是字母（如果不是，则删除第一个字符）
-  const firstChar = value[0]
-  if (firstChar && !/^[a-zA-Z]$/.test(firstChar)) {
-    value = value.substring(1)
-  }
-  // 限制最大长度为16
-  if (value.length > 16) {
-    value = value.substring(0, 16)
+  let value = input.value
+  if (value.includes('@')) {
+    // 邮箱格式用户名：允许邮箱常见字符，最大长度 32（与后端 username VARCHAR(32) 对齐）
+    value = value.replace(/[^a-zA-Z0-9._@+-]/g, '')
+    if (value.length > 32) {
+      value = value.substring(0, 32)
+    }
+  } else {
+    // 普通用户名：只保留字母、数字、下划线
+    value = value.replace(/[^a-zA-Z0-9_]/g, '')
+    // 确保第一个字符是字母（如果不是，则删除第一个字符）
+    const firstChar = value[0]
+    if (firstChar && !/^[a-zA-Z]$/.test(firstChar)) {
+      value = value.substring(1)
+    }
+    // 限制最大长度为16
+    if (value.length > 16) {
+      value = value.substring(0, 16)
+    }
   }
   // 更新表单值
   userForm.username = value
