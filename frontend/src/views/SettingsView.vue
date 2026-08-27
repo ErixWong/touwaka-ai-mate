@@ -309,10 +309,9 @@
               <el-input
                 v-model="userForm.username"
                 :placeholder="$t('settings.usernamePlaceholder')"
-                :disabled="!!editingUser"
                 @input="handleUsernameInput"
               />
-              <div v-if="!editingUser" class="el-form-item__tip">{{ $t('settings.usernameFormatHint') }}</div>
+              <div class="el-form-item__tip">{{ $t('settings.usernameFormatHint') }}</div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -777,6 +776,7 @@ const saveUser = async () => {
     if (editingUser.value) {
       // 更新用户
       const updateData: UpdateUserRequest = {
+        username: userForm.username,
         email: userForm.email,
         nickname: userForm.nickname,
         gender: userForm.gender as import('@/types').UserGender || undefined,

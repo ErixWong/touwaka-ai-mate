@@ -285,25 +285,24 @@ class UserController {
         return;
       }
 
-      // 验证用户名格式（如果更新用户名）
+      // 验证用户名格式（如果更新用户名）：普通用户名或邮箱格式，与创建/注册规则一致
       if (updates.username) {
-        const usernameRegex = /^[a-zA-Z][a-zA-Z0-9_]{5,15}$/;
-        if (!usernameRegex.test(updates.username)) {
-          ctx.error('用户名格式不正确：需以字母开头，仅允许字母、数字、下划线，长度6-16位', 400);
+        if (!isValidUsername(updates.username)) {
+          ctx.error(usernameErrorHint(), 400);
           return;
         }
       }
 
       // 验证邮箱格式（如果更新邮箱）
       if (updates.email) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(updates.email)) {
+        if (!EMAIL_REGEX.test(updates.email)) {
           ctx.error('邮箱格式不正确', 400);
           return;
         }
       }
 
-      // 检查用户名和邮箱唯一性
+      // 检查用户名和邮箱唯一性（含交叉冲突：邮箱格式用户名不能与现有用户 email 相同，
+      // 新 email 也不能与现有用户（邮箱格式）的 username 相同，避免登录 Op.or 命中歧义）
       if (updates.username || updates.email) {
         const { Op } = this.db;
         const existing = await this.User.findOne({
@@ -311,17 +310,19 @@ class UserController {
             [Op.or]: [
               updates.username ? { username: updates.username } : null,
               updates.email ? { email: updates.email } : null,
+              updates.username ? { email: updates.username } : null,
+              updates.email ? { username: updates.email } : null,
             ].filter(Boolean),
             id: { [Op.ne]: id },
           },
           raw: true,
         });
         if (existing) {
-          if (existing.username === updates.username) {
+          if (existing.username === updates.username || existing.email === updates.username) {
             ctx.error('用户名已存在', 409);
             return;
           }
-          if (existing.email === updates.email) {
+          if (existing.email === updates.email || existing.username === updates.email) {
             ctx.error('邮箱已存在', 409);
             return;
           }
