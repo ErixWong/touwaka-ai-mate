@@ -40,7 +40,11 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
 
     // 处理 401 错误 - Token 过期
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // 登录/注册接口的 401 是预期业务错误（凭据错误/账号冲突等），应直接透传给业务层显示，
+    // 不触发 token 刷新与整页跳转（否则登录失败会刷新页面、错误提示一闪而过）
+    const AUTH_NO_RETRY_URLS = ['/auth/login', '/auth/register']
+    const isAuthNoRetry = AUTH_NO_RETRY_URLS.some((url) => originalRequest.url?.includes(url))
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthNoRetry) {
       originalRequest._retry = true
 
       try {

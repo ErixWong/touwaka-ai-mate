@@ -57,7 +57,11 @@ class AuthController {
     try {
       const { account, password } = ctx.request.body;
 
-      if (!account || !password) {
+      // 账号 trim 后查询（支持用户名或邮箱登录，避免首尾空格导致匹配失败）
+      const trimmedAccount = typeof account === 'string' ? account.trim() : account;
+      const loginAccount = trimmedAccount || account;
+
+      if (!loginAccount || !password) {
         ctx.error('用户名/邮箱和密码不能为空');
         return;
       }
@@ -67,8 +71,8 @@ class AuthController {
       const user = await this.User.findOne({
         where: {
           [Op.or]: [
-            { username: account },
-            { email: account },
+            { username: loginAccount },
+            { email: loginAccount },
           ],
           status: 'active',
         },

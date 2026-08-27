@@ -151,7 +151,7 @@ const handleLogin = async () => {
 
   try {
     await userStore.login({
-      account: form.account,
+      account: form.account.trim(),
       password: form.password,
     })
     router.push({ name: 'experts' })
