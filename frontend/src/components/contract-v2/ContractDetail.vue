@@ -66,6 +66,10 @@ const versionProcessingStatus = ref<Record<string, {
   isCurrentRevision?: boolean
 }>>({})
 const selectedVersionsForCompare = ref<string[]>([])
+const compareChangeTypeFilter = ref<string>('')
+const compareRiskLevelFilter = ref<string>('')
+const compareShowDiffOnly = ref(true)
+const selectedUploadFile = ref<File | null>(null)
 const showCompareDialog = ref(false)
 const comparePhase = ref<'config' | 'running' | 'result'>('config')
 const compareModels = ref<Array<{ id: string; name: string; provider_name?: string }>>([])
@@ -76,6 +80,10 @@ const compareConcurrency = ref(COMPARE_CONCURRENCY_DEFAULT)
 const sortedCompareVersions = ref<ContractVersion[]>([])
 const compareVersionA = computed(() => sortedCompareVersions.value[compareSwapped.value ? 1 : 0] || null)
 const compareVersionB = computed(() => sortedCompareVersions.value[compareSwapped.value ? 0 : 1] || null)
+const selectedCompareVersions = computed(() => {
+  const vs = versions.value.filter(v => selectedVersionsForCompare.value.includes(v.id))
+  return vs.sort((x, y) => versionNumberToNum(x.version_number) - versionNumberToNum(y.version_number))
+})
 const selectedModelName = computed(() => {
   const m = compareModels.value.find(m => m.id === compareModelId.value)
   return m ? `${m.name} (${m.provider_name || ''})` : ''
@@ -83,6 +91,20 @@ const selectedModelName = computed(() => {
 const compareRunId = ref('')
 const compareResultLoading = ref(false)
 const compareResult = ref<null | LlmCompareRunResponse>(null)
+const compareFilteredResults = computed(() => {
+  if (!compareResult.value?.results) return []
+  let rows = compareResult.value.results
+  if (compareShowDiffOnly.value) {
+    rows = rows.filter(item => item.change_type !== 'identical')
+  }
+  if (compareChangeTypeFilter.value) {
+    rows = rows.filter(item => item.change_type === compareChangeTypeFilter.value)
+  }
+  if (compareRiskLevelFilter.value) {
+    rows = rows.filter(item => item.risk_level === compareRiskLevelFilter.value)
+  }
+  return rows
+})
 const compareSectionCount = ref<number | null>(null)
 const compareStartedAt = ref<number | null>(null)
 const compareElapsedSeconds = ref(0)
@@ -378,7 +400,7 @@ async function refreshVersionStatuses() {
   const versionsToRefresh = (versions.value || []).filter(v =>
     v.document_id && (
       !versionProcessingStatus.value[v.id] ||
-      !terminalStatuses.includes(versionProcessingStatus.value[v.id].status)
+      !terminalStatuses.includes(versionProcessingStatus.value[v.id]?.status || '')
     ),
   )
   if (!versionsToRefresh.length) return
@@ -508,12 +530,18 @@ async function handleSaveMetadata() {
   }
 }
 
-function toggleVersionForCompare(versionId: string) {
+function canSelectVersionForCompare(versionId: string): boolean {
+  return selectedVersionsForCompare.value.length < 2 || selectedVersionsForCompare.value.includes(versionId)
+}
+
+function handleCompareCheckChange(versionId: string, checked: boolean) {
   const idx = selectedVersionsForCompare.value.indexOf(versionId)
-  if (idx >= 0) {
+  if (checked) {
+    if (idx < 0 && selectedVersionsForCompare.value.length < 2) {
+      selectedVersionsForCompare.value.push(versionId)
+    }
+  } else if (idx >= 0) {
     selectedVersionsForCompare.value.splice(idx, 1)
-  } else if (selectedVersionsForCompare.value.length < 2) {
-    selectedVersionsForCompare.value.push(versionId)
   }
 }
 
@@ -575,6 +603,7 @@ async function startCompareRun() {
     comparePhase.value = 'result'
   } catch (e: unknown) {
     console.error('Compare failed:', e)
+    ElMessage.error(t('contractV2.compare.compareFailedMessage'))
     comparePhase.value = 'config'
   } finally {
     stopCompareTimer()
@@ -620,8 +649,9 @@ async function exportCompareExcel() {
       { header: t('contractV2.compare.colTarget'), key: 'target', width: 30 },
     ]
     const storedCompareResult = compareResult.value as LlmCompareRunResponse | LlmCompareStoredResult
-    const compare_time = storedCompareResult.compared_at
-      ? new Date(storedCompareResult.compared_at).toLocaleString()
+    const storedComparedAt = (storedCompareResult as LlmCompareStoredResult).compared_at
+    const compare_time = storedComparedAt
+      ? new Date(storedComparedAt).toLocaleString()
       : new Date(compareStartedAt.value || Date.now()).toLocaleString()
     const metadata_text = t('contractV2.compare.exportMetadata', {
       compare_time,
@@ -706,7 +736,19 @@ async function exportCompareExcel() {
 function openUploadDialog() {
   uploadDocumentMode.value = 'new'
   selectedExistingDocumentId.value = contract.value?.document_id || ''
+  selectedUploadFile.value = null
   showUploadDialog.value = true
+}
+
+function handleFileSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.files?.length || !contract.value) return
+  selectedUploadFile.value = input.files[0]!
+  input.value = ''
+}
+
+function clearUploadFile() {
+  selectedUploadFile.value = null
 }
 
 async function handleViewContent(row: ContractVersion) {
@@ -724,11 +766,9 @@ async function handleViewContent(row: ContractVersion) {
   }
 }
 
-async function handleFileUpload(event: Event) {
-  const input = event.target as HTMLInputElement
-  if (!input.files?.length || !contract.value) return
-  const file = input.files[0]!
-  input.value = ''
+async function handleConfirmUpload() {
+  const file = selectedUploadFile.value
+  if (!file || !contract.value) return
 
   uploading.value = true
   try {
@@ -755,6 +795,7 @@ async function handleFileUpload(event: Event) {
     })
 
     showUploadDialog.value = false
+    selectedUploadFile.value = null
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : t('contractV2.upload.failed')
     console.error('Upload failed:', msg)
@@ -769,9 +810,16 @@ async function handleFileUpload(event: Event) {
 <template>
   <div class="contract-detail" v-if="contract">
     <div class="contract-detail-header">
-      <el-button text @click="emit('back')">
-        <el-icon><ArrowLeft /></el-icon> {{ $t('common.back') }}
-      </el-button>
+      <el-breadcrumb separator="/">
+        <el-breadcrumb-item>
+          <el-button text @click="emit('back')">
+            <el-icon><ArrowLeft /></el-icon> {{ $t('contractV2.detail.breadcrumbList') }}
+          </el-button>
+        </el-breadcrumb-item>
+        <el-breadcrumb-item>
+          <span class="contract-detail-breadcrumb-name">{{ contract.contract_name }}</span>
+        </el-breadcrumb-item>
+      </el-breadcrumb>
     </div>
 
     <div class="contract-detail-info">
@@ -897,24 +945,42 @@ async function handleFileUpload(event: Event) {
     <div class="contract-detail-section">
       <div class="contract-detail-section-header">
         <h3>{{ $t('contractV2.businessVersions.title') }}</h3>
-        <div>
+        <el-button type="primary" size="small" @click="openUploadDialog">
+          {{ $t('contractV2.uploadNewVersion') }}
+        </el-button>
+      </div>
+      <div v-if="selectedVersionsForCompare.length > 0" class="compare-action-bar">
+        <span class="compare-action-label">
+          {{ $t('contractV2.businessVersions.compareSelectionLabel', { count: selectedVersionsForCompare.length }) }}
+          <template v-if="selectedCompareVersions.length === 2">
+            : {{ $t('contractV2.businessVersions.comparePairLabel', {
+              a: selectedCompareVersions[0]?.version_number || '-',
+              b: selectedCompareVersions[1]?.version_number || '-'
+            }) }}
+          </template>
+        </span>
+        <div class="compare-action-buttons">
+          <el-button size="small" @click="selectedVersionsForCompare = []">
+            {{ $t('contractV2.businessVersions.clearSelection') }}
+          </el-button>
           <el-button
-            v-if="selectedVersionsForCompare.length > 0"
-            size="small"
-            @click="selectedVersionsForCompare = []"
-          >{{ $t('contractV2.businessVersions.clearSelection', { count: selectedVersionsForCompare.length }) }}</el-button>
-          <el-button
-            v-if="selectedVersionsForCompare.length === 2"
             type="primary"
             size="small"
+            :disabled="selectedVersionsForCompare.length !== 2"
             @click="handleStartCompare"
           >{{ $t('contractV2.businessVersions.compareSelected') }}</el-button>
-          <el-button type="primary" size="small" @click="openUploadDialog">
-            {{ $t('contractV2.uploadNewVersion') }}
-          </el-button>
         </div>
       </div>
-      <el-table :data="versions" stripe>
+      <el-table :data="versions" stripe :row-class-name="({ row }: { row: ContractVersion }) => selectedVersionsForCompare.includes(row.id) ? 'compare-selected-row' : ''">
+        <el-table-column width="55" align="center" fixed="left">
+          <template #default="{ row }">
+            <el-checkbox
+              :model-value="selectedVersionsForCompare.includes(row.id)"
+              :disabled="!canSelectVersionForCompare(row.id)"
+              @update:model-value="(checked: boolean | string | number) => handleCompareCheckChange(row.id, Boolean(checked))"
+            />
+          </template>
+        </el-table-column>
         <el-table-column prop="version_number" :label="$t('contractV2.businessVersions.columnVersionNo')" width="100" />
         <el-table-column prop="version_name" :label="$t('contractV2.businessVersions.columnVersionName')" min-width="150">
           <template #default="{ row }">
@@ -972,54 +1038,44 @@ async function handleFileUpload(event: Event) {
             {{ row.party_a || '-' }}
           </template>
         </el-table-column>
-        <el-table-column :label="$t('contractV2.businessVersions.columnActions')" width="430" fixed="right">
+        <el-table-column :label="$t('contractV2.businessVersions.columnActions')" width="190" fixed="right">
           <template #default="{ row }">
-            <el-button
-              v-if="row.document_id"
-              size="small"
-              text
-              type="warning"
-              @click="handleExtractMetadata(row.id)"
-            >{{ $t('contractV2.businessVersions.extractMetadata') }}</el-button>
-            <el-button
-              v-if="row.row_id"
-              size="small"
-              text
-              type="primary"
-              @click="handleEditMetadata(row.id)"
-            >{{ $t('contractV2.businessVersions.editMetadata') }}</el-button>
-            <el-button
-              size="small"
-              text
-              type="info"
-              @click="toggleVersionForCompare(row.id)"
-            >{{ selectedVersionsForCompare.includes(row.id) ? $t('contractV2.businessVersions.cancelSelect') : $t('contractV2.businessVersions.selectForCompare') }}</el-button>
             <el-button
               v-if="row.row_id"
               size="small"
               text
               @click="handleViewContent(row)"
             >{{ $t('contractV2.actions.view') }}</el-button>
-            <el-button
-              v-if="!row.is_current"
-              size="small"
-              text
-              type="primary"
-              @click="handleSetBusinessCurrent(row.id)"
-            >{{ $t('contractV2.revisions.setCurrent') }}</el-button>
-            <el-button
-              v-if="row.version_status === 'draft' || row.version_status === 'reviewing'"
-              size="small"
-              text
-              type="success"
-              @click="handleApprove(row.id)"
-            >{{ $t('contractV2.actions.approve') }}</el-button>
-            <el-button
-              size="small"
-              text
-              type="danger"
-              @click="handleDeleteVersion(row.id)"
-            >{{ $t('contractV2.actions.delete') }}</el-button>
+            <el-dropdown trigger="click" @command="(cmd: string) => {
+              if (cmd === 'extract') handleExtractMetadata(row.id)
+              if (cmd === 'edit') handleEditMetadata(row.id)
+              if (cmd === 'setCurrent') handleSetBusinessCurrent(row.id)
+              if (cmd === 'approve') handleApprove(row.id)
+              if (cmd === 'delete') handleDeleteVersion(row.id)
+            }">
+              <el-button size="small" text>
+                {{ $t('contractV2.actions.more') }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="row.document_id" command="extract">
+                    {{ $t('contractV2.actions.extractMetadata') }}
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="row.row_id" command="edit">
+                    {{ $t('contractV2.actions.editMetadata') }}
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="!row.is_current" command="setCurrent">
+                    {{ $t('contractV2.actions.setCurrent') }}
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="row.version_status === 'draft' || row.version_status === 'reviewing'" command="approve">
+                    {{ $t('contractV2.actions.approve') }}
+                  </el-dropdown-item>
+                  <el-dropdown-item divided command="delete">
+                    {{ $t('contractV2.actions.delete') }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -1041,12 +1097,12 @@ async function handleFileUpload(event: Event) {
         <div class="form-item">
           <label class="form-label">{{ $t('contractV2.upload.documentOwnership') }}</label>
           <el-radio-group v-model="uploadDocumentMode">
-            <el-radio value="new">{{ $t('contractV2.upload.createNew') }}</el-radio>
-            <el-radio value="existing" :disabled="!contract.document_id">{{ $t('contractV2.upload.reuseExisting') }}</el-radio>
+            <el-radio value="new">{{ $t('contractV2.upload.asNewDocument') }}</el-radio>
+            <el-radio value="existing" :disabled="!contract.document_id">{{ $t('contractV2.upload.asNewRevision') }}</el-radio>
           </el-radio-group>
         </div>
         <div v-if="uploadDocumentMode === 'existing'" class="form-item">
-          <label class="form-label">{{ $t('contractV2.upload.reuseExisting') }}</label>
+          <label class="form-label">{{ $t('contractV2.upload.asNewRevision') }}</label>
           <el-input v-model="selectedExistingDocumentId" readonly />
           <div class="upload-hint">{{ $t('contractV2.upload.reuseHint') }}</div>
         </div>
@@ -1054,12 +1110,20 @@ async function handleFileUpload(event: Event) {
           <el-icon class="is-loading" :size="24"><Loading /></el-icon>
           <span>{{ $t('contractV2.upload.uploading') }}</span>
         </div>
+        <div v-else-if="selectedUploadFile" class="upload-drop">
+          <p>{{ $t('contractV2.upload.selectedFile') }}: <strong>{{ selectedUploadFile.name }}</strong></p>
+          <div class="upload-selected-actions">
+            <el-button size="small" @click="clearUploadFile">{{ $t('common.cancel') }}</el-button>
+            <el-button type="primary" size="small" @click="handleConfirmUpload">{{ $t('contractV2.upload.confirmUpload') }}</el-button>
+          </div>
+          <p class="upload-hint">{{ $t('contractV2.upload.formatHint') }}</p>
+        </div>
         <div v-else class="upload-drop">
           <p>{{ $t('contractV2.upload.selectHint') }}</p>
           <p class="upload-hint">{{ $t('contractV2.upload.formatHint') }}</p>
           <label class="upload-btn">
             {{ $t('contractV2.upload.selectBtn') }}
-            <input type="file" accept=".pdf,.docx,.doc,.jpg,.png" @change="handleFileUpload" class="hidden-input" />
+            <input type="file" accept=".pdf,.docx,.doc,.jpg,.png" @change="handleFileSelect" class="hidden-input" />
           </label>
         </div>
       </div>
@@ -1075,12 +1139,14 @@ async function handleFileUpload(event: Event) {
       <div v-if="comparePhase === 'config'">
         <div class="compare-config-row">
           <div class="compare-side">
-            <div class="compare-side-label">📄 {{ $t('contractV2.compare.baseVersion') }}</div>
+            <div class="compare-side-label">{{ $t('contractV2.compare.baseVersion') }}</div>
             <div class="compare-side-value">{{ compareVersionA ? (compareVersionA.version_number + ' ' + (compareVersionA.version_name || '')) : '-' }}</div>
           </div>
-          <el-button circle size="small" :title="$t('contractV2.compare.swap')" @click="swapCompare">⇄</el-button>
+          <el-button circle size="small" :title="$t('contractV2.compare.swap')" @click="swapCompare">
+            <el-icon><Sort /></el-icon>
+          </el-button>
           <div class="compare-side">
-            <div class="compare-side-label">📄 {{ $t('contractV2.compare.targetVersion') }}</div>
+            <div class="compare-side-label">{{ $t('contractV2.compare.targetVersion') }}</div>
             <div class="compare-side-value">{{ compareVersionB ? (compareVersionB.version_number + ' ' + (compareVersionB.version_name || '')) : '-' }}</div>
           </div>
         </div>
@@ -1090,12 +1156,16 @@ async function handleFileUpload(event: Event) {
               <el-option v-for="m in compareModels" :key="m.id" :value="m.id" :label="`${m.name} (${m.provider_name || ''})`" />
             </el-select>
           </el-form-item>
-          <el-form-item :label="$t('contractV2.compare.temperature')">
-            <el-slider v-model="compareTemperature" :min="0" :max="1" :step="0.1" style="width: 320px;" />
-          </el-form-item>
-          <el-form-item :label="$t('contractV2.compare.concurrency')">
-            <el-slider v-model="compareConcurrency" :min="COMPARE_CONCURRENCY_MIN" :max="COMPARE_CONCURRENCY_MAX" :step="1" show-stops style="width: 320px;" />
-          </el-form-item>
+          <el-collapse>
+            <el-collapse-item :title="$t('contractV2.compare.advancedOptions')">
+              <el-form-item :label="$t('contractV2.compare.temperature')">
+                <el-slider v-model="compareTemperature" :min="0" :max="1" :step="0.1" style="width: 320px;" />
+              </el-form-item>
+              <el-form-item :label="$t('contractV2.compare.concurrency')">
+                <el-slider v-model="compareConcurrency" :min="COMPARE_CONCURRENCY_MIN" :max="COMPARE_CONCURRENCY_MAX" :step="1" show-stops style="width: 320px;" />
+              </el-form-item>
+            </el-collapse-item>
+          </el-collapse>
         </el-form>
         <div style="text-align: right;">
           <el-button type="primary" @click="startCompareRun">{{ $t('contractV2.compare.startCompare') }}</el-button>
@@ -1132,10 +1202,33 @@ async function handleFileUpload(event: Event) {
             }) }}
             <span v-if="compareResult.duration_ms" class="compare-duration">{{ $t('contractV2.compare.duration', { seconds: (compareResult.duration_ms / 1000).toFixed(0) }) }}</span>
           </div>
-          <el-button size="small" @click="loadCompareResult" :loading="compareResultLoading">{{ $t('contractV2.compare.refreshResult') }}</el-button>
-          <el-button size="small" type="primary" @click="exportCompareExcel" :loading="isExporting">{{ $t('contractV2.compare.exportExcel') }}</el-button>
+          <div class="compare-result-actions">
+            <el-button size="small" @click="loadCompareResult" :loading="compareResultLoading">{{ $t('contractV2.compare.refreshResult') }}</el-button>
+            <el-button size="small" type="primary" @click="exportCompareExcel" :loading="isExporting">{{ $t('contractV2.compare.exportExcel') }}</el-button>
+          </div>
         </div>
-        <el-table :data="compareResult.results" stripe v-loading="compareResultLoading">
+        <div class="compare-result-filters">
+          <el-select v-model="compareChangeTypeFilter" :placeholder="$t('contractV2.compare.changeTypeFilter')" clearable style="width: 150px;">
+            <el-option :label="$t('contractV2.compare.allChangeTypes')" value="" />
+            <el-option
+              v-for="(label, key) in compareChangeTypeLabels"
+              :key="key"
+              :label="label.label"
+              :value="key"
+            />
+          </el-select>
+          <el-select v-model="compareRiskLevelFilter" :placeholder="$t('contractV2.compare.riskLevelFilter')" clearable style="width: 130px;">
+            <el-option :label="$t('contractV2.compare.allRiskLevels')" value="" />
+            <el-option
+              v-for="(label, key) in compareRiskLevelLabels"
+              :key="key"
+              :label="label.label"
+              :value="key"
+            />
+          </el-select>
+          <el-switch v-model="compareShowDiffOnly" :active-text="$t('contractV2.compare.showDiffOnly')" />
+        </div>
+        <el-table :data="compareFilteredResults" stripe v-loading="compareResultLoading">
           <el-table-column prop="title" :label="$t('contractV2.compare.columnTitle')" width="240">
             <template #default="{ row }">
               {{ String(row.title || '').replace(/^##\s*/, '') || '-' }}
@@ -1162,11 +1255,11 @@ async function handleFileUpload(event: Event) {
               <el-collapse v-if="row.key_changes && row.key_changes.length" style="margin-top: 6px;">
                 <el-collapse-item v-for="(kc, kci) in row.key_changes" :key="kci">
                   <template #title>
-                    <span class="kc-title">{{ kc.description || ('变更 ' + (kci + 1)) }}</span>
+                    <span class="kc-title">{{ kc.description || $t('contractV2.compare.changeIndex', { index: kci + 1 }) }}</span>
                   </template>
                   <div class="kc-body">
-                    <div v-if="kc.old" class="kc-old">旧：{{ kc.old }}</div>
-                    <div v-if="kc.new" class="kc-new">新：{{ kc.new }}</div>
+                    <div v-if="kc.old" class="kc-old">{{ $t('contractV2.compare.oldText') }}: {{ kc.old }}</div>
+                    <div v-if="kc.new" class="kc-new">{{ $t('contractV2.compare.newText') }}: {{ kc.new }}</div>
                   </div>
                 </el-collapse-item>
               </el-collapse>
@@ -1247,6 +1340,17 @@ async function handleFileUpload(event: Event) {
 
 .contract-detail-header {
   margin-bottom: 12px;
+}
+
+.contract-detail-header :deep(.el-breadcrumb__item) {
+  display: flex;
+  align-items: center;
+}
+
+.contract-detail-breadcrumb-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
 
 .contract-detail-info {
@@ -1530,5 +1634,49 @@ async function handleFileUpload(event: Event) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.compare-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+}
+
+.compare-action-label {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+}
+
+.compare-action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.compare-selected-row {
+  background-color: var(--el-color-primary-light-9) !important;
+}
+
+.compare-result-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.compare-result-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.upload-selected-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
 }
 </style>
