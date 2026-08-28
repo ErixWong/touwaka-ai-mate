@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { userApi } from '@/api/services'
 import { useToastStore } from '@/stores/toast'
@@ -142,7 +142,7 @@ const loadUsers = async () => {
   try {
     const response = await userApi.getUsers({ size: 100 })
     users.value = response.items || []
-    
+
     // 如果有选中值，找到对应的用户
     if (props.modelValue) {
       selectedUser.value = users.value.find(u => u.id === props.modelValue) || null
@@ -154,6 +154,12 @@ const loadUsers = async () => {
     loading.value = false
   }
 }
+
+// 组件挂载时即加载用户列表，使触发按钮能正确显示当前已分配成员
+// （此前仅在打开弹窗时加载，刷新后职位卡片空白显示"选择人员"）
+onMounted(() => {
+  loadUsers()
+})
 
 // 打开弹窗
 const openModal = () => {
