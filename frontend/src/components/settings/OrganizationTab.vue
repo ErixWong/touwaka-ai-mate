@@ -281,7 +281,12 @@ const handlePositionUserChange = async (position: Position, user: UserListItem |
       positionUserMap.value.set(position.id, user.id)
       await organizationApi.updateUserOrganization(user.id, { department_id: selectedDepartment.value?.id || null, position_id: position.id })
     } else {
+      // 清空选择：需要把当前分配用户的组织信息一并移除（仅删本地 map 不调 API 会"看起来没保存"）
+      const currentUserId = positionUserMap.value.get(position.id)
       positionUserMap.value.delete(position.id)
+      if (currentUserId) {
+        await organizationApi.updateUserOrganization(currentUserId, { department_id: null, position_id: null })
+      }
     }
     toast.success(t('settings.assignSuccess'))
   } catch (error: unknown) {
