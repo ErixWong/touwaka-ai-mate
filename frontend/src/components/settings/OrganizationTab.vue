@@ -114,7 +114,12 @@
               :model-value="getPositionUserId(position.id)"
               :placeholder="$t('settings.selectUser')"
               filterable
+              remote
               clearable
+              popper-class="user-select-dropdown"
+              :remote-method="handleRemoteSearch"
+              :loading="userLoading"
+              @visible-change="handleSelectVisible"
               @change="(uid: string | undefined) => handlePositionUserChange(position, uid)"
             >
               <el-option
@@ -131,6 +136,14 @@
                   <span v-if="u.nickname" class="user-option-username">@{{ u.username }}</span>
                 </div>
               </el-option>
+              <template #footer>
+                <div v-if="userLoading" class="select-dropdown-footer">
+                  {{ $t('common.loading') }}
+                </div>
+                <div v-else-if="!noMoreUsers" class="select-dropdown-footer" @click="loadUsers()">
+                  {{ $t('settings.loadMoreUsers') }}
+                </div>
+              </template>
             </el-select>
 
             <div class="position-actions">
@@ -185,7 +198,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, OfficeBuilding } from '@element-plus/icons-vue'
@@ -202,7 +215,15 @@ const departmentTree = ref<Department[]>([])
 const selectedDepartment = ref<Department | null>(null)
 const positions = ref<Position[]>([])
 const positionUserMap = ref<Map<string, string>>(new Map())
+
+// 用户列表（远程分页加载，突破单次 100 条限制）
 const users = ref<UserListItem[]>([])
+const USER_PAGE_SIZE = 50
+const userPage = ref(1)
+const userTotal = ref(0)
+const userSearch = ref('')
+const userLoading = ref(false)
+const noMoreUsers = computed(() => userTotal.value > 0 && users.value.length >= userTotal.value)
 
 function getApiErrorMessage(cause: unknown, fallback: string) {
   if (typeof cause === 'object' && cause !== null && 'response' in cause) {
@@ -249,12 +270,70 @@ const loadDepartmentTree = async () => {
   }
 }
 
-const loadUsers = async () => {
+const loadUsers = async (reset = false) => {
+  if (userLoading.value) return
+  if (!reset && noMoreUsers.value) return
+  userLoading.value = true
   try {
-    const response = await userApi.getUsers({ size: 100 })
-    users.value = response.items || []
+    const page = reset ? 1 : userPage.value + 1
+    const response = await userApi.getUsers({ page, size: USER_PAGE_SIZE, search: userSearch.value || undefined })
+    const items = response.items || []
+    if (reset) users.value = items
+    else users.value.push(...items)
+    userPage.value = page
+    userTotal.value = response.pagination?.total ?? items.length
   } catch (error) {
     console.error('Failed to load users:', error)
+    toast.error(t('error.loadFailed'))
+  } finally {
+    userLoading.value = false
+  }
+}
+
+// remote 搜索：重置分页并携带关键字
+const handleRemoteSearch = async (keyword: string) => {
+  userSearch.value = keyword.trim()
+  await loadUsers(true)
+}
+
+// 下拉打开/关闭：打开时绑定滚动加载，关闭时解绑
+let scrollCleanup: (() => void) | null = null
+const bindScrollLoad = (attempt = 0) => {
+  // popper teleport 到 body，可能在 visible-change 后才渲染完成，重试绑定
+  if (attempt > 20) return
+  nextTick(() => {
+    const wrap = document.querySelector('.user-select-dropdown .el-select-dropdown__wrap')
+    if (!wrap) {
+      setTimeout(() => bindScrollLoad(attempt + 1), 100)
+      return
+    }
+    const onScroll = () => {
+      const el = wrap as HTMLElement
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) loadUsers()
+    }
+    wrap.addEventListener('scroll', onScroll)
+    scrollCleanup = () => wrap.removeEventListener('scroll', onScroll)
+  })
+}
+const handleSelectVisible = (visible: boolean) => {
+  if (visible) {
+    bindScrollLoad()
+  } else {
+    scrollCleanup?.()
+    scrollCleanup = null
+  }
+}
+
+// 补拉已分配用户：刷新后保证 el-select 能显示名字而非原始 ID（已分配用户可能不在已加载分页内）
+const ensureAssignedUsersLoaded = async () => {
+  const missing = [...positionUserMap.value.values()].filter(uid => uid && !users.value.some(u => u.id === uid))
+  for (const uid of missing) {
+    try {
+      const user = await userApi.getUser(uid)
+      if (user) users.value.unshift(user)
+    } catch (error) {
+      console.error('Failed to load assigned user:', error)
+    }
   }
 }
 
@@ -274,6 +353,7 @@ const loadPositions = async (departmentId: string) => {
       const firstMember = position.members?.[0]
       if (firstMember) positionUserMap.value.set(position.id, firstMember.id)
     }
+    await ensureAssignedUsersLoaded()
   } catch (error) {
     console.error('Failed to load positions:', error)
     toast.error(t('error.loadFailed'))
@@ -407,7 +487,12 @@ const handlePositionUserChange = async (position: Position, userId: string | und
 
 onMounted(() => {
   loadDepartmentTree()
-  loadUsers()
+  loadUsers(true)
+})
+
+onUnmounted(() => {
+  scrollCleanup?.()
+  scrollCleanup = null
 })
 </script>
 
@@ -607,5 +692,21 @@ onMounted(() => {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
+}
+
+/* 下拉分页加载 footer */
+.select-dropdown-footer {
+  padding: 8px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-top: 1px solid var(--border-color);
+  user-select: none;
+}
+
+.select-dropdown-footer:hover {
+  color: var(--el-color-primary);
+  background: var(--bg-secondary);
 }
 </style>

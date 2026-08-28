@@ -532,6 +532,7 @@ export default {
     positionDescriptionPlaceholder: 'Enter position description',
     manager: 'Manager',
     positionMemberCount: '{count} people',
+    loadMoreUsers: 'Load more',
     confirmDeletePosition: 'Are you sure you want to delete this position? Please ensure all members are removed first.',
     assignUser: 'Assign User',
     assignUserToPosition: 'Assign User to {position}',

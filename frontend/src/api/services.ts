@@ -244,6 +244,10 @@ export const userApi = {
   getUsers: (params?: { page?: number; size?: number; search?: string }) =>
     apiRequest<UserListResponse>(apiClient.get('/users', { params })),
 
+  // 获取单个用户
+  getUser: (id: string) =>
+    apiRequest<UserListItem>(apiClient.get(`/users/${id}`)),
+
   // 创建用户
   createUser: (data: CreateUserRequest) =>
     apiRequest<UserListItem>(apiClient.post('/users', data)),
