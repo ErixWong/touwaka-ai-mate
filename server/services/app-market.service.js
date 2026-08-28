@@ -551,18 +551,21 @@ class AppMarketService {
       logger.warn(`Failed to rollback DB records for ${appId}:`, err);
     }
     
-    // 3. 删除目录
+    // 3. 清理安装流程写入的文件（manifest.json + migrations/）
+    //    ⚠ 不能整目录删除：builtin app（仓库自带的 apps/*）含 frontend/、server/ 等源码，
+    //    整目录删除会导致重装后 runtime app 前端入口缺失、前端构建失败。
+    //    不再需要 APP_MARKET_PRESERVE_DIR（旧逻辑用于保护整目录不删，现已默认不删源码）。
     try {
-      // 开发保护：设置 APP_MARKET_PRESERVE_DIR=true 时保留目录（避免误删本地源码）
-      if (process.env.APP_MARKET_PRESERVE_DIR === 'true') {
-        const backupDir = `${appDir}.rollback-bak`;
-        await fs.rm(backupDir, { recursive: true, force: true });
-        await fs.rename(appDir, backupDir);
-        logger.info(`Rollback preserved app directory for ${appId} -> ${backupDir}`);
-      } else {
-        await fs.rm(appDir, { recursive: true, force: true });
-        logger.info(`Rolled back app directory for ${appId}`);
+      for (const rel of ['manifest.json', 'migrations']) {
+        await fs.rm(path.join(appDir, rel), { recursive: true, force: true });
       }
+      try {
+        const remaining = await fs.readdir(appDir);
+        if (remaining.length === 0) {
+          await fs.rmdir(appDir);
+        }
+      } catch { /* appDir 不存在等场景忽略 */ }
+      logger.info(`Rolled back app installation artifacts for ${appId}`);
     } catch (err) {
       logger.warn(`Failed to rollback app directory for ${appId}:`, err);
     }
@@ -915,12 +918,25 @@ class AppMarketService {
       await MiniAppRow.destroy({ where: { app_id: appId } });
     }
     
-    // 6. 删除本地文件
+    // 6. 删除安装流程写入的本地文件（manifest.json + migrations/）
+    //    ⚠ 不能整目录删除：builtin app（仓库自带的 apps/*）含 frontend/、server/ 等源码，
+    //    整目录删除会导致重装后 runtime app 前端入口（如 standard-mgr 的 frontend/views/AppRuntimeView.vue）
+    //    缺失、前端构建失败（ENOENT）。只清理安装产物，保留仓库源码。
     const appDir = path.join(this.appsDir, appId);
     try {
-      await fs.rm(appDir, { recursive: true, force: true });
+      for (const rel of ['manifest.json', 'migrations']) {
+        await fs.rm(path.join(appDir, rel), { recursive: true, force: true });
+      }
+      // 目录已空则清理（纯 registry app 场景），非空（builtin app 有源码）则保留
+      try {
+        const remaining = await fs.readdir(appDir);
+        if (remaining.length === 0) {
+          await fs.rmdir(appDir);
+        }
+      } catch { /* appDir 不存在等场景忽略 */ }
+      logger.info(`Removed app installation artifacts for ${appId}`);
     } catch (error) {
-      logger.warn(`Failed to remove app directory ${appDir}:`, error);
+      logger.warn(`Failed to remove app files in ${appDir}:`, error);
     }
     
     logger.info(`App ${appId} uninstalled successfully`);
