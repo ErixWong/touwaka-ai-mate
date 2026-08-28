@@ -656,11 +656,30 @@ class UserController {
         }
       }
 
-      // 更新用户的组织信息
-      await this.User.update(
-        { department_id: department_id || null, position_id: position_id || null },
-        { where: { id } }
-      );
+      // 事务：职位独占 + 更新用户组织信息
+      // 产品语义：一个部门可有多人，但一个人只能任职一个部门（users.department_id 单字段，
+      // 直接覆盖即自动转移）；一个职位下目前只放一个人（分配时清空该职位其他成员）。
+      const transaction = await this.db.sequelize.transaction();
+      try {
+        // 分配职位时，先清空该职位其他成员的职位（保留其部门归属：仍是部门的人，只是无职位）
+        if (position_id) {
+          await this.User.update(
+            { position_id: null },
+            { where: { position_id, id: { [Op.ne]: id } }, transaction }
+          );
+        }
+
+        // 更新目标用户的组织信息
+        await this.User.update(
+          { department_id: department_id || null, position_id: position_id || null },
+          { where: { id }, transaction }
+        );
+
+        await transaction.commit();
+      } catch (err) {
+        await transaction.rollback();
+        throw err;
+      }
 
       ctx.success({ department_id, position_id }, '组织信息更新成功');
     } catch (error) {
