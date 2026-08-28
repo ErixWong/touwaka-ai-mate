@@ -42,7 +42,11 @@ services:
           npm install -g pptxgenjs
         fi
 
-        if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ]; then
+        # 前端构建：dist 缺失，或源码较 dist 有更新时重建
+        # （不能只看 dist 是否存在：旧构建残留会导致 git pull 新代码后前端不更新，
+        #   部署后仍加载旧 chunk 报 TDZ/MIME 错；用源码 mtime 与 dist/index.html 对比触发重建）
+        if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ] || \
+           [ -n "$(find /app/frontend/src /app/frontend/index.html /app/apps -type f \( -name '*.vue' -o -name '*.ts' -o -name '*.js' -o -name '*.html' -o -name '*.css' \) -newer /app/frontend/dist/index.html 2>/dev/null | head -1)" ]; then
           echo 'Building frontend...'
           cd /app/frontend
           npm ci --include=dev
