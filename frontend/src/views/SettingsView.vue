@@ -942,20 +942,9 @@ watch(userPage, () => {
 })
 
 // 监听用户管理 tab 切换
-watch(activeTab, (newTab) => {
-  if (newTab === 'user' && usersList.value.length === 0) {
-    loadUsers()
-  }
-  if (newTab === 'role' && rolesList.value.length === 0) {
-    loadRolesForManagement()
-  }
-  if (newTab === 'role' && allPermissions.value.length === 0) {
-    loadAllPermissions()
-  }
-  if (newTab === 'role' && allExperts.value.length === 0) {
-    loadAllExperts()
-  }
-}, { immediate: true })
+// 注意：此 watch 带 immediate:true 会立即执行回调，回调引用的 loadRolesForManagement /
+// loadAllPermissions / loadAllExperts 均为 const 声明的箭头函数（无提升），
+// 因此 watch 必须放在这些函数声明之后，否则触发 TDZ: "Cannot access 'me' before initialization"
 
 // 监听设置组切换（路由已处理 redirect，此处仅保留数据加载逻辑）
 
@@ -998,6 +987,25 @@ const loadAllExperts = async () => {
     toast.error(t('settings.loadExpertsFailed'))
   }
 }
+
+// 监听用户管理 tab 切换
+// 注意：此 watch 带 immediate:true 会立即执行回调，回调引用的 loadRolesForManagement /
+// loadAllPermissions / loadAllExperts 均为 const 声明的箭头函数（无提升），
+// 因此 watch 必须放在这些函数声明之后，否则触发 TDZ: "Cannot access 'me' before initialization"
+watch(activeTab, (newTab) => {
+  if (newTab === 'user' && usersList.value.length === 0) {
+    loadUsers()
+  }
+  if (newTab === 'role' && rolesList.value.length === 0) {
+    loadRolesForManagement()
+  }
+  if (newTab === 'role' && allPermissions.value.length === 0) {
+    loadAllPermissions()
+  }
+  if (newTab === 'role' && allExperts.value.length === 0) {
+    loadAllExperts()
+  }
+}, { immediate: true })
 
 // 选择角色
 const selectRole = async (role: Role) => {
