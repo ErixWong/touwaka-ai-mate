@@ -2359,20 +2359,16 @@ export default {
     },
     workspace: {
       home: {
-        description: '全局文档视图，展示所有集合下的文档',
+        description: '按集合组织和管理文档',
         pipelineConfig: '流水线配置',
         pipelineConfigTooltip: '配置文档预处理流水线（OCR、清洗、分块、向量化）',
         createCollection: '新建集合',
         searchCollectionPlaceholder: '搜索集合名称...',
-        collectionColumn: '所属集合',
-        viewCollection: '查看',
         noCollections: '暂无文档集合',
         createFirstCollection: '创建第一个集合',
       },
       // 集合详情页
       collection: {
-        allDocuments: '全部文档',
-        collections: '集合',
         searchPlaceholder: '搜索文档标题...',
         filterStatus: '处理状态',
         allStatus: '全部状态',
@@ -2387,6 +2383,9 @@ export default {
         selectDoc: '选择一个文档查看详情',
         loadDocInfo: '加载文档信息...',
         docCount: '篇文档',
+        visPrivate: '私有',
+        visDepartment: '部门',
+        visPublic: '公开',
         updatedAt: '更新于',
         needsRevectorize: '需要重新向量化',
         pendingUpdate: '待更新',
