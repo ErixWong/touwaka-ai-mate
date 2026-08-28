@@ -765,21 +765,44 @@ class ApiServer {
     const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
     if (fs.existsSync(frontendDistPath)) {
       // 托管静态资源文件 (JS, CSS, 图片等)
+      // 静态资源不设置长缓存（去掉 maxage），避免浏览器缓存旧构建产物导致
+      // 新旧混合加载问题（如 "Failed to load module script ... MIME type"、TDZ 报错）；
+      // index.html 是入口页，单独 no-cache（见下方）
       this.app.use(serve(frontendDistPath, {
-        maxage: 31536000000, // 1年缓存
         gzip: true,
+        index: false, // 不让 koa-static 自动服务 index.html，避免入口页被长缓存
       }));
 
-      // SPA fallback: 所有非 API 请求返回 index.html
-      // 这样前端路由 (如 /chat, /settings) 可以正常工作
+      // 入口页 /index.html：no-cache，每次重新验证，确保引用最新的构建产物
       this.app.use(async (ctx, next) => {
-        // 只处理非 API 请求
-        if (!ctx.path.startsWith('/api') && !ctx.path.startsWith('/task-static') && !ctx.path.startsWith('/attach')) {
+        if (ctx.path === '/' || ctx.path === '/index.html') {
           const indexPath = path.join(frontendDistPath, 'index.html');
           if (fs.existsSync(indexPath)) {
             ctx.type = 'html';
+            ctx.set('Cache-Control', 'no-cache');
             ctx.body = fs.createReadStream(indexPath);
             return;
+          }
+        }
+        await next();
+      });
+
+      // SPA fallback: 仅对浏览器导航请求返回 index.html（如 /chat, /settings）
+      // 判断依据是 Accept 头：浏览器导航（地址栏输入/刷新/点链接）必带 text/html；
+      // 资源加载请求（<script>/<link>/<img>）的 Accept 不含 text/html，直接放行走 404，
+      // 绝不能把 index.html 当 JS/CSS 返回 —— 否则浏览器报 MIME 类型错误
+      this.app.use(async (ctx, next) => {
+        if (!ctx.path.startsWith('/api') && !ctx.path.startsWith('/task-static') && !ctx.path.startsWith('/attach')) {
+          // 仅当请求期望 HTML（浏览器导航）时才返回 index.html
+          const accept = ctx.get('Accept') || '';
+          if (accept.includes('text/html')) {
+            const indexPath = path.join(frontendDistPath, 'index.html');
+            if (fs.existsSync(indexPath)) {
+              ctx.type = 'html';
+              ctx.set('Cache-Control', 'no-cache');
+              ctx.body = fs.createReadStream(indexPath);
+              return;
+            }
           }
         }
         await next();
