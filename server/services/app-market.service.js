@@ -29,8 +29,15 @@ class AppMarketService {
   }
 
   validateTableName(tableName, appId, { legacy = false } = {}) {
-    // legacy 豁免：老 app（表名不带 appId 前缀，如 standard-mgr 的 app_standard/app_enterprise）
-    // 是历史遗留命名，重装时应放行（manifest.json 显式声明 legacy_table_names: true 才生效）
+    // 禁用词校验始终生效（安全红线，legacy 豁免也不例外）
+    const forbidden = ['users', 'roles', 'mini_app', 'mini_apps', 'attachment', 'knowledge', 'kb_'];
+    if (forbidden.some(f => tableName.toLowerCase().includes(f))) {
+      throw new Error(`Security: table ${tableName} contains forbidden keyword`);
+    }
+
+    // legacy 豁免：仅跳过前缀校验。老 app（表名不带 appId 前缀，如 standard-mgr 的
+    // app_standard/app_enterprise）是历史遗留命名，重装时应放行（manifest.json 显式声明
+    // legacy_table_names: true 才生效）
     if (legacy) {
       logger.warn(`Table name validation skipped for ${tableName} (legacy app ${appId})`);
       return tableName;
@@ -40,11 +47,6 @@ class AppMarketService {
     
     if (!tableName.startsWith(safePrefix)) {
       throw new Error(`Security: table ${tableName} must start with ${safePrefix}`);
-    }
-    
-    const forbidden = ['users', 'roles', 'mini_app', 'mini_apps', 'attachment', 'knowledge', 'kb_'];
-    if (forbidden.some(f => tableName.toLowerCase().includes(f))) {
-      throw new Error(`Security: table ${tableName} contains forbidden keyword`);
     }
     
     return tableName;
