@@ -28,7 +28,14 @@ class AppMarketService {
     }
   }
 
-  validateTableName(tableName, appId) {
+  validateTableName(tableName, appId, { legacy = false } = {}) {
+    // legacy 豁免：老 app（表名不带 appId 前缀，如 standard-mgr 的 app_standard/app_enterprise）
+    // 是历史遗留命名，重装时应放行（manifest.json 显式声明 legacy_table_names: true 才生效）
+    if (legacy) {
+      logger.warn(`Table name validation skipped for ${tableName} (legacy app ${appId})`);
+      return tableName;
+    }
+
     const safePrefix = `app_${appId.replace(/-/g, '_')}_`;
     
     if (!tableName.startsWith(safePrefix)) {
@@ -429,8 +436,9 @@ class AppMarketService {
     
     // 4. 校验 extension_tables 表名
     if (manifest.extension_tables) {
+      const legacy = manifest.legacy_table_names === true;
       for (const table of manifest.extension_tables) {
-        this.validateTableName(table.name, appId);
+        this.validateTableName(table.name, appId, { legacy });
       }
     }
     
