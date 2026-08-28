@@ -1,62 +1,149 @@
 <template>
   <div class="organization-section">
     <div class="split-panel">
+      <!-- 左：部门树 -->
       <div class="panel department-panel">
         <div class="panel-header">
           <h3 class="panel-title">{{ $t('settings.departmentManagement') }}</h3>
-          <el-button size="small" @click="openDepartmentDialog()">
-            + {{ $t('settings.addDepartment') }}
+          <el-button size="small" type="primary" :icon="Plus" @click="openDepartmentDialog()">
+            {{ $t('settings.addDepartment') }}
           </el-button>
         </div>
 
         <div v-if="loading" class="loading-state">{{ $t('common.loading') }}</div>
-        <div v-else-if="departmentTree.length === 0" class="empty-state">{{ $t('settings.noDepartments') }}</div>
-        <div v-else class="department-tree">
-          <DepartmentTreeNode
-            v-for="dept in departmentTree"
-            :key="dept.id"
-            :department="dept"
-            :selected-id="selectedDepartment?.id"
-            @select="selectDepartment"
-            @edit="openDepartmentDialog"
-            @delete="deleteDepartment"
-            @add-child="openDepartmentDialog"
-          />
-        </div>
+        <el-empty
+          v-else-if="departmentTree.length === 0"
+          class="empty-state"
+          :description="$t('settings.noDepartments')"
+          :image-size="60"
+        />
+        <el-tree
+          v-else
+          class="department-tree"
+          :data="departmentTree"
+          :props="{ label: 'name', children: 'children' }"
+          node-key="id"
+          highlight-current
+          :current-node-key="selectedDepartment?.id"
+          :expand-on-click-node="false"
+          :default-expand-all="true"
+          @current-change="handleTreeSelect"
+        >
+          <template #default="{ data }">
+            <div class="tree-node" :class="{ selected: data.id === selectedDepartment?.id }">
+              <span class="tree-node-label">
+                <el-icon class="dept-icon"><OfficeBuilding /></el-icon>
+                <span class="tree-node-name">{{ data.name }}</span>
+                <el-tag
+                  v-if="data.children?.length"
+                  size="small"
+                  type="info"
+                  effect="plain"
+                  round
+                  class="dept-child-count"
+                >
+                  {{ data.children.length }}
+                </el-tag>
+              </span>
+              <span class="tree-node-actions" @click.stop>
+                <el-button
+                  size="small"
+                  text
+                  :icon="Plus"
+                  :title="$t('settings.addChildDepartment')"
+                  @click="openDepartmentDialog(undefined, data.id)"
+                />
+                <el-button
+                  size="small"
+                  text
+                  type="primary"
+                  :icon="Edit"
+                  :title="$t('common.edit')"
+                  @click="openDepartmentDialog(data)"
+                />
+                <el-button
+                  size="small"
+                  text
+                  type="danger"
+                  :icon="Delete"
+                  :title="$t('common.delete')"
+                  @click="deleteDepartment(data)"
+                />
+              </span>
+            </div>
+          </template>
+        </el-tree>
       </div>
 
+      <!-- 右：职位面板 -->
       <div class="panel position-panel">
         <div class="panel-header">
           <h3 class="panel-title">
             {{ selectedDepartment ? $t('settings.positionsOfDepartment', { name: selectedDepartment.name }) : $t('settings.positionManagement') }}
           </h3>
-          <el-button v-if="selectedDepartment" size="small" @click="openPositionDialog()">
-            + {{ $t('settings.addPosition') }}
+          <el-button v-if="selectedDepartment" size="small" type="primary" :icon="Plus" @click="openPositionDialog()">
+            {{ $t('settings.addPosition') }}
           </el-button>
         </div>
 
-        <div v-if="!selectedDepartment" class="empty-state select-department-hint">{{ $t('settings.selectDepartmentHint') }}</div>
+        <el-empty
+          v-if="!selectedDepartment"
+          class="empty-state"
+          :description="$t('settings.selectDepartmentHint')"
+          :image-size="60"
+        />
         <div v-else-if="positionLoading" class="loading-state">{{ $t('common.loading') }}</div>
-        <div v-else-if="positions.length === 0" class="empty-state">{{ $t('settings.noPositions') }}</div>
+        <el-empty
+          v-else-if="positions.length === 0"
+          class="empty-state"
+          :description="$t('settings.noPositions')"
+          :image-size="60"
+        />
         <div v-else class="position-list">
           <div v-for="position in positions" :key="position.id" class="position-item">
             <div class="position-info">
               <span class="position-name">{{ position.name }}</span>
-              <el-tag v-if="position.is_manager" type="warning" size="small">{{ $t('settings.manager') }}</el-tag>
+              <el-tag v-if="position.is_manager" type="warning" size="small" effect="light">{{ $t('settings.manager') }}</el-tag>
+              <el-tag v-if="position.members?.length" type="success" size="small" effect="plain" round>
+                {{ $t('settings.positionMemberCount', { count: position.members.length }) }}
+              </el-tag>
             </div>
-            <div class="position-user">
-              <UserPicker :model-value="getPositionUserId(position.id)" :placeholder="$t('settings.selectUser')" @change="(user) => handlePositionUserChange(position, user)" />
-            </div>
+
+            <el-select
+              class="position-user-select"
+              :model-value="getPositionUserId(position.id)"
+              :placeholder="$t('settings.selectUser')"
+              filterable
+              clearable
+              @change="(uid: string | undefined) => handlePositionUserChange(position, uid)"
+            >
+              <el-option
+                v-for="u in users"
+                :key="u.id"
+                :value="u.id"
+                :label="u.nickname || u.username"
+              >
+                <div class="user-option">
+                  <el-avatar :size="20" :src="u.avatar || undefined">
+                    {{ (u.nickname || u.username || '?').charAt(0).toUpperCase() }}
+                  </el-avatar>
+                  <span class="user-option-name">{{ u.nickname || u.username }}</span>
+                  <span v-if="u.nickname" class="user-option-username">@{{ u.username }}</span>
+                </div>
+              </el-option>
+            </el-select>
+
             <div class="position-actions">
-              <el-button size="small" @click="openPositionDialog(position)">{{ $t('common.edit') }}</el-button>
-              <el-button size="small" type="danger" @click="deletePosition(position)">{{ $t('common.delete') }}</el-button>
+              <el-button size="small" :icon="Edit" @click="openPositionDialog(position)">{{ $t('common.edit') }}</el-button>
+              <el-button size="small" type="danger" :icon="Delete" @click="deletePosition(position)">{{ $t('common.delete') }}</el-button>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <el-dialog v-model="showDepartmentDialog" :title="editingDepartment ? $t('settings.editDepartment') : $t('settings.addDepartment')" width="400px">
+    <!-- 部门弹窗 -->
+    <el-dialog v-model="showDepartmentDialog" :title="editingDepartment ? $t('settings.editDepartment') : $t('settings.addDepartment')" width="420px">
       <el-form label-width="100px">
         <el-form-item :label="$t('settings.departmentName')">
           <el-input v-model="departmentForm.name" :placeholder="$t('settings.departmentNamePlaceholder')" />
@@ -65,7 +152,7 @@
           <el-input v-model="departmentForm.description" type="textarea" :rows="3" :placeholder="$t('settings.departmentDescriptionPlaceholder')" />
         </el-form-item>
         <el-form-item v-if="editingDepartment" :label="$t('settings.parentDepartment')">
-          <el-select v-model="departmentForm.parent_id" clearable>
+          <el-select v-model="departmentForm.parent_id" clearable :placeholder="$t('settings.noParent')">
             <el-option v-for="dept in availableParentDepartments" :key="dept.id" :value="dept.id" :label="dept.name" :disabled="dept.id === editingDepartment?.id" />
           </el-select>
         </el-form-item>
@@ -76,7 +163,8 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showPositionDialog" :title="editingPosition ? $t('settings.editPosition') : $t('settings.addPosition')" width="400px">
+    <!-- 职位弹窗 -->
+    <el-dialog v-model="showPositionDialog" :title="editingPosition ? $t('settings.editPosition') : $t('settings.addPosition')" width="420px">
       <el-form label-width="100px">
         <el-form-item :label="$t('settings.positionName')">
           <el-input v-model="positionForm.name" :placeholder="$t('settings.positionNamePlaceholder')" />
@@ -100,10 +188,9 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessageBox } from 'element-plus'
-import { departmentApi, positionApi, organizationApi } from '@/api/services'
+import { Plus, Edit, Delete, OfficeBuilding } from '@element-plus/icons-vue'
+import { departmentApi, positionApi, organizationApi, userApi } from '@/api/services'
 import type { Department, Position, UserListItem } from '@/types'
-import DepartmentTreeNode from './DepartmentTreeNode.vue'
-import UserPicker from '@/components/common/UserPicker.vue'
 import { useToastStore } from '@/stores/toast'
 
 const { t } = useI18n()
@@ -115,6 +202,7 @@ const departmentTree = ref<Department[]>([])
 const selectedDepartment = ref<Department | null>(null)
 const positions = ref<Position[]>([])
 const positionUserMap = ref<Map<string, string>>(new Map())
+const users = ref<UserListItem[]>([])
 
 function getApiErrorMessage(cause: unknown, fallback: string) {
   if (typeof cause === 'object' && cause !== null && 'response' in cause) {
@@ -161,16 +249,31 @@ const loadDepartmentTree = async () => {
   }
 }
 
-const selectDepartment = async (dept: Department) => {
-  selectedDepartment.value = dept
-  await loadPositions(dept.id)
+const loadUsers = async () => {
+  try {
+    const response = await userApi.getUsers({ size: 100 })
+    users.value = response.items || []
+  } catch (error) {
+    console.error('Failed to load users:', error)
+  }
+}
+
+const handleTreeSelect = async (data: Department | null) => {
+  if (!data) return
+  selectedDepartment.value = data
+  await loadPositions(data.id)
 }
 
 const loadPositions = async (departmentId: string) => {
   positionLoading.value = true
   try {
     positions.value = await positionApi.getDepartmentPositions(departmentId)
-    await loadPositionUsers()
+    // 职位成员已由后端 LEFT JOIN 返回，直接填充本地映射（省去逐个调用 members API）
+    positionUserMap.value = new Map()
+    for (const position of positions.value) {
+      const firstMember = position.members?.[0]
+      if (firstMember) positionUserMap.value.set(position.id, firstMember.id)
+    }
   } catch (error) {
     console.error('Failed to load positions:', error)
     toast.error(t('error.loadFailed'))
@@ -218,6 +321,7 @@ const deleteDepartment = async (dept: Department) => {
     if (selectedDepartment.value?.id === dept.id) {
       selectedDepartment.value = null
       positions.value = []
+      positionUserMap.value = new Map()
     }
     await loadDepartmentTree()
   } catch (error: unknown) {
@@ -273,17 +377,21 @@ const deletePosition = async (position: Position) => {
   }
 }
 
-const getPositionUserId = (positionId: string): string | null => positionUserMap.value.get(positionId) || null
+const getPositionUserId = (positionId: string): string | undefined =>
+  positionUserMap.value.get(positionId) || undefined
 
-const handlePositionUserChange = async (position: Position, user: UserListItem | null) => {
+const handlePositionUserChange = async (position: Position, userId: string | undefined | null) => {
   try {
-    if (user) {
-      positionUserMap.value.set(position.id, user.id)
-      await organizationApi.updateUserOrganization(user.id, { department_id: selectedDepartment.value?.id || null, position_id: position.id })
+    if (userId) {
+      positionUserMap.value.set(position.id, userId)
+      // 本地同步成员（tag 即时更新，避免重新请求）
+      position.members = [users.value.find(u => u.id === userId)].filter((u): u is UserListItem => !!u)
+      await organizationApi.updateUserOrganization(userId, { department_id: selectedDepartment.value?.id || null, position_id: position.id })
     } else {
-      // 清空选择：需要把当前分配用户的组织信息一并移除（仅删本地 map 不调 API 会"看起来没保存"）
+      // 清空选择：同步移除该用户在组织中的归属（仅删本地 map 不调 API 会"看起来没保存"）
       const currentUserId = positionUserMap.value.get(position.id)
       positionUserMap.value.delete(position.id)
+      position.members = []
       if (currentUserId) {
         await organizationApi.updateUserOrganization(currentUserId, { department_id: null, position_id: null })
       }
@@ -292,39 +400,212 @@ const handlePositionUserChange = async (position: Position, user: UserListItem |
   } catch (error: unknown) {
     console.error('Failed to assign user to position:', error)
     toast.error(getApiErrorMessage(error, t('common.saveFailed')))
-    await loadPositionUsers()
+    // 回滚到服务端真实状态
+    if (selectedDepartment.value) await loadPositions(selectedDepartment.value.id)
   }
 }
 
-const loadPositionUsers = async () => {
-  try {
-    for (const position of positions.value) {
-      const members = await positionApi.getPositionMembers(position.id)
-      if (members?.length > 0) positionUserMap.value.set(position.id, members[0]!.id)
-      else positionUserMap.value.delete(position.id)
-    }
-  } catch (error) {
-    console.error('Failed to load position users:', error)
-  }
-}
-
-onMounted(() => loadDepartmentTree())
+onMounted(() => {
+  loadDepartmentTree()
+  loadUsers()
+})
 </script>
 
 <style scoped>
-.organization-section { height: 100%; }
-.split-panel { display: flex; gap: 20px; height: calc(100vh - 250px); min-height: 400px; }
-.panel { flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
-.panel-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
-.panel-title { margin: 0; font-size: 14px; font-weight: 600; }
-.loading-state, .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
-.select-department-hint { font-style: italic; }
-.department-tree { flex: 1; overflow-y: auto; padding: 8px; }
-.position-list { flex: 1; overflow-y: auto; padding: 8px; }
-.position-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color); }
-.position-item:last-child { border-bottom: none; }
-.position-info { display: flex; align-items: center; gap: 8px; }
-.position-name { font-weight: 500; }
-.position-user { flex: 0 0 auto; min-width: 140px; }
-.position-actions { display: flex; gap: 8px; }
+.organization-section {
+  height: 100%;
+  display: flex;
+}
+
+.split-panel {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  height: calc(100vh - 250px);
+  min-height: 420px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.department-panel {
+  flex: 0 0 300px;
+  max-width: 320px;
+}
+
+.position-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loading-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--text-secondary);
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+/* ── 部门树 ─────────────────────────── */
+.department-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.department-tree :deep(.el-tree-node__content) {
+  height: 36px;
+  border-radius: 6px;
+}
+
+.tree-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-right: 4px;
+}
+
+.tree-node-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.dept-icon {
+  color: var(--text-secondary);
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.tree-node-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 选中态：文字主题色加粗 + 树自带高亮背景（highlight-current） */
+.tree-node.selected .tree-node-name {
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+
+.dept-child-count {
+  flex-shrink: 0;
+}
+
+.tree-node-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.tree-node:hover .tree-node-actions,
+.tree-node.selected .tree-node-actions {
+  opacity: 1;
+}
+
+/* ── 职位列表 ───────────────────────── */
+.position-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.position-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.15s;
+}
+
+.position-item:last-child {
+  border-bottom: none;
+}
+
+.position-item:hover {
+  background: var(--bg-secondary);
+}
+
+.position-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.position-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.position-user-select {
+  flex: 0 0 190px;
+}
+
+.user-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-option-name {
+  font-size: 13px;
+}
+
+.user-option-username {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.position-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
 </style>
