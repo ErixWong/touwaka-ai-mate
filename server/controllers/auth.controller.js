@@ -133,6 +133,8 @@ class AuthController {
           nickname: user.nickname,
           role: primaryRole,
           avatar: user.avatar,
+          department_id: user.department_id,
+          position_id: user.position_id,
         },
         ...tokens,
       });
@@ -197,7 +199,7 @@ class AuthController {
     try {
       const user = await this.User.findOne({
         where: { id: ctx.state.session.id },
-        attributes: ['id', 'username', 'email', 'nickname', 'avatar', 'preferences', 'created_at'],
+        attributes: ['id', 'username', 'email', 'nickname', 'avatar', 'preferences', 'created_at', 'department_id', 'position_id'],
         raw: true,
       });
 

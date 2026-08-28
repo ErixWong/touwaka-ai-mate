@@ -7,6 +7,14 @@
     @open="onOpen"
     :close-on-click-modal="false"
   >
+    <el-alert
+      v-if="!userHasDepartment"
+      class="dept-alert-top"
+      type="warning"
+      :closable="false"
+      show-icon
+      :title="deptRequiredHint"
+    />
     <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
       <el-form-item :label="$t('docs.workspace.settings.collectionName')" prop="name">
         <el-input v-model="form.name" maxlength="100" show-word-limit :placeholder="$t('docs.workspace.settings.collectionNamePlaceholder')" />
@@ -25,9 +33,6 @@
           <el-radio value="department" :disabled="!userHasDepartment">{{ $t('docs.workspace.settings.visibilityDepartment') }}</el-radio>
           <el-radio value="public">{{ $t('docs.workspace.settings.visibilityPublic') }}</el-radio>
         </el-radio-group>
-        <div v-if="!userHasDepartment" class="form-hint">
-          {{ $t('docs.workspace.settings.departmentRequiredHint') }}
-        </div>
       </el-form-item>
       <el-form-item v-if="form.visibility === 'department'" :label="$t('docs.workspace.settings.department')" prop="department_id">
         <el-tree-select
@@ -48,13 +53,13 @@
     </el-form>
     <template #footer>
       <el-button @click="$emit('update:visible', false)">{{ $t('common.cancel') }}</el-button>
-      <el-button type="primary" @click="submit" :loading="submitting">{{ $t('docs.workspace.home.createCollection') }}</el-button>
+      <el-button type="primary" @click="submit" :loading="submitting" :disabled="!userHasDepartment">{{ $t('docs.workspace.home.createCollection') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
@@ -87,6 +92,15 @@ const submitting = ref(false)
 const embeddingModels = ref<AIModel[]>([])
 const departmentTree = ref<DepartmentTreeNode[]>([])
 const userHasDepartment = ref(false)
+
+// 没部门的用户无法创建任何集合（后端 createCollection 强制要求 department_id）。
+// 提示按角色区分：管理员知道去哪分配部门，普通用户只能找管理员。
+const isAdmin = computed(() => userStore.isAdmin)
+const deptRequiredHint = computed(() =>
+  isAdmin.value
+    ? t('docs.workspace.settings.departmentRequiredHintAdmin')
+    : t('docs.workspace.settings.departmentRequiredHint')
+)
 
 const form = reactive({
   name: '',
@@ -179,5 +193,9 @@ async function submit() {
 </script>
 
 <style scoped>
-.form-hint { font-size: 12px; color: #e6a23c; margin-top: 4px; }
+.dept-alert-top {
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  align-items: flex-start;
+}
 </style>
