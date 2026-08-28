@@ -231,7 +231,7 @@
             <el-step :title="$t('apps.standardMgr.uploadStepDone')" />
           </el-steps>
           <div class="sm-upload-status-text">
-            {{ uploadStatusKey ? $t('apps.standardMgr.' + uploadStatusKey, uploadStatusParams) : '' }}
+            {{ uploadStatusKey ? $t('apps.standardMgr.' + uploadStatusKey) : '' }}
           </div>
         </div>
       </el-tab-pane>
@@ -292,7 +292,6 @@ import {
   uploadAttachment,
   listCollections,
   intakeDocument,
-  getDocumentStatus,
   createStandard,
   searchDocuments,
   getDocumentRevisions,
@@ -358,7 +357,6 @@ const uploadStep = ref(1)
 const uploadFile = ref<File | null>(null)
 const uploadProgressStep = ref(0)
 const uploadStatusKey = ref('')
-const uploadStatusParams = ref<Record<string, string>>({})
 const collectionLoading = ref(false)
 const collections = ref<DocCollection[]>([])
 
@@ -595,27 +593,9 @@ async function handleUploadSubmit() {
       attachments: [{ id: attachment.id }],
     })
 
-    uploadStatusKey.value = 'uploadStatusWaiting'
-    let ready = false
-    for (let i = 0; i < 120; i++) {
-      await new Promise(r => setTimeout(r, 5000))
-      try {
-        const status = await getDocumentStatus(intake.document_id)
-        if (status.processing_status === 'ready' || status.processing_status === 'completed') { ready = true; break }
-        if (status.processing_status === 'error') {
-          throw new Error(status.error_message || i18n.global.t('apps.standardMgr.docProcessFailed'))
-        }
-        uploadStatusKey.value = 'uploadStatusProcessing'
-        uploadStatusParams.value = { status: status.processing_status }
-      } catch (pollErr: any) {
-        if (pollErr.message?.includes(i18n.global.t('apps.standardMgr.docProcessFailed'))) throw pollErr
-      }
-    }
-    if (!ready) throw new Error(i18n.global.t('apps.standardMgr.docProcessTimeout'))
-
     uploadProgressStep.value = 2
     uploadStatusKey.value = 'uploadStatusOnboarding'
-    await createStandard({
+    const result = await createStandard({
       document_id: intake.document_id,
       standard_type: form.value.standard_type,
       standard_code: form.value.standard_code,
@@ -623,7 +603,11 @@ async function handleUploadSubmit() {
       ...(form.value.enterprise_id ? { enterprise_id: form.value.enterprise_id } : {}),
     })
 
-    useToastStore().success(i18n.global.t('apps.standardMgr.uploadSuccess'))
+    useToastStore().success(i18n.global.t(
+      result.document_ready === false
+        ? 'apps.standardMgr.uploadQueued'
+        : 'apps.standardMgr.uploadSuccess',
+    ))
     emit('onboarded')
   } catch (err: any) {
     useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.uploadFailed'))

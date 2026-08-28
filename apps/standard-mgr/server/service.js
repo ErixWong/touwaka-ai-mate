@@ -27,6 +27,14 @@ import { Op } from 'sequelize';
 // R18-2: 清洗总超时 15→30 分钟（长标准 + 读写交替策略下 15 分钟偏紧）
 const CLEAN_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟
 const TASK_TOKEN_EXPIRY = '4h'; // 后台任务 token 有效期（需长于清洗超时）
+const DOCUMENT_IN_FLIGHT_STATUSES = [
+  'pending_ocr',
+  'ocr_processing',
+  'pending_clean',
+  'pending_outline',
+  'pending_chunk',
+  'pending_embedding',
+];
 
 // ============================================================
 // 常量
@@ -1714,6 +1722,158 @@ class StandardMgrService {
   }
 
   /**
+   * 查找文档已完成处理、等待锚点清洗的纳管标准。
+   *
+   * @returns {Promise<Array>}
+   */
+  async findStandardsAwaitingDocument() {
+    return await this.db.query(
+      `SELECT
+         s.id,
+         s.document_id,
+         s.current_revision_id,
+         s.created_by,
+         d.processing_status,
+         d.processing_error_message
+       FROM app_standard AS s
+       INNER JOIN documents AS d ON d.id = s.document_id
+       WHERE s.anchor_build_status = ?
+         AND s.last_anchor_build_at IS NULL
+         AND d.processing_status IN (?, ?)
+       ORDER BY s.created_at ASC, s.id ASC`,
+      [
+        ANCHOR_BUILD_STATUS.PENDING,
+        'ready',
+        'error',
+      ],
+    );
+  }
+
+  /**
+   * 解析后台锚点清洗使用的用户会话。
+   *
+   * @param {string|null} createdBy - 纳管标准的创建人
+   * @returns {Promise<{id: string, roles: string[], isAdmin: boolean}>}
+   */
+  async _buildOnboardCleaningSession(createdBy) {
+    const User = this.db.getModel('user');
+    const UserRole = this.db.getModel('user_role');
+    const Role = this.db.getModel('role');
+
+    let user = null;
+    if (createdBy) {
+      user = await User.findOne({
+        where: { id: createdBy },
+        attributes: ['id', 'status'],
+        raw: true,
+      });
+    }
+
+    if (!user || user.status !== 'active') {
+      const adminAssignments = await UserRole.findAll({
+        attributes: ['user_id'],
+        include: [
+          {
+            model: Role,
+            as: 'role',
+            where: { mark: 'admin' },
+            attributes: [],
+            required: true,
+          },
+          {
+            model: User,
+            as: 'user',
+            where: { status: 'active' },
+            attributes: [],
+            required: true,
+          },
+        ],
+        order: [['user_id', 'ASC']],
+        limit: 1,
+        raw: true,
+      });
+      const fallbackUserId = adminAssignments[0]?.user_id;
+      if (!fallbackUserId) {
+        throw new Error('没有可用于后台锚点清洗的活动管理员用户');
+      }
+      logger.info(
+        `[standard-mgr] created_by=${createdBy || 'unknown'} unavailable, ` +
+        `using active admin user=${fallbackUserId} for onboard cleaning`
+      );
+      user = { id: fallbackUserId, status: 'active' };
+    }
+
+    const roleRecords = await UserRole.findAll({
+      where: { user_id: user.id },
+      include: [{
+        model: Role,
+        as: 'role',
+        attributes: ['mark'],
+      }],
+      raw: true,
+      nest: true,
+    });
+    const roles = roleRecords.map(record => record.role?.mark).filter(Boolean);
+
+    return {
+      id: user.id,
+      roles,
+      isAdmin: roles.includes('admin'),
+    };
+  }
+
+  /**
+   * 触发已纳管且文档处理完成的标准锚点清洗。
+   *
+   * @param {object} params
+   * @param {object} params.chatService - ChatService 实例
+   * @returns {Promise<{processed: number, cleaned: number, errored: number}>}
+   */
+  async triggerPendingOnboardedStandards({ chatService } = {}) {
+    const summary = { processed: 0, cleaned: 0, errored: 0 };
+    const standards = await this.findStandardsAwaitingDocument();
+
+    for (const standard of standards) {
+      summary.processed++;
+      try {
+        if (standard.processing_status === 'error') {
+          const errorMessage = standard.processing_error_message || '未知文档处理错误';
+          await this.updateAnchorBuildStatus(
+            standard.id,
+            ANCHOR_BUILD_STATUS.ERROR,
+            `文档处理失败，无法构建锚点: ${errorMessage}`,
+          );
+          summary.errored++;
+          logger.warn(
+            `[standard-mgr] document processing failed for standard=${standard.id}: ${errorMessage}`
+          );
+          continue;
+        }
+
+        const session = await this._buildOnboardCleaningSession(standard.created_by);
+        const pipeResult = await this.runCleaningPipeline(standard.id, {
+          session,
+          chatService,
+        });
+        if (pipeResult?.accepted) {
+          summary.cleaned++;
+        } else {
+          logger.info(
+            `[standard-mgr] onboard cleaning already in progress, ` +
+            `standard=${standard.id}; accepted=false ignored`
+          );
+        }
+      } catch (err) {
+        logger.error(
+          `[standard-mgr] onboard watcher failed for standard=${standard.id}: ${err.message}`
+        );
+      }
+    }
+
+    return summary;
+  }
+
+  /**
    * 读取 standard-mgr 应用级配置（mini_apps.config）
    */
   async getAppConfig() {
@@ -2097,7 +2257,7 @@ class StandardMgrService {
    * 从文档平台纳管一份标准文档
    *
    * 校验：
-   * - 文档存在且 processing_status='ready'（已完成 OCR → Clean → Outline → Chunk → Embedding 全链路）
+   * - 文档存在且已完成处理，或处于 OCR → Clean → Outline → Chunk → Embedding 的处理中状态
    * - 文档类型不限：contract / knowledge / department_doc / standard 均可纳管，
    *   纳管成功后会把该文档的 doc_type 改写为 'standard'（类型改写，见下方步骤 6）
    * - document_id 唯一：同一文档只能纳管一次
@@ -2115,7 +2275,14 @@ class StandardMgrService {
     // ---- 1. 校验文档存在与处理状态（类型不限，纳管时改写为 standard） ----
     const Document = this.db.getModel('document');
     const doc = await Document.findByPk(document_id, {
-      attributes: ['id', 'doc_type', 'processing_status', 'current_revision_id', 'collection_id'],
+      attributes: [
+        'id',
+        'doc_type',
+        'processing_status',
+        'processing_error_message',
+        'current_revision_id',
+        'collection_id',
+      ],
       raw: true,
     });
     if (!doc) {
@@ -2124,10 +2291,18 @@ class StandardMgrService {
       throw err;
     }
 
-    if (doc.processing_status !== 'ready') {
+    const documentReady = doc.processing_status === 'ready';
+    if (!documentReady && !DOCUMENT_IN_FLIGHT_STATUSES.includes(doc.processing_status)) {
+      if (doc.processing_status === 'error') {
+        const err = new Error(
+          `Document processing failed: ${doc.processing_error_message || 'unknown error'}`
+        );
+        err.status = 400;
+        throw err;
+      }
+
       const err = new Error(
-        `Document processing_status must be 'ready' (current: ${doc.processing_status}). ` +
-        'The document has not completed the full pipeline (OCR → Clean → Outline → Chunk → Embedding).'
+        `Document processing_status must be 'ready' or an in-flight status (current: ${doc.processing_status}).`
       );
       err.status = 400;
       throw err;
@@ -2226,7 +2401,10 @@ class StandardMgrService {
       );
     }
 
-    return standard.toJSON ? standard.toJSON() : standard;
+    return {
+      ...(standard.toJSON ? standard.toJSON() : standard),
+      document_ready: documentReady,
+    };
   }
 
   /**
