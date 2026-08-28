@@ -683,7 +683,7 @@ const loadUsers = async () => {
       search: userSearchQuery.value || undefined,
     })
     usersList.value = response.items
-    userTotalPages.value = response.pages
+    userTotalPages.value = response.pagination.pages
   } catch (err) {
     console.error('加载用户列表失败:', err)
     toast.error(t('settings.loadUsersFailed'))

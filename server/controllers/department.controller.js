@@ -296,14 +296,24 @@ class DepartmentController {
         ],
         include: [{
           model: this.User,
-          as: 'members',
+          as: 'users',
           attributes: ['id', 'username', 'nickname', 'avatar'],
           where: { status: 'active' },
           required: false, // LEFT JOIN
         }],
       });
 
-      ctx.success(positions);
+      // 模型 alias 为 users（生成产物），对外契约保持 members：统一字段名
+      const data = positions.map((pos) => {
+        const plain = pos.get({ plain: true });
+        if (plain.users !== undefined) {
+          plain.members = plain.users;
+          delete plain.users;
+        }
+        return plain;
+      });
+
+      ctx.success(data);
     } catch (error) {
       logger.error('Get department positions error:', error);
       ctx.error('获取部门职位失败', 500);
@@ -321,18 +331,19 @@ class DepartmentController {
         where: { department_id: id, is_manager: true, status: 'active' },
         include: [{
           model: this.User,
-          as: 'members',
+          as: 'users',
           attributes: ['id', 'username', 'nickname', 'avatar'],
           where: { status: 'active' },
           required: false, // LEFT JOIN
         }],
       });
 
-      // 提取所有负责人
+      // 提取所有负责人（模型 alias 为 users，生成产物）
       const managers = [];
       for (const pos of managerPositions) {
-        if (pos.members && pos.members.length > 0) {
-          managers.push(...pos.members.map(m => m.get({ plain: true })));
+        const members = pos.users || [];
+        if (members.length > 0) {
+          managers.push(...members.map(m => m.get({ plain: true })));
         }
       }
 

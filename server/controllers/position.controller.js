@@ -226,10 +226,26 @@ class PositionController {
           ['is_manager', 'DESC'],
           ['name', 'ASC'],
         ],
-        raw: true,
+        include: [{
+          model: this.User,
+          as: 'users',
+          attributes: ['id', 'username', 'nickname', 'avatar'],
+          where: { status: 'active' },
+          required: false, // LEFT JOIN
+        }],
       });
 
-      ctx.success(positions);
+      // 模型 alias 为 users（生成产物），对外契约保持 members：统一字段名
+      const data = positions.map((pos) => {
+        const plain = pos.get({ plain: true });
+        if (plain.users !== undefined) {
+          plain.members = plain.users;
+          delete plain.users;
+        }
+        return plain;
+      });
+
+      ctx.success(data);
     } catch (error) {
       logger.error('Get department positions error:', error);
       ctx.error('获取部门职位失败', 500);

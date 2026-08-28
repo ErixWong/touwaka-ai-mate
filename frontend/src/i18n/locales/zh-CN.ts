@@ -663,6 +663,8 @@ export default {
     positionDescription: '职位描述',
     positionDescriptionPlaceholder: '请输入职位描述',
     manager: '负责人',
+    positionMemberCount: '{count} 人',
+    loadMoreUsers: '加载更多',
     confirmDeletePosition: '确定要删除此职位吗？删除前请确保已移除所有成员。',
     assignUser: '分配人员',
     assignUserToPosition: '分配人员到 {position}',

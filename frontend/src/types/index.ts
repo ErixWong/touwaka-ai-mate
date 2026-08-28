@@ -730,9 +730,19 @@ export interface UpdateUserRolesRequest {
 }
 
 /**
- * 用户列表响应（遵循项目 PageResponse 格式）
+ * 用户列表响应（后端返回 { items, pagination } 结构）
  */
-export type UserListResponse = PageResponse<UserListItem>
+export interface UserListResponse {
+  items: UserListItem[]
+  pagination: {
+    page: number
+    size: number
+    total: number
+    pages: number
+    has_next: boolean
+    has_prev: boolean
+  }
+}
 
 // ============================================
 // 角色管理相关类型
