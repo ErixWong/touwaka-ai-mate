@@ -298,10 +298,13 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     }
   }
 
-  /** R9-1: 选择标准 → 始终开新页签 + 加载数据 */
+  /** R9-1: 选择标准 → 复用已有页签，否则新建并加载数据 */
   async function selectStandard(standardId: string) {
-    openTab(standardId, { allowDuplicate: true })
-    await loadTabData(standardId)
+    const hasExistingTab = openTabs.value.some(tab => tab.standard_id === standardId)
+    openTab(standardId)
+    if (!hasExistingTab) {
+      await loadTabData(standardId)
+    }
   }
 
   /** 加载页签数据（若未缓存） */
@@ -339,6 +342,22 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   async function refreshAnchors(standardId: string) {
     const cache = ensureCache(standardId)
     await Promise.all([
+      listAnchoredSections(standardId).then(s => { cache.sections = s }).catch(() => {
+        cache.sections = []
+      }),
+      listRefAnchors(standardId, { limit: 500 }).then(a => { cache.anchors = a }).catch(err => {
+        useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadAnchorsFailed'))
+      }),
+    ])
+  }
+
+  /** 强制刷新页签全部数据（清洗完成后调用，绕开缓存） */
+  async function refreshTabData(standardId: string) {
+    const cache = ensureCache(standardId)
+    await Promise.all([
+      getStandard(standardId).then(d => { cache.detail = d }).catch(err => {
+        useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadDetailFailed'))
+      }),
       listAnchoredSections(standardId).then(s => { cache.sections = s }).catch(() => {
         cache.sections = []
       }),
@@ -405,7 +424,8 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
         useToastStore().error(rebuildError.value!)
       } else {
         useToastStore().success(i18n.global.t('apps.standardMgr.cleanSuccess'))
-        await loadTabData(standardId)
+        await refreshTabData(standardId)
+        await fetchStandards()
       }
     } catch (err: any) {
       const msg = err?.message || i18n.global.t('apps.standardMgr.rebuildFailed')
@@ -504,5 +524,6 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     loadTabData,
     // R21: 手动锚点
     refreshAnchors,
+    refreshTabData,
   }
 })

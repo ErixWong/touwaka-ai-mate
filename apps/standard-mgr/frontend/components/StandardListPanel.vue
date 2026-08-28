@@ -47,6 +47,15 @@
                 {{ $t(data.statusLabel) }}
               </el-tag>
               <el-tooltip
+                v-if="data.has_new_version"
+                :content="$t('apps.standardMgr.newVersionHint')"
+                placement="top"
+              >
+                <el-tag size="small" type="warning">
+                  {{ $t('apps.standardMgr.newVersionTag') }}
+                </el-tag>
+              </el-tooltip>
+              <el-tooltip
                 v-if="data.needs_review"
                 :content="data.needs_review_tip || $t('apps.standardMgr.needsReviewFallback')"
                 placement="top"
@@ -99,6 +108,7 @@ interface TreeNode {
   standard_name?: string
   statusTagType?: string
   statusLabel?: string
+  has_new_version?: boolean
   needs_review?: boolean
   needs_review_tip?: string
   children?: TreeNode[]
@@ -288,6 +298,11 @@ function buildStandardNode(std: StandardItem): TreeNode {
     standard_name: std.standard_name,
     statusTagType: statusTagType(std.anchor_build_status),
     statusLabel: statusLabel(std.anchor_build_status),
+    has_new_version: Boolean(
+      std.current_revision_id &&
+      std.document_current_revision_id &&
+      std.current_revision_id !== std.document_current_revision_id,
+    ),
     needs_review: std.needs_review,
     needs_review_tip: buildNeedsReviewTip(std),
   }

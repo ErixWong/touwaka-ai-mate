@@ -662,6 +662,54 @@ class StandardMgrService {
     await AppStandard.update(updateData, { where: { id: standardId }, transaction });
   }
 
+  /**
+   * 迁移历史 auto_backfill + valid + 未定位章节的记录为 suspected。
+   *
+   * 历史回填记录只有文档级匹配，必须进入人工复核，且不能参与版本升级。
+   *
+   * @returns {Promise<{migrated: number, standards_refreshed: number}>}
+   */
+  async migrateLegacyBackfillValid() {
+    const RefAnchor = this._refAnchor();
+    const legacyWhere = {
+      source: REF_SOURCE.AUTO_BACKFILL,
+      status: REF_STATUS.VALID,
+      target_outline_id: null,
+    };
+
+    const legacyRows = await RefAnchor.findAll({
+      where: legacyWhere,
+      attributes: ['standard_id'],
+      raw: true,
+    });
+    const standardIds = [...new Set(legacyRows.map(row => row.standard_id).filter(Boolean))];
+
+    const updateResult = await this.db.execute(
+      `UPDATE app_standard_ref_anchor
+       SET status = ?,
+           status_reason = CONCAT(COALESCE(status_reason, ''), ?),
+           updated_at = NOW()
+       WHERE source = ?
+         AND status = ?
+         AND target_outline_id IS NULL`,
+      [
+        REF_STATUS.SUSPECTED,
+        ' [legacy 迁移：文档级匹配待人工确认]',
+        REF_SOURCE.AUTO_BACKFILL,
+        REF_STATUS.VALID,
+      ],
+    );
+
+    for (const standardId of standardIds) {
+      await this._refreshStandardCounts(standardId);
+    }
+
+    return {
+      migrated: updateResult.affectedRows || 0,
+      standards_refreshed: standardIds.length,
+    };
+  }
+
   // ============================================================
   // R2-4: 企业隔离查询（过渡策略）
   //
@@ -774,7 +822,7 @@ class StandardMgrService {
    * R17-1：编号匹配改为归一化模糊匹配（先 LIKE 精确，再内存归一化兜底）。
    *   根因：库内标准编号形态不统一（`QC-T 413` / `QC T 636-2000` / `QC/T 413-2002`），
    *   锚点原文常用斜杠+年份（如 `QC/T 413-2002`），直接 LIKE 无法命中连字符形态。
-   *   归一化 = 去掉全部非字母数字 + 大写 → `QCT4132002` vs `QCT413` 前缀包含即命中。
+   *   归一化 = 去掉全部非字母数字 + 大写 → `QCT4132002` vs `QCT413` 交给边界受控的前缀匹配。
    */
   async findStandards({ standard_code, standard_name }) {
     const AppStandard = this._appStandard();
@@ -797,7 +845,7 @@ class StandardMgrService {
 
     let standards = await AppStandard.findAll({ where, raw: true });
 
-    // 归一化兜底：编号查询在原始 LIKE 无命中时，用归一化编号做包含匹配
+    // 归一化兜底：编号查询在原始 LIKE 无命中时，用边界受控的归一化编号匹配
     // （斜杠 / 连字符 - 空格 年份差异，如 QC/T 413-2002 vs QC-T 413）
     if (standard_code && standards.length === 0) {
       const normQuery = this._normalizeCode(standard_code);
@@ -806,8 +854,8 @@ class StandardMgrService {
         standards = all.filter(s => {
           const normCode = this._normalizeCode(s.standard_code);
           if (!normCode) return false;
-          // 双向前缀包含：QCT4132002 包含 QCT413（锚点带年份） / QCT413 被包含（锚点不带年份）
-          return normCode.includes(normQuery) || normQuery.includes(normCode);
+          // 复用年份边界规则，避免 GBT2828 误配 GBT28281。
+          return this._codeMatches(normCode, normQuery);
         });
       }
     }
@@ -1074,7 +1122,7 @@ class StandardMgrService {
    * R3-2: 归一化标准编号——剔除全部非字母数字字符，大写
    *
    * N1 根因：旧实现保留 `/` 和 `-`，导致 QCT636-2000 ≠ QC/T636。
-   * 新实现：strip ALL non-alphanumeric → QCT6362000 vs QCT636 → 前缀命中。
+   * 新实现：strip ALL non-alphanumeric → QCT6362000 vs QCT636 → 年份尾缀前缀命中。
    */
   _normalizeCode(code) {
     if (!code) return '';
@@ -1082,12 +1130,15 @@ class StandardMgrService {
   }
 
   /**
-   * R3-2: 双向前缀匹配——任一侧是另一侧的前缀即命中
+   * R3-2: 双向前缀匹配——仅当前缀后的尾巴符合年份边界时命中
    *
-   * 覆盖真实数据最常见形态：
-   * - 年份省略：QCT6362000 vs QCT636 → prefix match ✅
-   * - 空格/斜杠变异：QCT636 vs QCT636 → 全等 ✅
-   * - GB/T 2828 vs GB/T 2828.1 → 不误配 ✅（2828 不是 28281 的前缀，反之亦然）
+   * 覆盖真实数据最常见形态（参数已归一化）：
+   * - QCT6362000 vs QCT636 → 命中 ✅（较长串尾巴为 4 位年份）
+   * - GBT2828 vs GBT28281 → 不命中 ❌（尾巴只有序号数字 1）
+   * - GB1234 vs GB12345 → 不命中 ❌（尾巴只有数字 5，不是年份）
+   *
+   * 归一化后年份与序号数字无法完全区分，这里以尾巴至少 4 位纯数字作年份启发式，
+   * 因而无法消除所有编号本身的固有歧义。
    *
    * @param {string} candidate - 候选标准编号（已归一化）
    * @param {string} extracted - gap 中提取的编号（已归一化）
@@ -1095,7 +1146,14 @@ class StandardMgrService {
    */
   _codeMatches(candidate, extracted) {
     if (!candidate || !extracted) return false;
-    return candidate.startsWith(extracted) || extracted.startsWith(candidate);
+    if (candidate === extracted) return true;
+
+    const hasYearSuffix = (shorter, longer) =>
+      longer.startsWith(shorter) && /^\d{4,}$/.test(longer.slice(shorter.length));
+
+    return candidate.length < extracted.length
+      ? hasYearSuffix(candidate, extracted)
+      : hasYearSuffix(extracted, candidate);
   }
 
   /**
@@ -1215,7 +1273,7 @@ class StandardMgrService {
             const gapCodes = this._extractStandardCodes(gap.source_text, enterprisePrefixes);
             const gapCodesNorm = gapCodes.map(c => this._normalizeCode(c));
 
-            // R3-2: 双向前缀匹配（代替 R2-2 的全等比较）
+            // R3-2: 年份边界受控的双向前缀匹配（代替 R2-2 的全等比较）
             // 覆盖 QC/T 636-2000 vs QC/T 636（年份省略 + 空格/斜杠变异）
             const matched = gapCodesNorm.some(gc =>
               candidateCodes.some(cc => this._codeMatches(cc, gc))
@@ -1275,7 +1333,7 @@ class StandardMgrService {
               continue;
             }
 
-            // ── 6. 写回 valid 记录 ──
+            // ── 6. 写回 suspected 记录（仅定位到文档，待人工确认章节） ──
             await this.writeAnchorResult({
               standard_id: standard.id,
               source_revision_id: gap.source_revision_id,
@@ -1284,12 +1342,12 @@ class StandardMgrService {
               source_text: gap.source_text,
               context_text: gap.context_text,
               ref_type: gap.ref_type,
-              status: REF_STATUS.VALID,
+              status: REF_STATUS.SUSPECTED,
               source: REF_SOURCE.AUTO_BACKFILL,
               target_document_id: candidateDoc.id,
               target_revision_id: candidateDoc.current_revision_id,
               target_outline_id: null,
-              status_reason: `backfilled on ${trigger}`,
+              status_reason: `backfilled on ${trigger}（文档级匹配，待人工确认）`,
             });
 
             filled++;
@@ -1318,7 +1376,7 @@ class StandardMgrService {
             where: {
               standard_id: standard.id,
               source: REF_SOURCE.AUTO_BACKFILL,
-              status: REF_STATUS.VALID,
+              status: REF_STATUS.SUSPECTED,
               target_document_id: candidateDoc.id,
             },
             raw: true,
@@ -1369,7 +1427,7 @@ class StandardMgrService {
                 await RefAnchor.update(
                   {
                     target_revision_id: candidateDoc.current_revision_id,
-                    status_reason: `backfill upgraded to latest revision on ${trigger}`,
+                    status_reason: `backfill upgraded to latest revision on ${trigger}（文档级匹配，待人工确认）`,
                     updated_at: new Date(),
                   },
                   { where: { id: rec.id } },

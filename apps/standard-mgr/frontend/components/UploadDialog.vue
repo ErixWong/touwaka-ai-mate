@@ -375,11 +375,8 @@ const enterprisePlaceholder = computed(() =>
     : i18n.global.t('apps.standardMgr.selectEnterprisePlaceholder'),
 )
 
-/** 新企业按钮可见：企业标准类型 + 搜索词在列表中无匹配 */
-const showNewEnterpriseBtn = computed(() =>
-  form.value.standard_type === 'enterprise' && form.value.standard_name &&
-  !enterprises.value.some(e => e.name === form.value.standard_name),
-)
+/** 新企业按钮可见：企业标准可随时新建归属企业 */
+const showNewEnterpriseBtn = computed(() => form.value.standard_type === 'enterprise')
 
 const form = ref({
   standard_code: '',
