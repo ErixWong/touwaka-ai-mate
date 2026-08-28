@@ -2370,20 +2370,16 @@ export default {
     },
     workspace: {
       home: {
-        description: 'Global document view across all collections',
+        description: 'Organize and manage documents by collection',
         pipelineConfig: 'Pipeline Config',
         pipelineConfigTooltip: 'Configure document preprocessing pipeline (OCR, cleaning, chunking, vectorization)',
         createCollection: 'Create Collection',
         searchCollectionPlaceholder: 'Search collection names...',
-        collectionColumn: 'Collection',
-        viewCollection: 'View',
         noCollections: 'No document collections',
         createFirstCollection: 'Create the first collection',
       },
       // 集合详情页
       collection: {
-        allDocuments: 'All Documents',
-        collections: 'Collections',
         searchPlaceholder: 'Search documents...',
         filterStatus: 'Status',
         allStatus: 'All Status',
@@ -2398,6 +2394,9 @@ export default {
         selectDoc: 'Select a document to view',
         loadDocInfo: 'Loading...',
         docCount: 'documents',
+        visPrivate: 'Private',
+        visDepartment: 'Department',
+        visPublic: 'Public',
         updatedAt: 'Updated',
         needsRevectorize: 'Needs re-vectorization',
         pendingUpdate: 'Pending Update',
