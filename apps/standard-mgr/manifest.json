@@ -1,7 +1,8 @@
 {
   "id": "standard-mgr",
   "name": "标准管理",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "changelog": "审计修复：回填落库改 suspected（含历史数据自动迁移）、编号匹配边界、清洗后刷新、人工修正级联选择等",
   "description": "标准文档管理、引用清洗与锚点定位",
   "icon": "📐",
   "type": "document",

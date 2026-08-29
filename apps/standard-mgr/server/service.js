@@ -662,54 +662,6 @@ class StandardMgrService {
     await AppStandard.update(updateData, { where: { id: standardId }, transaction });
   }
 
-  /**
-   * 迁移历史 auto_backfill + valid + 未定位章节的记录为 suspected。
-   *
-   * 历史回填记录只有文档级匹配，必须进入人工复核，且不能参与版本升级。
-   *
-   * @returns {Promise<{migrated: number, standards_refreshed: number}>}
-   */
-  async migrateLegacyBackfillValid() {
-    const RefAnchor = this._refAnchor();
-    const legacyWhere = {
-      source: REF_SOURCE.AUTO_BACKFILL,
-      status: REF_STATUS.VALID,
-      target_outline_id: null,
-    };
-
-    const legacyRows = await RefAnchor.findAll({
-      where: legacyWhere,
-      attributes: ['standard_id'],
-      raw: true,
-    });
-    const standardIds = [...new Set(legacyRows.map(row => row.standard_id).filter(Boolean))];
-
-    const updateResult = await this.db.execute(
-      `UPDATE app_standard_ref_anchor
-       SET status = ?,
-           status_reason = CONCAT(COALESCE(status_reason, ''), ?),
-           updated_at = NOW()
-       WHERE source = ?
-         AND status = ?
-         AND target_outline_id IS NULL`,
-      [
-        REF_STATUS.SUSPECTED,
-        ' [legacy 迁移：文档级匹配待人工确认]',
-        REF_SOURCE.AUTO_BACKFILL,
-        REF_STATUS.VALID,
-      ],
-    );
-
-    for (const standardId of standardIds) {
-      await this._refreshStandardCounts(standardId);
-    }
-
-    return {
-      migrated: updateResult.affectedRows || 0,
-      standards_refreshed: standardIds.length,
-    };
-  }
-
   // ============================================================
   // R2-4: 企业隔离查询（过渡策略）
   //

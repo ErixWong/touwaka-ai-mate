@@ -10,7 +10,16 @@ export default {
       )
     `, { type: sequelize.QueryTypes.SELECT });
 
-    return rows.length < 4;
+    // 首次安装：表不齐 → 需要执行 up
+    if (rows.length < 4) return true;
+
+    // 升级路径：表已存在时，检查是否有待迁移的历史数据
+    // （历史 gap 回填以 valid 落库但仅文档级匹配、未定位章节 → 需迁为 suspected）
+    const legacy = await sequelize.query(`
+      SELECT COUNT(*) AS n FROM app_standard_ref_anchor
+      WHERE source = 'auto_backfill' AND status = 'valid' AND target_outline_id IS NULL
+    `, { type: sequelize.QueryTypes.SELECT });
+    return (legacy[0]?.n || 0) > 0;
   },
 
   async up(sequelize) {
@@ -115,6 +124,42 @@ export default {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='标准带锚点文本副本表'
     `);
     console.log('  ✓ Created app_standard_anchored_section table');
+
+    // ==================== 数据迁移（幂等，升级路径） ====================
+    // 历史 gap 回填直接落 valid（仅文档级匹配、未定位章节），污染“有效”语义。
+    // 迁为 suspected（待人工确认），随后按 ref_anchor 实况重算标准汇总计数。
+    // 该 UPDATE 幂等：条件不满足时影响 0 行；重复执行 status_reason 不会追加
+    // （第二轮起 WHERE status='valid' 已不命中）。
+    await sequelize.query(`
+      UPDATE app_standard_ref_anchor
+      SET status = 'suspected',
+          status_reason = CONCAT(COALESCE(status_reason, ''), ' [迁移：文档级匹配待人工确认]'),
+          updated_at = NOW()
+      WHERE source = 'auto_backfill' AND status = 'valid' AND target_outline_id IS NULL
+    `);
+    console.log('  ✓ Migrated legacy auto_backfill valid → suspected');
+
+    // 按 ref_anchor 实况全量重算标准汇总计数（与 service._refreshStandardCounts 同口径）
+    await sequelize.query(`
+      UPDATE app_standard s
+      JOIN (
+        SELECT standard_id,
+               COUNT(*) AS total,
+               COALESCE(SUM(status = 'valid'), 0) AS valid,
+               COALESCE(SUM(status = 'suspected'), 0) AS suspected,
+               COALESCE(SUM(status = 'gap'), 0) AS gap,
+               COALESCE(SUM(status = 'invalid'), 0) AS invalid
+        FROM app_standard_ref_anchor
+        GROUP BY standard_id
+      ) c ON c.standard_id = s.id
+      SET s.reference_count = c.total,
+          s.valid_reference_count = c.valid,
+          s.suspected_reference_count = c.suspected,
+          s.gap_reference_count = c.gap,
+          s.invalid_reference_count = c.invalid,
+          s.needs_review = (c.suspected > 0 OR c.gap > 0 OR c.invalid > 0)
+    `);
+    console.log('  ✓ Recalculated app_standard counters from ref_anchor');
   },
 
   async down(sequelize) {

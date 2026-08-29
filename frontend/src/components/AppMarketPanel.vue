@@ -98,6 +98,15 @@
           </button>
 
           <button
+            v-if="isInstalled(app.id) && app.hasUpdate"
+            class="btn-update"
+            :disabled="isUpdating === app.id"
+            @click="updateApp(app)"
+          >
+            {{ isUpdating === app.id ? $t('appMarket.updating', '更新中...') : $t('appMarket.update', '更新') }}
+          </button>
+
+          <button
             v-if="isInstalled(app.id)"
             class="btn-uninstall"
             @click="uninstallApp(app)"
@@ -176,17 +185,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   getAppMarketIndex,
   checkAppDependencies,
   installAppFromMarket,
   uninstallAppFromMarket,
+  checkAppUpdate,
+  updateAppFromMarket,
   type AppSummary,
   type Category,
   type AppManifest,
-  type DependencyCheckResult
+  type DependencyCheckResult,
+  type UpdateCheckResult
 } from '@/api/app-market'
 import { useToastStore } from '@/stores/toast'
 
@@ -213,6 +225,10 @@ const index = ref<{ apps: AppSummary[]; categories: Category[] } | null>(null)
 const selectedCategory = ref<string>('all')
 const searchQuery = ref('')
 const isInstalling = ref<string | null>(null)
+const isUpdating = ref<string | null>(null)
+
+/** 已安装 app 的更新检查结果（appId → 结果），异步逐个填充 */
+const updateInfo = ref<Record<string, UpdateCheckResult>>({})
 
 // 详情弹窗
 const showDetail = ref(false)
@@ -241,17 +257,22 @@ const filteredApps = computed(() => {
     )
   }
 
-  // 标记已安装和有更新的
+  // 标记已安装和有更新的（更新信息来自 checkAppUpdate 异步结果）
   return apps.map(app => ({
     ...app,
-    hasUpdate: props.installedApps.includes(app.id) && appHasUpdate()
+    hasUpdate: props.installedApps.includes(app.id) && Boolean(updateInfo.value[app.id]?.has_update)
   }))
 })
 
-// 检查应用是否有更新（简化版，实际需要调用 API）
-function appHasUpdate(): boolean {
-  // 这里可以实现本地缓存的版本对比
-  return false
+// 检查已安装应用是否有更新（逐个调 check-update，失败静默跳过）
+async function checkUpdates() {
+  for (const appId of props.installedApps) {
+    try {
+      updateInfo.value[appId] = await checkAppUpdate(appId)
+    } catch {
+      // 单个 app 检查失败不影响其他（如 registry 不可达）
+    }
+  }
 }
 
 function isInstalled(appId: string): boolean {
@@ -319,6 +340,28 @@ async function uninstallApp(app: AppSummary) {
   }
 }
 
+// 更新应用（保留数据重装最新版本；app 自带的 install 迁移脚本负责数据升级）
+async function updateApp(app: AppSummary) {
+  const info = updateInfo.value[app.id]
+  const confirmed = window.confirm(
+    `${t('appMarket.updateConfirm', '确认更新')} ${app.name} → v${info?.registry_version || ''}？` +
+    (info?.changelog ? `\n\n${info.changelog}` : '')
+  )
+  if (!confirmed) return
+
+  isUpdating.value = app.id
+  try {
+    await updateAppFromMarket(app.id)
+    delete updateInfo.value[app.id]
+    emit('installed', app.id)
+    toast.success(`${app.name} ${t('appMarket.updateSuccess', 'updated successfully')}`)
+  } catch (err: unknown) {
+    toast.error(`${t('appMarket.updateFailed', 'Update failed')}: ${getErrorMessage(err, 'Unknown error')}`)
+  } finally {
+    isUpdating.value = null
+  }
+}
+
 function closeDetail() {
   showDetail.value = false
   selectedApp.value = null
@@ -335,7 +378,11 @@ function installFromDetail() {
 
 onMounted(() => {
   refreshIndex()
+  checkUpdates()
 })
+
+// 安装/卸载后已安装列表变化 → 重新检查更新
+watch(() => props.installedApps, () => { checkUpdates() })
 </script>
 
 <style scoped>
@@ -551,6 +598,22 @@ onMounted(() => {
 
 .btn-install:hover {
   background: var(--color-primary-dark, #3a7bc8);
+}
+
+.btn-update {
+  background: #e6f7ff;
+  color: #1890ff;
+  border: 1px solid #91d5ff !important;
+}
+
+.btn-update:hover:not(:disabled) {
+  background: #1890ff;
+  color: white;
+}
+
+.btn-update:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-installing {
