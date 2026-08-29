@@ -494,10 +494,13 @@ class AppMarketService {
         handlerIdMap = result.handlerIdMap;
       }
 
-      // 10. 插入数据库（extension_tables 存入 config）
+      // 10. 插入数据库（extension_tables 存入 config；
+      // _registry_version 记录本次安装的 registry 版本，供 checkUpdate 判更新——
+      // mini_apps.revision 是 INTEGER 无法存语义化版本号，故放 config JSON）
       const config = {
         ...manifest.config,
-        extension_tables: manifest.extension_tables || []
+        extension_tables: manifest.extension_tables || [],
+        _registry_version: manifest.version || null
       };
       await this.installAppMetadata(manifest, userId, visibility, config);
 
@@ -938,8 +941,18 @@ class AppMarketService {
     }
     
     const manifest = await this.fetchManifest(appId);
-    const localVersion = app.getDataValue ? app.getDataValue('revision') : (app.revision || 1);
-    
+
+    // 本地版本：优先取 config._registry_version（安装/升级时写入的 registry 语义化版本），
+    // 老数据没有该字段时回退 revision（恒为 1，升级一次后自愈）
+    const rawConfig = app.getDataValue ? app.getDataValue('config') : app.config;
+    let cfg = rawConfig;
+    if (typeof rawConfig === 'string') {
+      try { cfg = JSON.parse(rawConfig); } catch { cfg = null; }
+    }
+    const trackedVersion = cfg && cfg._registry_version;
+    const localVersion = trackedVersion
+      || (app.getDataValue ? app.getDataValue('revision') : (app.revision || 1));
+
     return {
       has_update: this.compareVersion(manifest.version, localVersion.toString()) > 0,
       local_version: localVersion.toString(),

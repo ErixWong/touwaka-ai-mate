@@ -494,7 +494,7 @@ apps/{appId}/
 - `up()` 全部幂等：建表用 `CREATE TABLE IF NOT EXISTS`；数据迁移用带条件的 `UPDATE`（条件不满足时影响 0 行），禁止“仅首装才能跑”的写法；
 - `check()` 返回 `true` 的条件 = 表不齐（首装）**或**存在待迁移的历史数据（升级）。表已存在且无待迁移数据时返回 `false`，升级时自然跳过；
 - 数据迁移与汇总计数重算都放在 `up()` 内完成，**禁止依赖“手动跑一次脚本”的体外迁移**——app 的数据演进必须随升级按钮自动发生；
-- 需要发布数据迁移时，同步递增 `manifest.json` 的 `version` 并写 `changelog`，应用市场按版本差显示「更新」按钮。
+- 需要发布数据迁移时，同步递增 `manifest.json` 的 `version` 并写 `changelog`，应用市场按版本差显示「更新」按钮（本地已装版本记录在 `mini_apps.config._registry_version`，安装/升级时由平台自动写入，app 无需关心）。
 
 参考实现：`apps/standard-mgr/migrations/install.js`（首装建 4 张表；升级路径检测并迁移历史回填数据 valid→suspected，随后按实况重算汇总计数）。
 

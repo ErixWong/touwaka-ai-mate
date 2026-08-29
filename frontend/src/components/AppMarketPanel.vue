@@ -381,8 +381,8 @@ onMounted(() => {
   checkUpdates()
 })
 
-// 安装/卸载后已安装列表变化 → 重新检查更新
-watch(() => props.installedApps, () => { checkUpdates() })
+// 安装/卸载后已安装列表变化 → 重新检查更新（按内容比较，避免数组引用变化导致的重复请求）
+watch(() => props.installedApps.join(','), () => { checkUpdates() })
 </script>
 
 <style scoped>
