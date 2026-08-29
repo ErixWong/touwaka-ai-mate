@@ -20,6 +20,10 @@ dotenv.config();
 import mysql from 'mysql2/promise';
 import Utils from '../lib/utils.js';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+
+// 本次运行生成的管理员初始密码（避免硬编码已知密码）
+let generatedAdminPassword = '';
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
@@ -662,8 +666,10 @@ async function checkForeignKeyExists(connection, tableName, constraintName) {
 
 // 初始数据
 async function getInitialData() {
-  // 创建默认密码哈希
-  const defaultPassword = await bcrypt.hash('password123', 10);
+  // 创建默认密码哈希（使用环境变量或随机生成的强密码，避免硬编码的已知密码）
+  const defaultPasswordPlain = process.env.DEFAULT_ADMIN_PASSWORD || crypto.randomBytes(12).toString('base64url');
+  generatedAdminPassword = defaultPasswordPlain;
+  const defaultPassword = await bcrypt.hash(defaultPasswordPlain, 10);
 
   // 生成Provider ID（使用newID）
   const providerIds = {
@@ -816,7 +822,7 @@ async function initDatabase() {
         [u.id, u.username, u.email, u.password_hash, u.nickname]
       );
     }
-    console.log(`  - ${data.users.length} users (default password: password123)`);
+    console.log(`  - ${data.users.length} users (default password: ${generatedAdminPassword})`);
 
     // 技能数据通过 init-skills-from-json.js 导入
     console.log('  - 技能数据请运行 init-skills-from-json.js 导入');
@@ -966,8 +972,8 @@ async function initDatabase() {
 
     console.log('\n✅ Database initialization completed successfully!');
     console.log(`\nTest accounts:`);
-    console.log(`  Admin:    admin / admin@example.com / password123`);
-    console.log(`  User:     test / test@example.com / password123`);
+    console.log(`  Admin:    admin / admin@example.com / ${generatedAdminPassword}`);
+    console.log(`  User:     test / test@example.com / ${generatedAdminPassword}`);
 
   } catch (error) {
     console.error('❌ Initialization failed:', error.message);
