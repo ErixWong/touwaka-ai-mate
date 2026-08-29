@@ -12,7 +12,11 @@
       "description": "分析误工数据，按账号分类汇总直接工资和附加费",
       "author": "Touwaka Team",
       "license": "MIT",
-      "tags": ["误工", "分析", "汇总"],
+      "tags": [
+        "误工",
+        "分析",
+        "汇总"
+      ],
       "path": "apps/downtime-analyzer",
       "manifest_url": "apps/downtime-analyzer/manifest.json"
     },
@@ -25,7 +29,12 @@
       "description": "上传合同文件，AI自动提取合同元数据，支持批量处理和确认入库",
       "author": "Touwaka Team",
       "license": "MIT",
-      "tags": ["合同", "文档", "OCR", "AI提取"],
+      "tags": [
+        "合同",
+        "文档",
+        "OCR",
+        "AI提取"
+      ],
       "path": "apps/contract-mgr",
       "manifest_url": "apps/contract-mgr/manifest.json"
     },
@@ -38,7 +47,14 @@
       "description": "支持组织层级、多版本管理、AI问答的销售合同管理系统",
       "author": "Touwaka Team",
       "license": "MIT",
-      "tags": ["合同", "文档", "OCR", "AI提取", "多版本", "组织管理"],
+      "tags": [
+        "合同",
+        "文档",
+        "OCR",
+        "AI提取",
+        "多版本",
+        "组织管理"
+      ],
       "path": "apps/contract-mgr-v2",
       "manifest_url": "apps/contract-mgr-v2/manifest.json"
     },
@@ -51,7 +67,13 @@
       "description": "上传发票文件，AI自动识别并结构化提取发票信息，支持去重入库",
       "author": "Touwaka Team",
       "license": "MIT",
-      "tags": ["发票", "invoice", "OCR", "AI识别", "fapiao"],
+      "tags": [
+        "发票",
+        "invoice",
+        "OCR",
+        "AI识别",
+        "fapiao"
+      ],
       "path": "apps/invoice-mgr",
       "manifest_url": "apps/invoice-mgr/manifest.json"
     },
@@ -64,7 +86,12 @@
       "description": "上传图片，自动识别并提取文字内容（不保存原图）。",
       "author": "Touwaka Team",
       "license": "MIT",
-      "tags": ["OCR", "文字识别", "VLM", "图片"],
+      "tags": [
+        "OCR",
+        "文字识别",
+        "VLM",
+        "图片"
+      ],
       "path": "apps/ocr-tool",
       "manifest_url": "apps/ocr-tool/manifest.json"
     },
@@ -77,7 +104,13 @@
       "description": "短阅读、加词与快速复习的一体化学习工作台",
       "author": "Touwaka Team",
       "license": "MIT",
-      "tags": ["学习", "阅读", "生词", "复习", "AI学习"],
+      "tags": [
+        "学习",
+        "阅读",
+        "生词",
+        "复习",
+        "AI学习"
+      ],
       "path": "apps/els",
       "manifest_url": "apps/els/manifest.json"
     },
@@ -91,7 +124,13 @@
       "demo": true,
       "author": "Touwaka Team",
       "license": "MIT",
-      "tags": ["简历", "筛选", "招聘", "AI", "匹配"],
+      "tags": [
+        "简历",
+        "筛选",
+        "招聘",
+        "AI",
+        "匹配"
+      ],
       "path": "apps/resume-fast-screening",
       "manifest_url": "apps/resume-fast-screening/manifest.json"
     },
@@ -104,30 +143,68 @@
       "description": "批量上传 CSV，执行快速矢量化、规则驱动阶段识别与统计报告输出的分析工具",
       "author": "Touwaka Team",
       "license": "MIT",
-      "tags": ["电流", "CSV", "阶段识别", "信号分析", "LLM", "报告"],
+      "tags": [
+        "电流",
+        "CSV",
+        "阶段识别",
+        "信号分析",
+        "LLM",
+        "报告"
+      ],
       "path": "apps/current-feature-analyzer",
       "manifest_url": "apps/current-feature-analyzer/manifest.json"
     },
     {
       "id": "standard-mgr",
       "name": "标准管理",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "icon": "📐",
       "type": "document",
       "description": "标准文档纳管、引用清洗与锚点定位",
       "author": "Touwaka Team",
       "license": "MIT",
-      "tags": ["标准", "文档", "引用", "锚点", "合规"],
+      "tags": [
+        "标准",
+        "文档",
+        "引用",
+        "锚点",
+        "合规"
+      ],
       "path": "apps/standard-mgr",
       "manifest_url": "apps/standard-mgr/manifest.json"
     }
   ],
   "categories": [
-    { "id": "document", "name": "文档管理", "icon": "📄", "description": "文档上传、OCR识别、数据提取" },
-    { "id": "workflow", "name": "流程审批", "icon": "🔄", "description": "审批流程、状态流转" },
-    { "id": "data", "name": "数据管理", "icon": "📊", "description": "结构化数据管理" },
-    { "id": "utility", "name": "实用工具", "icon": "🔧", "description": "各类实用小工具" },
-    { "id": "workflow", "name": "工作流", "icon": "🔄", "description": "流程审批、状态流转、智能匹配" }
+    {
+      "id": "document",
+      "name": "文档管理",
+      "icon": "📄",
+      "description": "文档上传、OCR识别、数据提取"
+    },
+    {
+      "id": "workflow",
+      "name": "流程审批",
+      "icon": "🔄",
+      "description": "审批流程、状态流转"
+    },
+    {
+      "id": "data",
+      "name": "数据管理",
+      "icon": "📊",
+      "description": "结构化数据管理"
+    },
+    {
+      "id": "utility",
+      "name": "实用工具",
+      "icon": "🔧",
+      "description": "各类实用小工具"
+    },
+    {
+      "id": "workflow",
+      "name": "工作流",
+      "icon": "🔄",
+      "description": "流程审批、状态流转、智能匹配"
+    }
   ],
   "metadata": {
     "total_apps": 9,
