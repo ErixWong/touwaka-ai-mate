@@ -477,6 +477,29 @@ apps/{appId}/
 - 涉及数据库字段变更必须先满足项目红线要求。
 - 不要手改 `models/`，这些是生成产物。
 
+#### 迁移执行模型（安装 + 升级共用）
+
+平台 `app-market.service.js` 的 `runMigration()` 执行顺序固定为：
+
+1. 调 `migration.check(sequelize)`，返回 `false` 则**跳过** `up()`；
+2. `check()` 返回 `true` 才执行 `up()`。
+
+触发时机有两个：
+
+- **首次安装**（应用市场安装 app）；
+- **app 升级**（应用市场「更新」按钮 → 保留数据卸载 → 重装 → 重跑迁移）。
+
+因此 `install.js` 必须同时覆盖两条路径，写法约定：
+
+- `up()` 全部幂等：建表用 `CREATE TABLE IF NOT EXISTS`；数据迁移用带条件的 `UPDATE`（条件不满足时影响 0 行），禁止“仅首装才能跑”的写法；
+- `check()` 返回 `true` 的条件 = 表不齐（首装）**或**存在待迁移的历史数据（升级）。表已存在且无待迁移数据时返回 `false`，升级时自然跳过；
+- 数据迁移与汇总计数重算都放在 `up()` 内完成，**禁止依赖“手动跑一次脚本”的体外迁移**——app 的数据演进必须随升级按钮自动发生；
+- 需要发布数据迁移时，同步递增 `manifest.json` 的 `version` 并写 `changelog`，应用市场按版本差显示「更新」按钮。
+
+参考实现：`apps/standard-mgr/migrations/install.js`（首装建 4 张表；升级路径检测并迁移历史回填数据 valid→suspected，随后按实况重算汇总计数）。
+
+升级链路：PR 合并到 master → registry manifest 版本变化 → 应用市场对该 app 显示「更新」→ 用户点击后 `check()`/`up()` 自动执行。
+
 ### 步骤 4：实现 app 自己的运行逻辑
 
 有几种常见组合：

@@ -32,13 +32,57 @@
 
         <template v-if="fixForm.status === 'valid'">
           <el-form-item :label="$t('apps.standardMgr.manualFixTargetDoc')">
-            <el-input v-model="fixForm.targetDocumentId" :placeholder="$t('apps.standardMgr.placeholderDocId')" clearable />
+            <el-select
+              v-model="fixForm.target_standard_id"
+              filterable
+              clearable
+              style="width: 100%"
+              :placeholder="$t('apps.standardMgr.createAnchorTargetStandardPlaceholder')"
+              @change="onTargetStandardChange"
+            >
+              <el-option
+                v-for="std in store.standards"
+                :key="std.id"
+                :label="`${std.standard_code} ${std.standard_name}`"
+                :value="std.id"
+              />
+            </el-select>
           </el-form-item>
           <el-form-item :label="$t('apps.standardMgr.manualFixTargetRevision')">
-            <el-input v-model="fixForm.targetRevisionId" :placeholder="$t('apps.standardMgr.placeholderRevisionId')" clearable />
+            <el-select
+              v-model="fixForm.target_revision_id"
+              style="width: 100%"
+              :disabled="!fixForm.target_standard_id || revisions.length === 0"
+              :placeholder="$t('apps.standardMgr.createAnchorTargetRevisionPlaceholder')"
+              @change="onTargetRevisionChange"
+            >
+              <el-option
+                v-for="rev in revisions"
+                :key="rev.id"
+                :label="rev.revision_label || rev.id"
+                :value="rev.id"
+              />
+            </el-select>
           </el-form-item>
           <el-form-item :label="$t('apps.standardMgr.manualFixTargetOutline')">
-            <el-input v-model="fixForm.targetOutlineId" :placeholder="$t('apps.standardMgr.placeholderOutlineId')" clearable />
+            <el-select
+              v-model="fixForm.target_outline_id"
+              filterable
+              clearable
+              style="width: 100%"
+              :disabled="!fixForm.target_standard_id || !targetRevisionIsCurrent || targetSections.length === 0"
+              :placeholder="$t('apps.standardMgr.manualFixTargetOutlinePlaceholder')"
+            >
+              <el-option
+                v-for="section in targetSections"
+                :key="section.outline_id"
+                :label="`${section.seq}. ${section.title}`"
+                :value="section.outline_id"
+              />
+            </el-select>
+            <div v-if="fixForm.target_revision_id && !targetRevisionIsCurrent" class="sm-fix-hint">
+              {{ $t('apps.standardMgr.manualFixTargetOutlineCurrentOnlyHint') }}
+            </div>
           </el-form-item>
         </template>
 
@@ -55,7 +99,7 @@
 
     <template #footer>
       <el-button @click="$emit('close')">{{ $t('common.cancel') }}</el-button>
-      <el-button type="primary" :loading="submitting" @click="handleSubmit">
+      <el-button type="primary" :loading="submitting" :disabled="!canSubmit" @click="handleSubmit">
         {{ $t('apps.standardMgr.manualFixSubmit') }}
       </el-button>
     </template>
@@ -63,8 +107,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useStandardMgrStore } from '../stores/standardMgr'
+import { useToastStore } from '@/stores/toast'
+import { i18n } from '@/i18n'
+import { getDocumentRevisions, listAnchoredSections, type AnchoredSection, type DocumentRevision } from '../api/standard-mgr'
 import type { RefAnchor, RefStatus } from '../api/standard-mgr'
 
 const props = defineProps<{
@@ -80,16 +127,96 @@ const emit = defineEmits<{
 const store = useStandardMgrStore()
 const submitting = ref(false)
 const dialogVisible = ref(true)
+const revisions = ref<DocumentRevision[]>([])
+const targetSections = ref<AnchoredSection[]>([])
+let targetRequestToken = 0
 
 const fixForm = reactive({
-  status: 'valid' as 'valid' | 'invalid',
-  targetDocumentId: '',
-  targetRevisionId: '',
-  targetOutlineId: '',
+  status: (props.anchor.status === 'invalid' ? 'invalid' : 'valid') as 'valid' | 'invalid',
+  target_standard_id: null as string | null,
+  target_revision_id: null as string | null,
+  target_outline_id: null as string | null,
   status_reason: '',
 })
 
+const selectedTargetStandard = computed(() => {
+  return store.standards.find(std => std.id === fixForm.target_standard_id) || null
+})
+
+const targetRevisionIsCurrent = computed(() => {
+  const currentRevision = revisions.value.find(revision => revision.is_current)
+  return !!fixForm.target_revision_id && fixForm.target_revision_id === currentRevision?.id
+})
+
+const canSubmit = computed(() => {
+  if (fixForm.status !== 'valid') return true
+  return !!selectedTargetStandard.value?.document_id && !!fixForm.target_revision_id
+})
+
+async function onTargetStandardChange(stdId: string | null) {
+  const requestToken = ++targetRequestToken
+  fixForm.target_revision_id = null
+  fixForm.target_outline_id = null
+  revisions.value = []
+  targetSections.value = []
+  if (!stdId) return
+
+  const std = store.standards.find(item => item.id === stdId)
+  if (!std?.document_id) return
+
+  const [revisionsResult, sectionsResult] = await Promise.allSettled([
+    getDocumentRevisions(std.document_id),
+    listAnchoredSections(std.id),
+  ])
+  if (requestToken !== targetRequestToken) return
+
+  if (revisionsResult.status === 'rejected') {
+    useToastStore().error(
+      revisionsResult.reason instanceof Error
+        ? revisionsResult.reason.message
+        : i18n.global.t('apps.standardMgr.loadRevisionsFailed'),
+    )
+  } else {
+    revisions.value = revisionsResult.value
+    const current = revisions.value.find(revision => revision.is_current)
+    fixForm.target_revision_id = current?.id ?? revisions.value[0]?.id ?? null
+
+    if (sectionsResult.status === 'fulfilled' && current?.id === fixForm.target_revision_id) {
+      targetSections.value = sectionsResult.value
+    }
+  }
+
+  if (sectionsResult.status === 'rejected') {
+    useToastStore().error(
+      sectionsResult.reason instanceof Error
+        ? sectionsResult.reason.message
+        : i18n.global.t('apps.standardMgr.loadAnchorsFailed'),
+    )
+  }
+}
+
+async function onTargetRevisionChange(revisionId: string | null) {
+  const requestToken = ++targetRequestToken
+  fixForm.target_outline_id = null
+  targetSections.value = []
+
+  if (!revisionId || !fixForm.target_standard_id || !targetRevisionIsCurrent.value) return
+
+  const std = store.standards.find(item => item.id === fixForm.target_standard_id)
+  if (!std) return
+
+  try {
+    const sections = await listAnchoredSections(std.id)
+    if (requestToken !== targetRequestToken || fixForm.target_revision_id !== revisionId) return
+    targetSections.value = sections
+  } catch (err: unknown) {
+    if (requestToken !== targetRequestToken) return
+    useToastStore().error(err instanceof Error ? err.message : i18n.global.t('apps.standardMgr.loadAnchorsFailed'))
+  }
+}
+
 async function handleSubmit() {
+  if (!canSubmit.value) return
   submitting.value = true
   try {
     await store.submitManualFix({
@@ -100,9 +227,9 @@ async function handleSubmit() {
       source_text: props.anchor.source_text,
       ref_type: props.anchor.ref_type,
       status: fixForm.status,
-      target_document_id: fixForm.targetDocumentId || undefined,
-      target_revision_id: fixForm.targetRevisionId || undefined,
-      target_outline_id: fixForm.targetOutlineId || undefined,
+      target_document_id: fixForm.status === 'valid' ? selectedTargetStandard.value?.document_id || undefined : undefined,
+      target_revision_id: fixForm.status === 'valid' ? fixForm.target_revision_id || undefined : undefined,
+      target_outline_id: fixForm.status === 'valid' ? fixForm.target_outline_id || undefined : undefined,
       status_reason: fixForm.status_reason || undefined,
     })
     emit('fixed')
@@ -135,5 +262,12 @@ function statusLabel(status: RefStatus): string {
 <style scoped>
 .sm-fix-form {
   padding: 4px;
+}
+
+.sm-fix-hint {
+  margin-top: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

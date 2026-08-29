@@ -61,7 +61,7 @@ export async function get(ctx, deps) {
  * - standard_code：标准编号，如 "GB/T 19001-2016"
  * - standard_name：标准名称
  *
- * 校验：文档存在、processing_status='ready'、document_id 不重复；
+ * 校验：文档存在、processing_status 为 ready 或处理中状态、document_id 不重复；
  * 文档类型不限（contract / knowledge / department_doc / standard 均可），
  * 纳管成功后 documents.doc_type 改写为 'standard'
  */
@@ -107,31 +107,38 @@ export async function post(ctx, deps) {
       user_id: userId,
     });
 
-    // P1-3 触发①：纳管完成后异步执行 gap 回填（不阻塞主请求）
-    // R2-2: 传递 standard_id（而非仅 document_id），用标准编号做归一化比较
-    service.runGapBackfill({
-      trigger: 'onboard',
-      standard_id: result.id,
-    }).catch(err => {
-      logger.error(`[standard-mgr] backfill-onboard failed: ${err.message}`);
-    });
-
-    // R13-3 + R17-1：纳管完成后异步触发锚点清洗（不阻塞主请求）
-    // 编排全部在 service.runCleaningPipeline 内完成（原子锁、清 auto、驱动 agent、置 done、重建、回填）
-    const chatService = deps.request?.chatService;
-    if (chatService && result.document_id && result.current_revision_id) {
-      service.runCleaningPipeline(result.id, {
-        session: ctx.state.session,
-        chatService,
-      }).then(pipeResult => {
-        if (!pipeResult.accepted) {
-          logger.info(`[standard-mgr] R13-3: 清洗已被抢占，跳过自动清洗 standard=${result.id}`);
-        }
-      }).catch(err => {
-        logger.error(`[standard-mgr] auto-clean-onboard failed for ${result.id}: ${err.message}`);
-      });
+    if (result.document_ready === false) {
+      logger.info(
+        `[standard-mgr] document processing is pending, ` +
+        `queueing onboard cleaning for standard=${result.id}`
+      );
     } else {
-      logger.warn(`[standard-mgr] R13-3: chatService 不可用或缺少 document/revision，跳过自动清洗 standard=${result.id}`);
+      // P1-3 触发①：纳管完成后异步执行 gap 回填（不阻塞主请求）
+      // R2-2: 传递 standard_id（而非仅 document_id），用标准编号做归一化比较
+      service.runGapBackfill({
+        trigger: 'onboard',
+        standard_id: result.id,
+      }).catch(err => {
+        logger.error(`[standard-mgr] backfill-onboard failed: ${err.message}`);
+      });
+
+      // R13-3 + R17-1：纳管完成后异步触发锚点清洗（不阻塞主请求）
+      // 编排全部在 service.runCleaningPipeline 内完成（原子锁、清 auto、驱动 agent、置 done、重建、回填）
+      const chatService = deps.request?.chatService;
+      if (chatService && result.document_id && result.current_revision_id) {
+        service.runCleaningPipeline(result.id, {
+          session: ctx.state.session,
+          chatService,
+        }).then(pipeResult => {
+          if (!pipeResult.accepted) {
+            logger.info(`[standard-mgr] R13-3: 清洗已被抢占，跳过自动清洗 standard=${result.id}`);
+          }
+        }).catch(err => {
+          logger.error(`[standard-mgr] auto-clean-onboard failed for ${result.id}: ${err.message}`);
+        });
+      } else {
+        logger.warn(`[standard-mgr] R13-3: chatService 不可用或缺少 document/revision，跳过自动清洗 standard=${result.id}`);
+      }
     }
 
     ctx.success(result);

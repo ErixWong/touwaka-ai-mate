@@ -27,6 +27,14 @@ import { Op } from 'sequelize';
 // R18-2: 清洗总超时 15→30 分钟（长标准 + 读写交替策略下 15 分钟偏紧）
 const CLEAN_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟
 const TASK_TOKEN_EXPIRY = '4h'; // 后台任务 token 有效期（需长于清洗超时）
+const DOCUMENT_IN_FLIGHT_STATUSES = [
+  'pending_ocr',
+  'ocr_processing',
+  'pending_clean',
+  'pending_outline',
+  'pending_chunk',
+  'pending_embedding',
+];
 
 // ============================================================
 // 常量
@@ -766,7 +774,7 @@ class StandardMgrService {
    * R17-1：编号匹配改为归一化模糊匹配（先 LIKE 精确，再内存归一化兜底）。
    *   根因：库内标准编号形态不统一（`QC-T 413` / `QC T 636-2000` / `QC/T 413-2002`），
    *   锚点原文常用斜杠+年份（如 `QC/T 413-2002`），直接 LIKE 无法命中连字符形态。
-   *   归一化 = 去掉全部非字母数字 + 大写 → `QCT4132002` vs `QCT413` 前缀包含即命中。
+   *   归一化 = 去掉全部非字母数字 + 大写 → `QCT4132002` vs `QCT413` 交给边界受控的前缀匹配。
    */
   async findStandards({ standard_code, standard_name }) {
     const AppStandard = this._appStandard();
@@ -789,7 +797,7 @@ class StandardMgrService {
 
     let standards = await AppStandard.findAll({ where, raw: true });
 
-    // 归一化兜底：编号查询在原始 LIKE 无命中时，用归一化编号做包含匹配
+    // 归一化兜底：编号查询在原始 LIKE 无命中时，用边界受控的归一化编号匹配
     // （斜杠 / 连字符 - 空格 年份差异，如 QC/T 413-2002 vs QC-T 413）
     if (standard_code && standards.length === 0) {
       const normQuery = this._normalizeCode(standard_code);
@@ -798,8 +806,8 @@ class StandardMgrService {
         standards = all.filter(s => {
           const normCode = this._normalizeCode(s.standard_code);
           if (!normCode) return false;
-          // 双向前缀包含：QCT4132002 包含 QCT413（锚点带年份） / QCT413 被包含（锚点不带年份）
-          return normCode.includes(normQuery) || normQuery.includes(normCode);
+          // 复用年份边界规则，避免 GBT2828 误配 GBT28281。
+          return this._codeMatches(normCode, normQuery);
         });
       }
     }
@@ -1066,7 +1074,7 @@ class StandardMgrService {
    * R3-2: 归一化标准编号——剔除全部非字母数字字符，大写
    *
    * N1 根因：旧实现保留 `/` 和 `-`，导致 QCT636-2000 ≠ QC/T636。
-   * 新实现：strip ALL non-alphanumeric → QCT6362000 vs QCT636 → 前缀命中。
+   * 新实现：strip ALL non-alphanumeric → QCT6362000 vs QCT636 → 年份尾缀前缀命中。
    */
   _normalizeCode(code) {
     if (!code) return '';
@@ -1074,12 +1082,15 @@ class StandardMgrService {
   }
 
   /**
-   * R3-2: 双向前缀匹配——任一侧是另一侧的前缀即命中
+   * R3-2: 双向前缀匹配——仅当前缀后的尾巴符合年份边界时命中
    *
-   * 覆盖真实数据最常见形态：
-   * - 年份省略：QCT6362000 vs QCT636 → prefix match ✅
-   * - 空格/斜杠变异：QCT636 vs QCT636 → 全等 ✅
-   * - GB/T 2828 vs GB/T 2828.1 → 不误配 ✅（2828 不是 28281 的前缀，反之亦然）
+   * 覆盖真实数据最常见形态（参数已归一化）：
+   * - QCT6362000 vs QCT636 → 命中 ✅（较长串尾巴为 4 位年份）
+   * - GBT2828 vs GBT28281 → 不命中 ❌（尾巴只有序号数字 1）
+   * - GB1234 vs GB12345 → 不命中 ❌（尾巴只有数字 5，不是年份）
+   *
+   * 归一化后年份与序号数字无法完全区分，这里以尾巴至少 4 位纯数字作年份启发式，
+   * 因而无法消除所有编号本身的固有歧义。
    *
    * @param {string} candidate - 候选标准编号（已归一化）
    * @param {string} extracted - gap 中提取的编号（已归一化）
@@ -1087,7 +1098,14 @@ class StandardMgrService {
    */
   _codeMatches(candidate, extracted) {
     if (!candidate || !extracted) return false;
-    return candidate.startsWith(extracted) || extracted.startsWith(candidate);
+    if (candidate === extracted) return true;
+
+    const hasYearSuffix = (shorter, longer) =>
+      longer.startsWith(shorter) && /^\d{4,}$/.test(longer.slice(shorter.length));
+
+    return candidate.length < extracted.length
+      ? hasYearSuffix(candidate, extracted)
+      : hasYearSuffix(extracted, candidate);
   }
 
   /**
@@ -1207,7 +1225,7 @@ class StandardMgrService {
             const gapCodes = this._extractStandardCodes(gap.source_text, enterprisePrefixes);
             const gapCodesNorm = gapCodes.map(c => this._normalizeCode(c));
 
-            // R3-2: 双向前缀匹配（代替 R2-2 的全等比较）
+            // R3-2: 年份边界受控的双向前缀匹配（代替 R2-2 的全等比较）
             // 覆盖 QC/T 636-2000 vs QC/T 636（年份省略 + 空格/斜杠变异）
             const matched = gapCodesNorm.some(gc =>
               candidateCodes.some(cc => this._codeMatches(cc, gc))
@@ -1267,7 +1285,7 @@ class StandardMgrService {
               continue;
             }
 
-            // ── 6. 写回 valid 记录 ──
+            // ── 6. 写回 suspected 记录（仅定位到文档，待人工确认章节） ──
             await this.writeAnchorResult({
               standard_id: standard.id,
               source_revision_id: gap.source_revision_id,
@@ -1276,12 +1294,12 @@ class StandardMgrService {
               source_text: gap.source_text,
               context_text: gap.context_text,
               ref_type: gap.ref_type,
-              status: REF_STATUS.VALID,
+              status: REF_STATUS.SUSPECTED,
               source: REF_SOURCE.AUTO_BACKFILL,
               target_document_id: candidateDoc.id,
               target_revision_id: candidateDoc.current_revision_id,
               target_outline_id: null,
-              status_reason: `backfilled on ${trigger}`,
+              status_reason: `backfilled on ${trigger}（文档级匹配，待人工确认）`,
             });
 
             filled++;
@@ -1310,7 +1328,7 @@ class StandardMgrService {
             where: {
               standard_id: standard.id,
               source: REF_SOURCE.AUTO_BACKFILL,
-              status: REF_STATUS.VALID,
+              status: REF_STATUS.SUSPECTED,
               target_document_id: candidateDoc.id,
             },
             raw: true,
@@ -1361,7 +1379,7 @@ class StandardMgrService {
                 await RefAnchor.update(
                   {
                     target_revision_id: candidateDoc.current_revision_id,
-                    status_reason: `backfill upgraded to latest revision on ${trigger}`,
+                    status_reason: `backfill upgraded to latest revision on ${trigger}（文档级匹配，待人工确认）`,
                     updated_at: new Date(),
                   },
                   { where: { id: rec.id } },
@@ -1711,6 +1729,158 @@ class StandardMgrService {
     });
 
     return { accepted: true };
+  }
+
+  /**
+   * 查找文档已完成处理、等待锚点清洗的纳管标准。
+   *
+   * @returns {Promise<Array>}
+   */
+  async findStandardsAwaitingDocument() {
+    return await this.db.query(
+      `SELECT
+         s.id,
+         s.document_id,
+         s.current_revision_id,
+         s.created_by,
+         d.processing_status,
+         d.processing_error_message
+       FROM app_standard AS s
+       INNER JOIN documents AS d ON d.id = s.document_id
+       WHERE s.anchor_build_status = ?
+         AND s.last_anchor_build_at IS NULL
+         AND d.processing_status IN (?, ?)
+       ORDER BY s.created_at ASC, s.id ASC`,
+      [
+        ANCHOR_BUILD_STATUS.PENDING,
+        'ready',
+        'error',
+      ],
+    );
+  }
+
+  /**
+   * 解析后台锚点清洗使用的用户会话。
+   *
+   * @param {string|null} createdBy - 纳管标准的创建人
+   * @returns {Promise<{id: string, roles: string[], isAdmin: boolean}>}
+   */
+  async _buildOnboardCleaningSession(createdBy) {
+    const User = this.db.getModel('user');
+    const UserRole = this.db.getModel('user_role');
+    const Role = this.db.getModel('role');
+
+    let user = null;
+    if (createdBy) {
+      user = await User.findOne({
+        where: { id: createdBy },
+        attributes: ['id', 'status'],
+        raw: true,
+      });
+    }
+
+    if (!user || user.status !== 'active') {
+      const adminAssignments = await UserRole.findAll({
+        attributes: ['user_id'],
+        include: [
+          {
+            model: Role,
+            as: 'role',
+            where: { mark: 'admin' },
+            attributes: [],
+            required: true,
+          },
+          {
+            model: User,
+            as: 'user',
+            where: { status: 'active' },
+            attributes: [],
+            required: true,
+          },
+        ],
+        order: [['user_id', 'ASC']],
+        limit: 1,
+        raw: true,
+      });
+      const fallbackUserId = adminAssignments[0]?.user_id;
+      if (!fallbackUserId) {
+        throw new Error('没有可用于后台锚点清洗的活动管理员用户');
+      }
+      logger.info(
+        `[standard-mgr] created_by=${createdBy || 'unknown'} unavailable, ` +
+        `using active admin user=${fallbackUserId} for onboard cleaning`
+      );
+      user = { id: fallbackUserId, status: 'active' };
+    }
+
+    const roleRecords = await UserRole.findAll({
+      where: { user_id: user.id },
+      include: [{
+        model: Role,
+        as: 'role',
+        attributes: ['mark'],
+      }],
+      raw: true,
+      nest: true,
+    });
+    const roles = roleRecords.map(record => record.role?.mark).filter(Boolean);
+
+    return {
+      id: user.id,
+      roles,
+      isAdmin: roles.includes('admin'),
+    };
+  }
+
+  /**
+   * 触发已纳管且文档处理完成的标准锚点清洗。
+   *
+   * @param {object} params
+   * @param {object} params.chatService - ChatService 实例
+   * @returns {Promise<{processed: number, cleaned: number, errored: number}>}
+   */
+  async triggerPendingOnboardedStandards({ chatService } = {}) {
+    const summary = { processed: 0, cleaned: 0, errored: 0 };
+    const standards = await this.findStandardsAwaitingDocument();
+
+    for (const standard of standards) {
+      summary.processed++;
+      try {
+        if (standard.processing_status === 'error') {
+          const errorMessage = standard.processing_error_message || '未知文档处理错误';
+          await this.updateAnchorBuildStatus(
+            standard.id,
+            ANCHOR_BUILD_STATUS.ERROR,
+            `文档处理失败，无法构建锚点: ${errorMessage}`,
+          );
+          summary.errored++;
+          logger.warn(
+            `[standard-mgr] document processing failed for standard=${standard.id}: ${errorMessage}`
+          );
+          continue;
+        }
+
+        const session = await this._buildOnboardCleaningSession(standard.created_by);
+        const pipeResult = await this.runCleaningPipeline(standard.id, {
+          session,
+          chatService,
+        });
+        if (pipeResult?.accepted) {
+          summary.cleaned++;
+        } else {
+          logger.info(
+            `[standard-mgr] onboard cleaning already in progress, ` +
+            `standard=${standard.id}; accepted=false ignored`
+          );
+        }
+      } catch (err) {
+        logger.error(
+          `[standard-mgr] onboard watcher failed for standard=${standard.id}: ${err.message}`
+        );
+      }
+    }
+
+    return summary;
   }
 
   /**
@@ -2097,7 +2267,7 @@ class StandardMgrService {
    * 从文档平台纳管一份标准文档
    *
    * 校验：
-   * - 文档存在且 processing_status='ready'（已完成 OCR → Clean → Outline → Chunk → Embedding 全链路）
+   * - 文档存在且已完成处理，或处于 OCR → Clean → Outline → Chunk → Embedding 的处理中状态
    * - 文档类型不限：contract / knowledge / department_doc / standard 均可纳管，
    *   纳管成功后会把该文档的 doc_type 改写为 'standard'（类型改写，见下方步骤 6）
    * - document_id 唯一：同一文档只能纳管一次
@@ -2115,7 +2285,14 @@ class StandardMgrService {
     // ---- 1. 校验文档存在与处理状态（类型不限，纳管时改写为 standard） ----
     const Document = this.db.getModel('document');
     const doc = await Document.findByPk(document_id, {
-      attributes: ['id', 'doc_type', 'processing_status', 'current_revision_id', 'collection_id'],
+      attributes: [
+        'id',
+        'doc_type',
+        'processing_status',
+        'processing_error_message',
+        'current_revision_id',
+        'collection_id',
+      ],
       raw: true,
     });
     if (!doc) {
@@ -2124,10 +2301,18 @@ class StandardMgrService {
       throw err;
     }
 
-    if (doc.processing_status !== 'ready') {
+    const documentReady = doc.processing_status === 'ready';
+    if (!documentReady && !DOCUMENT_IN_FLIGHT_STATUSES.includes(doc.processing_status)) {
+      if (doc.processing_status === 'error') {
+        const err = new Error(
+          `Document processing failed: ${doc.processing_error_message || 'unknown error'}`
+        );
+        err.status = 400;
+        throw err;
+      }
+
       const err = new Error(
-        `Document processing_status must be 'ready' (current: ${doc.processing_status}). ` +
-        'The document has not completed the full pipeline (OCR → Clean → Outline → Chunk → Embedding).'
+        `Document processing_status must be 'ready' or an in-flight status (current: ${doc.processing_status}).`
       );
       err.status = 400;
       throw err;
@@ -2226,7 +2411,10 @@ class StandardMgrService {
       );
     }
 
-    return standard.toJSON ? standard.toJSON() : standard;
+    return {
+      ...(standard.toJSON ? standard.toJSON() : standard),
+      document_ready: documentReady,
+    };
   }
 
   /**

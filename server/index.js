@@ -58,6 +58,7 @@ import McpToolCaller from '../lib/mcp-tool-caller.js';
 import ClockCore from '../lib/clock/clock-core.js';
 import { buildDocPipelineContext } from '../lib/clock/job-context-builder.js';
 import { run as docPipelineWorkerRun, settleStalePipelineRuns } from '../lib/doc-pipeline-worker.js';
+import StandardMgrService from '../apps/standard-mgr/server/service.js';
 import { createAppWildcardRouter } from './middlewares/app-wildcard-router.js';
 import logger from '../lib/logger.js';
 import Utils from '../lib/utils.js';
@@ -422,7 +423,7 @@ class ApiServer {
     logger.info('AppClock initialized');
 
     // 初始化 ClockCore（Unified Clock Phase 1）
-    // 注册 doc-pipeline-worker 为第一个 internal job
+    // 注册文档流水线和标准纳管 watcher internal jobs
     this.clockCore = new ClockCore(this.db, {
       maxConsecutiveFailures: parseInt(process.env.CLOCK_MAX_FAILURES, 10) || 3,
       failureCooldownMs: parseInt(process.env.CLOCK_FAILURE_COOLDOWN_MS, 10) || 120000,
@@ -465,7 +466,25 @@ class ApiServer {
       },
     });
 
-    logger.info('ClockCore initialized with doc-pipeline-worker internal job');
+    this.clockCore.register('standard-mgr-onboard-watcher', {
+      interval: appConfig.clock_interval * 1000,
+      preventOverlap: true,
+      handler: async () => {
+        try {
+          const service = new StandardMgrService(this.db);
+          return await service.triggerPendingOnboardedStandards({
+            chatService: this.chatService,
+          });
+        } catch (err) {
+          logger.error(`[standard-mgr] onboard watcher job failed: ${err.message}`);
+          throw err;
+        }
+      },
+    });
+
+    logger.info(
+      'ClockCore initialized with doc-pipeline-worker and standard-mgr-onboard-watcher internal jobs'
+    );
 
     // 启动清理：结清 doc_process_runs 中上次崩溃遗留的僵尸 running 记录，
     // 避免对应文档被 "already running" 守卫永久锁死（与 AppClock 启动清理同语义）

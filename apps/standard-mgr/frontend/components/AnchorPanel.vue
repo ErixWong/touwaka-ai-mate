@@ -104,7 +104,7 @@
       <template #footer>
         <el-button @click="detailAnchor = null">{{ $t('common.close') }}</el-button>
         <el-button
-          v-if="detailAnchor.status === 'gap'"
+          v-if="['gap', 'suspected', 'invalid'].includes(detailAnchor.status)"
           type="primary"
           @click="handleFixFromDetail"
         >

@@ -8,6 +8,11 @@
         <el-tag :type="statusTagType(standard.anchor_build_status)" size="small">
           {{ $t('apps.standardMgr.' + statusLabelKey(standard.anchor_build_status)) }}
         </el-tag>
+        <el-tooltip v-if="hasNewVersion" :content="$t('apps.standardMgr.newVersionHint')" placement="top">
+          <el-tag type="warning" size="small">
+            {{ $t('apps.standardMgr.newVersionTag') }}
+          </el-tag>
+        </el-tooltip>
         <span class="sm-counts">
           {{ $t('apps.standardMgr.anchorValid') }} {{ standard.valid_reference_count }} |
           {{ $t('apps.standardMgr.anchorSuspected') }} {{ standard.suspected_reference_count }} |
@@ -52,6 +57,9 @@
     >
       <p class="sm-delete-warning">
         {{ $t('apps.standardMgr.deleteConfirmMessage') }}
+      </p>
+      <p v-if="standard.has_manual_fix || standard.manual_fix_count > 0" class="sm-delete-manual-fix-warning">
+        {{ $t('apps.standardMgr.deleteConfirmManualFixMessage', { n: standard.manual_fix_count }) }}
       </p>
       <template #footer>
         <el-button @click="showDeleteDialog = false">{{ $t('common.cancel') }}</el-button>
@@ -205,6 +213,7 @@ import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 import { renderAnchoredText } from '../utils/anchor-render'
 import type { StandardItem, AnchoredSection, RefAnchor, AnchorBuildStatus, StandardType, EnterpriseItem } from '../api/standard-mgr'
 import { i18n } from '@/i18n'
+import { useToastStore } from '@/stores/toast'
 
 const props = defineProps<{
   standard: StandardItem | null
@@ -239,6 +248,12 @@ const emit = defineEmits<{
   cancelPick: []
 }>()
 
+const hasNewVersion = computed(() => Boolean(
+  props.standard?.current_revision_id &&
+  props.standard.document_current_revision_id &&
+  props.standard.current_revision_id !== props.standard.document_current_revision_id,
+))
+
 // ---- R21: 框选模式 ----
 function handleBodyMouseUp(e: MouseEvent) {
   if (!props.picking) return
@@ -249,11 +264,17 @@ function handleBodyMouseUp(e: MouseEvent) {
   const anchorNode = sel?.anchorNode as Node | null
   const sectionEl = findOutlineElement(anchorNode)
   const outlineId = sectionEl?.dataset?.outlineId
-  if (!sectionEl || !outlineId) return
+  if (!sectionEl || !outlineId) {
+    useToastStore().warning(i18n.global.t('apps.standardMgr.createAnchorPickOutsideSection'))
+    return
+  }
   // 防止跨章节选择：focusNode 也在同一章节才接受
   const focusNode = sel?.focusNode as Node | null
   const focusSectionEl = findOutlineElement(focusNode)
-  if (!focusSectionEl || focusSectionEl.dataset.outlineId !== outlineId) return
+  if (!focusSectionEl || focusSectionEl.dataset.outlineId !== outlineId) {
+    useToastStore().warning(i18n.global.t('apps.standardMgr.createAnchorPickAcrossSections'))
+    return
+  }
   emit('pick', { source_text: text, outline_id: outlineId })
   window.getSelection()?.removeAllRanges()
 }
@@ -440,6 +461,11 @@ const rebuildLabel = computed(() => {
 .sm-counts {
   font-size: 12px;
   color: #909399;
+}
+
+.sm-delete-manual-fix-warning {
+  margin: 8px 0 0;
+  color: var(--el-color-danger);
 }
 
 .sm-detail-actions {

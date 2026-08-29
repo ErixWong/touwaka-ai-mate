@@ -137,6 +137,7 @@ export default { tick }
 - [ ] 二选一成立即可：
 - [ ] `apps/{appId}/migrations/*.js` 提供安装/卸载迁移
 - [ ] 或仓库统一升级脚本已显式维护该 app 所需表结构
+- [ ] 若走 app 内 migrations：`up()` 幂等（`CREATE TABLE IF NOT EXISTS` + 条件式数据迁移），`check()` 同时覆盖首装与升级路径；数据迁移禁止依赖手动脚本（执行模型见 `docs/apps/app-generation-guide.md` 步骤 3，参考 `apps/standard-mgr/migrations/install.js`）
 
 ### 当前检查
 

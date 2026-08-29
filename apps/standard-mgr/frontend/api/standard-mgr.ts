@@ -76,6 +76,8 @@ export interface StandardItem {
   document_title?: string | null
   /** 基础信息展示：当前版本标签（document_revisions.revision_label，如 2022①/2022） */
   current_revision_label?: string | null
+  /** 纳管时文档是否已完成处理 */
+  document_ready?: boolean
   created_at: string
   updated_at: string
 }
@@ -476,5 +478,4 @@ export async function getConfig(): Promise<StandardMgrConfig> {
 export async function saveConfig(config: StandardMgrConfig): Promise<StandardMgrConfig> {
   return apiRequest<StandardMgrConfig>(apiClient.put(`${PREFIX}/config`, config))
 }
-
 
