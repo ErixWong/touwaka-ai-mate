@@ -846,6 +846,98 @@ class StandardMgrService {
   }
 
   /**
+   * 获取引用指定标准的反向引用记录。
+   *
+   * 反向引用按目标文档查询，不受目标章节是否为空影响；
+   * invalid 记录不计入影响面分析。
+   */
+  async listReferencedBy(standardId) {
+    const AppStandard = this._appStandard();
+    const target = await AppStandard.findOne({
+      where: { id: standardId },
+      attributes: ['id', 'document_id', 'standard_code', 'standard_name'],
+      raw: true,
+    });
+
+    if (!target) return null;
+
+    const rows = await this.db.query(`
+      SELECT
+        a.id AS anchor_id,
+        a.standard_id AS source_standard_id,
+        s.standard_code AS source_standard_code,
+        s.standard_name AS source_standard_name,
+        a.source_text,
+        a.status,
+        a.ref_type,
+        a.source_revision_id,
+        a.source_outline_id,
+        a.occurrence_index
+      FROM app_standard_ref_anchor a
+      JOIN app_standard s ON s.id = a.standard_id
+      WHERE a.target_document_id = ?
+        AND a.status <> ?
+      ORDER BY
+        s.standard_code ASC,
+        s.standard_name ASC,
+        a.source_revision_id ASC,
+        a.source_outline_id ASC,
+        a.occurrence_index ASC,
+        a.id ASC
+    `, [target.document_id, REF_STATUS.INVALID]);
+
+    const outlineIds = [...new Set(rows.map(row => row.source_outline_id).filter(Boolean))];
+    const DocOutline = this.db.getModel('document_outline');
+    const outlines = outlineIds.length > 0
+      ? await DocOutline.findAll({
+          where: { id: outlineIds },
+          attributes: ['id', 'title'],
+          raw: true,
+        })
+      : [];
+    const outlineTitleMap = {};
+    for (const outline of outlines) {
+      outlineTitleMap[outline.id] = outline.title;
+    }
+
+    const groups = [];
+    const groupsByStandardId = new Map();
+    for (const row of rows) {
+      let group = groupsByStandardId.get(row.source_standard_id);
+      if (!group) {
+        group = {
+          standard_id: row.source_standard_id,
+          standard_code: row.source_standard_code,
+          standard_name: row.source_standard_name,
+          refs: [],
+        };
+        groupsByStandardId.set(row.source_standard_id, group);
+        groups.push(group);
+      }
+
+      group.refs.push({
+        anchor_id: row.anchor_id,
+        source_text: row.source_text,
+        outline_title: row.source_outline_id ? (outlineTitleMap[row.source_outline_id] || null) : null,
+        status: row.status,
+        ref_type: row.ref_type,
+        source_revision_id: row.source_revision_id,
+        source_outline_id: row.source_outline_id,
+      });
+    }
+
+    return {
+      target: {
+        standard_id: target.id,
+        standard_code: target.standard_code,
+        standard_name: target.standard_name,
+      },
+      total: rows.length,
+      groups,
+    };
+  }
+
+  /**
    * R9-3: 为锚点列表补全目标文档标题和目标章节标题
    */
   async _enrichAnchorTargets(anchors) {
