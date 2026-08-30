@@ -14,14 +14,7 @@
       </el-result>
     </div>
 
-    <!-- 空状态 -->
-    <div v-else-if="!store.loading && store.standards.length === 0" class="sm-empty">
-      <el-empty description="暂无纳管标准">
-        <el-button type="primary" @click="showUploadDialog = true">纳管标准</el-button>
-      </el-empty>
-    </div>
-
-    <!-- R8-3: 页签切换 —— 标准管理 | 标准筛选 | 缺口清单 -->
+    <!-- 页签切换 —— 标准管理 | 缺口清单 -->
     <div v-else class="sm-layout">
       <el-tabs v-model="activePageTab" class="sm-page-tabs">
         <el-tab-pane name="manage">
@@ -38,6 +31,7 @@
                 :enterprises="store.enterprises"
                 :show-settings="isAdmin"
                 @select="handleSelectStandard"
+                @show-inactive-change="handleShowInactiveChange"
                 @upload-click="showUploadDialog = true"
                 @settings-click="openConfigDialog"
               />
@@ -115,13 +109,6 @@
               <el-empty :description="$t('apps.standardMgr.noDetailOpen')" />
             </div>
           </div>
-        </el-tab-pane>
-
-        <el-tab-pane name="filter">
-          <template #label>
-            {{ $t('apps.standardMgr.filterTab') }}
-          </template>
-          <FilterPanel />
         </el-tab-pane>
 
         <el-tab-pane name="gaps">
@@ -205,7 +192,6 @@ import StandardDetailView from '../components/StandardDetailView.vue'
 import AnchorPanel from '../components/AnchorPanel.vue'
 import UploadDialog from '../components/UploadDialog.vue'
 import ManualFixDialog from '../components/ManualFixDialog.vue'
-import FilterPanel from '../components/FilterPanel.vue'
 import GapAggregatePanel from '../components/GapAggregatePanel.vue'
 import AdminConfigDialog from '../components/AdminConfigDialog.vue'
 import CreateAnchorDialog from '../components/CreateAnchorDialog.vue'
@@ -216,7 +202,7 @@ const store = useStandardMgrStore()
 const userStore = useUserStore()
 const isAdmin = userStore.isAdmin
 
-/** R8-3: 页签切换 */
+/** 页签切换 */
 const activePageTab = ref('manage')
 
 const showLeftPanel = ref(true)
@@ -303,12 +289,16 @@ const onboardedRevKeys = computed(() => {
 })
 
 onMounted(() => {
-  store.fetchStandards()
+  store.fetchStandards({ is_active: 1 })
   store.fetchEnterprises()
 })
 
 function handleSelectStandard(standardId: string) {
   store.selectStandard(standardId)
+}
+
+function handleShowInactiveChange(showInactive: boolean) {
+  store.fetchStandards({ is_active: showInactive ? undefined : 1 })
 }
 
 function handleGapOpenStandard() {
@@ -448,8 +438,7 @@ async function handleDeleteStandard(standardId: string) {
 }
 
 .sm-loading,
-.sm-error,
-.sm-empty {
+.sm-error {
   padding: 40px;
 }
 

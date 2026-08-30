@@ -14,17 +14,60 @@
       </div>
     </div>
 
+    <div class="sm-list-filters">
+      <el-input
+        v-model="searchKeyword"
+        clearable
+        :placeholder="$t('apps.standardMgr.searchStandardsPlaceholder')"
+      >
+        <template #prefix>
+          <el-icon><Search /></el-icon>
+        </template>
+      </el-input>
+      <div class="sm-list-filter-row">
+        <el-select
+          v-model="statusFilter"
+          class="sm-list-filter-status"
+          :placeholder="$t('apps.standardMgr.statusFilterPlaceholder')"
+        >
+          <el-option :label="$t('common.all')" value="all" />
+          <el-option :label="$t('apps.standardMgr.statusPending')" value="pending" />
+          <el-option :label="$t('apps.standardMgr.statusProcessing')" value="processing" />
+          <el-option :label="$t('apps.standardMgr.statusDone')" value="done" />
+          <el-option :label="$t('apps.standardMgr.statusFailed')" value="error" />
+          <el-option :label="$t('apps.standardMgr.statusNeedsReview')" value="needs_review" />
+        </el-select>
+        <div class="sm-list-filter-inactive">
+          <span>{{ $t('apps.standardMgr.showInactiveStandards') }}</span>
+          <el-switch
+            v-model="showInactive"
+            :disabled="loading"
+            @change="handleShowInactiveChange"
+          />
+        </div>
+      </div>
+    </div>
+
     <div v-loading="loading" class="sm-list-body">
       <el-empty v-if="!loading && standards.length === 0" :description="$t('apps.standardMgr.noStandards')" />
+      <el-empty
+        v-else-if="!loading && filteredStandards.length === 0"
+        :description="$t('apps.standardMgr.noMatchingStandards')"
+      />
+      <el-empty
+        v-else-if="!loading && normalizedSearchKeyword && searchMatchedStandards.length === 0"
+        :description="$t('apps.standardMgr.noMatchingStandards')"
+      />
       <el-tree
         v-else
+        ref="treeRef"
         :data="treeData"
         :props="{ children: 'children', label: 'label' }"
         node-key="id"
         :default-expand-all="false"
         :expand-on-click-node="false"
         highlight-current
-        :filter-node-method="() => true"
+        :filter-node-method="filterNode"
         @node-click="handleNodeClick"
       >
         <template #default="{ node, data }">
@@ -45,6 +88,9 @@
             <div class="sm-item-meta">
               <el-tag size="small" :type="data.statusTagType">
                 {{ $t(data.statusLabel) }}
+              </el-tag>
+              <el-tag v-if="data.is_active === false" size="small" type="info">
+                {{ $t('apps.standardMgr.statusInactive') }}
               </el-tag>
               <el-tooltip
                 v-if="data.has_new_version"
@@ -75,9 +121,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { i18n } from '@/i18n'
-import { Plus, Setting } from '@element-plus/icons-vue'
+import { Plus, Search, Setting } from '@element-plus/icons-vue'
 import type { StandardItem, AnchorBuildStatus, EnterpriseItem } from '../api/standard-mgr'
 
 const props = defineProps<{
@@ -93,7 +139,21 @@ const emit = defineEmits<{
   select: [standardId: string]
   uploadClick: []
   settingsClick: []
+  showInactiveChange: [showInactive: boolean]
 }>()
+
+type StatusFilter = AnchorBuildStatus | 'all' | 'needs_review'
+
+const searchKeyword = ref('')
+const statusFilter = ref<StatusFilter>('all')
+const showInactive = ref(false)
+
+interface StandardTreeInstance {
+  filter: (value: string) => void
+  getNode: (data: string) => { expanded: boolean } | null | undefined
+}
+
+const treeRef = ref<StandardTreeInstance | null>(null)
 
 // ============================================================
 // Tree data
@@ -106,6 +166,7 @@ interface TreeNode {
   standard_id?: string
   standard_code?: string
   standard_name?: string
+  is_active?: boolean
   statusTagType?: string
   statusLabel?: string
   has_new_version?: boolean
@@ -126,6 +187,25 @@ const enterpriseNameMap = computed(() => {
   return map
 })
 
+const normalizedSearchKeyword = computed(() => searchKeyword.value.trim().toLowerCase())
+
+const filteredStandards = computed(() => {
+  if (statusFilter.value === 'all') return props.standards
+  if (statusFilter.value === 'needs_review') {
+    return props.standards.filter(std => std.needs_review)
+  }
+  return props.standards.filter(std => std.anchor_build_status === statusFilter.value)
+})
+
+const searchMatchedStandards = computed(() => {
+  const keyword = normalizedSearchKeyword.value
+  if (!keyword) return filteredStandards.value
+  return filteredStandards.value.filter(std =>
+    [std.standard_code, std.standard_name]
+      .some(value => value?.toLowerCase().includes(keyword)),
+  )
+})
+
 const treeData = computed<TreeNode[]>(() => {
   const t = i18n.global.t
   const groups: Record<string, { label: string; items: StandardItem[]; subGroups?: Record<string, StandardItem[]> }> = {
@@ -142,7 +222,7 @@ const treeData = computed<TreeNode[]>(() => {
 
   const entMap = enterpriseNameMap.value
 
-  for (const std of props.standards) {
+  for (const std of filteredStandards.value) {
     const type = std.standard_type || ''
     const grp = groups[type]
     if (!grp) {
@@ -237,6 +317,54 @@ const treeData = computed<TreeNode[]>(() => {
   return nodes
 })
 
+function nodeMatchesSearch(node: TreeNode, keyword: string): boolean {
+  if (node.type === 'standard') {
+    return [node.standard_code, node.standard_name]
+      .some(value => value?.toLowerCase().includes(keyword))
+  }
+  return node.children?.some(child => nodeMatchesSearch(child, keyword)) ?? false
+}
+
+function filterNode(value: string, data: TreeNode): boolean {
+  const keyword = value.trim().toLowerCase()
+  return !keyword || nodeMatchesSearch(data, keyword)
+}
+
+function collectMatchingGroupIds(nodes: TreeNode[], keyword: string, groupIds: string[]) {
+  for (const node of nodes) {
+    if (node.type !== 'group') continue
+    if ((!keyword || nodeMatchesSearch(node, keyword)) && node.children?.length) {
+      groupIds.push(node.id)
+    }
+    if (node.children) {
+      collectMatchingGroupIds(node.children, keyword, groupIds)
+    }
+  }
+}
+
+async function applyTreeFilter() {
+  await nextTick()
+  const tree = treeRef.value
+  if (!tree) return
+
+  const keyword = normalizedSearchKeyword.value
+  tree.filter(keyword)
+  await nextTick()
+
+  const groupIds: string[] = []
+  collectMatchingGroupIds(treeData.value, keyword, groupIds)
+  for (const groupId of groupIds) {
+    const node = tree.getNode(groupId)
+    if (node) node.expanded = true
+  }
+}
+
+watch([searchKeyword, statusFilter, treeData], applyTreeFilter, { flush: 'post' })
+
+onMounted(() => {
+  applyTreeFilter()
+})
+
 /**
  * 版本化分组（树状展开）
  *
@@ -296,6 +424,7 @@ function buildStandardNode(std: StandardItem): TreeNode {
     standard_id: std.id,
     standard_code: std.standard_code,
     standard_name: std.standard_name,
+    is_active: std.is_active,
     statusTagType: statusTagType(std.anchor_build_status),
     statusLabel: statusLabel(std.anchor_build_status),
     has_new_version: Boolean(
@@ -323,6 +452,10 @@ function handleNodeClick(data: TreeNode) {
   if (data.type === 'standard' && data.standard_id) {
     emit('select', data.standard_id)
   }
+}
+
+function handleShowInactiveChange(value: boolean | string | number) {
+  emit('showInactiveChange', Boolean(value))
 }
 
 function statusTagType(status: AnchorBuildStatus): 'success' | 'warning' | 'danger' | 'info' | '' {
@@ -372,6 +505,36 @@ function statusLabel(status: AnchorBuildStatus): string {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.sm-list-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #ebeef5;
+  flex-shrink: 0;
+}
+
+.sm-list-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sm-list-filter-status {
+  flex: 1;
+  min-width: 0;
+}
+
+.sm-list-filter-inactive {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: #606266;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .sm-list-body {

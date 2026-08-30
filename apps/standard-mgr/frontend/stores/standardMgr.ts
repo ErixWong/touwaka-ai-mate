@@ -221,11 +221,24 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   // 操作
   // ============================================================
 
-  async function fetchStandards() {
+  type StandardListParams = {
+    standard_type?: StandardType
+    is_active?: number
+  }
+
+  const standardListParams = ref<StandardListParams>({
+    is_active: 1,
+  })
+
+  async function fetchStandards(params?: StandardListParams) {
+    if (params) {
+      standardListParams.value = params
+    }
+
     loading.value = true
     error.value = null
     try {
-      standards.value = await listStandards()
+      standards.value = await listStandards(standardListParams.value)
     } catch (err: any) {
       const msg = err?.message || i18n.global.t('apps.standardMgr.loadListFailed')
       error.value = msg
