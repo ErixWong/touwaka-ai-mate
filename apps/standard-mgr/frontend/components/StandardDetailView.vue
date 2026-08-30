@@ -30,6 +30,9 @@
         >
           {{ rebuildLoading ? $t('apps.standardMgr.rebuilding') : rebuildLabel }}
         </el-button>
+        <el-button size="small" @click="openReferencedByDialog">
+          {{ $t('apps.standardMgr.referencedBy', { n: referencedByTotal }) }}
+        </el-button>
         <!-- R19-2: 基础信息（查看 + 编辑） -->
         <el-button size="small" @click="openBasicInfoDialog">
           {{ $t('apps.standardMgr.basicInfo') }}
@@ -67,6 +70,60 @@
           {{ $t('apps.standardMgr.deleteStandard') }}
         </el-button>
       </template>
+    </el-dialog>
+
+    <!-- 反向引用对话框 -->
+    <el-dialog
+      v-if="standard"
+      v-model="showReferencedByDialog"
+      :title="$t('apps.standardMgr.referencedByTitle')"
+      width="720px"
+      destroy-on-close
+    >
+      <div v-if="referencedByLoading" class="sm-referenced-by-loading">
+        <el-skeleton :rows="5" animated />
+        <p>{{ $t('apps.standardMgr.referencedByLoading') }}</p>
+      </div>
+      <el-alert
+        v-else-if="referencedByError"
+        :title="referencedByError"
+        type="error"
+        show-icon
+      />
+      <el-empty
+        v-else-if="!referencedBy || referencedBy.groups.length === 0"
+        :description="$t('apps.standardMgr.referencedByEmpty')"
+      />
+      <el-collapse v-else>
+        <el-collapse-item v-for="group in referencedBy.groups" :key="group.standard_id">
+          <template #title>
+            <el-link
+              type="primary"
+              :underline="false"
+              @click.stop="handleSelectReferencedByStandard(group.standard_id)"
+            >
+              {{ group.standard_code }} · {{ group.standard_name }}
+            </el-link>
+            <span class="sm-referenced-by-group-count">{{ group.refs.length }}</span>
+          </template>
+          <div v-for="item in group.refs" :key="item.anchor_id" class="sm-referenced-by-ref">
+            <div class="sm-referenced-by-source-text">{{ item.source_text }}</div>
+            <div class="sm-referenced-by-ref-meta">
+              <span>
+                {{ $t('apps.standardMgr.referencedByOutline') }}:
+                {{ item.outline_title || $t('apps.standardMgr.referencedByDocumentLevel') }}
+              </span>
+              <el-tag :type="referencedByStatusTag(item.status)" size="small">
+                {{ $t(referencedByStatusLabel(item.status)) }}
+              </el-tag>
+              <span class="sm-referenced-by-ref-type">
+                {{ $t('apps.standardMgr.referencedByRefType') }}:
+                {{ referencedByTypeLabel(item.ref_type) }}
+              </span>
+            </div>
+          </div>
+        </el-collapse-item>
+      </el-collapse>
     </el-dialog>
 
     <!-- R19-2: 基础信息对话框（查看模式 → 点击编辑切换为表单） -->
@@ -207,11 +264,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { Pointer } from '@element-plus/icons-vue'
 import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 import { renderAnchoredText } from '../utils/anchor-render'
-import type { StandardItem, AnchoredSection, RefAnchor, AnchorBuildStatus, StandardType, EnterpriseItem } from '../api/standard-mgr'
+import { getReferencedBy } from '../api/standard-mgr'
+import type {
+ StandardItem,
+ AnchoredSection,
+ RefAnchor,
+ AnchorBuildStatus,
+ StandardType,
+ EnterpriseItem,
+ ReferencedByResult,
+ RefStatus,
+} from '../api/standard-mgr'
 import { i18n } from '@/i18n'
 import { useToastStore } from '@/stores/toast'
 
@@ -246,6 +313,8 @@ const emit = defineEmits<{
   pick: [{ source_text: string; outline_id: string }]
   /** R21: 取消框选 */
   cancelPick: []
+  /** 反向引用：打开来源标准页签 */
+  selectStandard: [standardId: string]
 }>()
 
 const hasNewVersion = computed(() => Boolean(
@@ -253,6 +322,83 @@ const hasNewVersion = computed(() => Boolean(
   props.standard.document_current_revision_id &&
   props.standard.current_revision_id !== props.standard.document_current_revision_id,
 ))
+
+// ---- 反向引用 ----
+const showReferencedByDialog = ref(false)
+const referencedBy = ref<ReferencedByResult | null>(null)
+const referencedByLoading = ref(false)
+const referencedByError = ref<string | null>(null)
+const referencedByTotal = computed(() => {
+  if (!props.standard || referencedBy.value?.target.standard_id !== props.standard.id) return 0
+  return referencedBy.value.total
+})
+
+async function openReferencedByDialog() {
+  if (!props.standard) return
+
+  const standardId = props.standard.id
+  showReferencedByDialog.value = true
+  if (referencedBy.value?.target.standard_id === standardId || referencedByLoading.value) return
+
+  referencedByLoading.value = true
+  referencedByError.value = null
+  try {
+    const result = await getReferencedBy(standardId)
+    if (props.standard?.id === standardId) {
+      referencedBy.value = result
+    }
+  } catch (err: unknown) {
+    if (props.standard?.id === standardId) {
+      referencedByError.value = err instanceof Error && err.message
+        ? err.message
+        : i18n.global.t('apps.standardMgr.referencedByLoadFailed')
+    }
+  } finally {
+    if (props.standard?.id === standardId) {
+      referencedByLoading.value = false
+    }
+  }
+}
+
+function handleSelectReferencedByStandard(standardId: string) {
+  showReferencedByDialog.value = false
+  emit('selectStandard', standardId)
+}
+
+function referencedByStatusTag(status: RefStatus): 'success' | 'warning' | 'danger' | 'info' | '' {
+  const map: Record<RefStatus, 'success' | 'warning' | 'danger' | 'info' | ''> = {
+    valid: 'success',
+    suspected: 'warning',
+    gap: 'danger',
+    invalid: 'info',
+  }
+  return map[status] || 'info'
+}
+
+function referencedByStatusLabel(status: RefStatus): string {
+  const map: Record<RefStatus, string> = {
+    valid: 'apps.standardMgr.anchorValid',
+    suspected: 'apps.standardMgr.anchorSuspected',
+    gap: 'apps.standardMgr.anchorGap',
+    invalid: 'apps.standardMgr.anchorInvalid',
+  }
+  return map[status] || 'apps.standardMgr.anchorInvalid'
+}
+
+function referencedByTypeLabel(refType: string): string {
+  const map: Record<string, string> = {
+    explicit: 'apps.standardMgr.referencedByExplicit',
+    implicit: 'apps.standardMgr.referencedByImplicit',
+  }
+  return map[refType] ? i18n.global.t(map[refType]) : refType
+}
+
+watch(() => props.standard?.id, () => {
+  showReferencedByDialog.value = false
+  referencedBy.value = null
+  referencedByLoading.value = false
+  referencedByError.value = null
+})
 
 // ---- R21: 框选模式 ----
 function handleBodyMouseUp(e: MouseEvent) {
@@ -477,6 +623,50 @@ const rebuildLabel = computed(() => {
 .sm-rebuild-error {
   font-size: 12px;
   color: #f56c6c;
+}
+
+.sm-referenced-by-loading {
+  padding: 8px 0;
+}
+
+.sm-referenced-by-loading p {
+  margin: 12px 0 0;
+  color: #909399;
+  text-align: center;
+}
+
+.sm-referenced-by-group-count {
+  margin-left: 8px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.sm-referenced-by-ref {
+  padding: 12px 0;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.sm-referenced-by-ref:last-child {
+  border-bottom: 0;
+}
+
+.sm-referenced-by-source-text {
+  color: #303133;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.sm-referenced-by-ref-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.sm-referenced-by-ref-type {
+  margin-left: auto;
 }
 
 .sm-detail-loading {

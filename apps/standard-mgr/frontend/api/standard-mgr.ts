@@ -152,6 +152,33 @@ export interface RefAnchor {
   updated_at: string
 }
 
+export interface ReferencedByRef {
+  anchor_id: string
+  source_text: string
+  outline_title: string | null
+  status: RefStatus
+  ref_type: string
+  source_revision_id: string
+  source_outline_id: string
+}
+
+export interface ReferencedByGroup {
+  standard_id: string
+  standard_code: string
+  standard_name: string
+  refs: ReferencedByRef[]
+}
+
+export interface ReferencedByResult {
+  target: {
+    standard_id: string
+    standard_code: string
+    standard_name: string
+  }
+  total: number
+  groups: ReferencedByGroup[]
+}
+
 export interface GapItem extends RefAnchor {
   // gap 专用，继承 RefAnchor 所有字段
 }
@@ -239,6 +266,13 @@ export async function listStandards(params?: {
 /** 获取标准详情 */
 export async function getStandard(standardId: string): Promise<StandardItem> {
   return apiRequest<StandardItem>(apiClient.get(`${PREFIX}/standards/${standardId}`))
+}
+
+/** 获取反向引用列表 */
+export async function getReferencedBy(standardId: string): Promise<ReferencedByResult> {
+  return apiRequest<ReferencedByResult>(
+    apiClient.get(`${PREFIX}/standards/${standardId}/referenced-by`),
+  )
 }
 
 /** 纳管新标准 */

@@ -89,6 +89,7 @@
                     @delete-standard="handleDeleteStandard"
                     @pick="handlePicked"
                     @cancel-pick="handleCancelPick"
+                    @select-standard="handleSelectStandard"
                   />
                 </div>
 
