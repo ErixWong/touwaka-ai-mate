@@ -22,6 +22,7 @@ import logger from '../../../lib/logger.js';
 import Utils from '../../../lib/utils.js';
 import jwt from 'jsonwebtoken';
 import DocAccessService from '../../../lib/doc-access-service.js';
+import { getSystemUserSession } from '../../../lib/system-account.js';
 import { Op } from 'sequelize';
 
 // R18-2: 清洗总超时 15→30 分钟（长标准 + 读写交替策略下 15 分钟偏紧）
@@ -2074,7 +2075,7 @@ class StandardMgrService {
    * 解析后台锚点清洗使用的用户会话。
    *
    * @param {string|null} createdBy - 纳管标准的创建人
-   * @returns {Promise<{id: string, roles: string[], isAdmin: boolean}>}
+   * @returns {Promise<{id: string, roles: string[], isAdmin: boolean, isSystem?: boolean}>}
    */
   async _buildOnboardCleaningSession(createdBy) {
     const User = this.db.getModel('user');
@@ -2091,37 +2092,10 @@ class StandardMgrService {
     }
 
     if (!user || user.status !== 'active') {
-      const adminAssignments = await UserRole.findAll({
-        attributes: ['user_id'],
-        include: [
-          {
-            model: Role,
-            as: 'role',
-            where: { mark: 'admin' },
-            attributes: [],
-            required: true,
-          },
-          {
-            model: User,
-            as: 'user',
-            where: { status: 'active' },
-            attributes: [],
-            required: true,
-          },
-        ],
-        order: [['user_id', 'ASC']],
-        limit: 1,
-        raw: true,
-      });
-      const fallbackUserId = adminAssignments[0]?.user_id;
-      if (!fallbackUserId) {
-        throw new Error('没有可用于后台锚点清洗的活动管理员用户');
-      }
       logger.info(
-        `[standard-mgr] created_by=${createdBy || 'unknown'} unavailable, ` +
-        `using active admin user=${fallbackUserId} for onboard cleaning`
+        `[standard-mgr] 创建人不可用，使用系统账户，原触发人=${createdBy || 'unknown'}`
       );
-      user = { id: fallbackUserId, status: 'active' };
+      return getSystemUserSession(this.db);
     }
 
     const roleRecords = await UserRole.findAll({
