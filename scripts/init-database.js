@@ -20,6 +20,8 @@ dotenv.config();
 import mysql from 'mysql2/promise';
 import Utils from '../lib/utils.js';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+import { SYSTEM_USER_USERNAME } from '../lib/system-account.js';
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
@@ -664,6 +666,9 @@ async function checkForeignKeyExists(connection, tableName, constraintName) {
 async function getInitialData() {
   // 创建默认密码哈希
   const defaultPassword = await bcrypt.hash('password123', 10);
+  // system-bot 禁止正常登录，使用随机密码并通过 inactive 状态锁定登录。
+  const systemPassword = crypto.randomBytes(48).toString('hex');
+  const systemPasswordHash = await bcrypt.hash(systemPassword, 12);
 
   // 生成Provider ID（使用newID）
   const providerIds = {
@@ -702,8 +707,16 @@ async function getInitialData() {
       { id: modelIds.llama3, name: 'Llama 3.1', model_name: 'llama3.1', provider_id: providerIds.ollama, max_tokens: 4096, cost_per_1k_input: 0, cost_per_1k_output: 0 },
     ],
     users: [
-      { id: Utils.newID(20), username: 'admin', email: 'admin@example.com', password_hash: defaultPassword, nickname: '管理员' },
-      { id: Utils.newID(20), username: 'test', email: 'test@example.com', password_hash: defaultPassword, nickname: '测试用户' },
+      { id: Utils.newID(20), username: 'admin', email: 'admin@example.com', password_hash: defaultPassword, nickname: '管理员', status: 'active' },
+      { id: Utils.newID(20), username: 'test', email: 'test@example.com', password_hash: defaultPassword, nickname: '测试用户', status: 'active' },
+      {
+        id: Utils.newID(20),
+        username: SYSTEM_USER_USERNAME,
+        email: null,
+        password_hash: systemPasswordHash,
+        nickname: '系统机器人',
+        status: 'inactive',
+      },
     ],
     roles: [
       { id: roleIds.admin, mark: 'admin', name: '平台管理员', description: '拥有所有权限', level: 'admin', is_system: true },
@@ -811,12 +824,12 @@ async function initDatabase() {
     for (const u of data.users) {
       await connection.execute(
         `INSERT INTO users (id, username, email, password_hash, nickname, status)
-         VALUES (?, ?, ?, ?, ?, 'active')
+         VALUES (?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE nickname=VALUES(nickname)`,
-        [u.id, u.username, u.email, u.password_hash, u.nickname]
+        [u.id, u.username, u.email, u.password_hash, u.nickname, u.status || 'active']
       );
     }
-    console.log(`  - ${data.users.length} users (default password: password123)`);
+    console.log(`  - ${data.users.length} users (admin/test default password: password123; system-bot login disabled)`);
 
     // 技能数据通过 init-skills-from-json.js 导入
     console.log('  - 技能数据请运行 init-skills-from-json.js 导入');

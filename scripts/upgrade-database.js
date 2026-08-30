@@ -18,6 +18,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
+import Utils from '../lib/utils.js';
+import { SYSTEM_USER_USERNAME } from '../lib/system-account.js';
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
@@ -3911,9 +3914,36 @@ const MIGRATIONS = [
     }
   },
 
-
-  // 不硬编码在迁移脚本中，保持迁移脚本无业务数据。
-
+  // ==================== 平台系统账户 ====================
+  // system-bot 是所有应用可复用的平台后台任务身份，不属于 standard-mgr。
+  // 设为 inactive 可阻止正常登录；随机密码用于避免任何可猜测的登录凭据。
+  // 清洗链路只需认证身份，不需要角色，因此不分配 admin/creator/user 角色。
+  {
+    name: 'create platform system user',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        'SELECT 1 FROM users WHERE username = ? LIMIT 1',
+        [SYSTEM_USER_USERNAME],
+      );
+      return rows.length > 0;
+    },
+    migrate: async (conn) => {
+      const randomPassword = crypto.randomBytes(48).toString('hex');
+      const passwordHash = await bcrypt.hash(randomPassword, 12);
+      await conn.execute(
+        `INSERT INTO users (id, username, email, password_hash, nickname, status)
+         VALUES (?, ?, NULL, ?, ?, 'inactive')
+         ON DUPLICATE KEY UPDATE username = VALUES(username)`,
+        [
+          Utils.newID(20),
+          SYSTEM_USER_USERNAME,
+          passwordHash,
+          '系统机器人',
+        ],
+      );
+      console.log(`  ✓ Created platform system user: ${SYSTEM_USER_USERNAME}`);
+    }
+  },
 
 ];
 
