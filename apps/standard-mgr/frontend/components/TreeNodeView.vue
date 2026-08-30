@@ -3,6 +3,7 @@
     <!-- 章节头：点击标题 → 跳转中间栏；点击箭头 → 仅展开/收起 -->
     <div
       class="sm-tree-chapter-header"
+      :class="{ 'is-historical': node.is_historical }"
       :style="{ paddingLeft: `${depth * 14 + 6}px` }"
       @click.stop="handleHeaderClick"
     >
@@ -18,6 +19,9 @@
       <span class="sm-tree-chapter-title" :title="node.title">
         {{ node.displayTitle }}
       </span>
+      <el-tag v-if="node.is_historical" size="small" type="info">
+        {{ $t('apps.standardMgr.historicalVersion') }}
+      </el-tag>
       <el-tag v-if="total > 0" size="small" type="info" class="sm-tree-chapter-badge">
         {{ total }}
       </el-tag>
@@ -54,6 +58,7 @@
           class="sm-tree-anchor-item"
           :class="{
             active: anchor.id === selectedAnchorId,
+            'is-historical': node.is_historical,
             'status-valid': anchor.status === 'valid',
             'status-gap': anchor.status === 'gap',
             'status-suspected': anchor.status === 'suspected',
@@ -65,6 +70,9 @@
           <div class="sm-tree-anchor-top">
             <el-tag :type="anchorStatusTag(anchor.status)" size="small">
               {{ $t(anchorStatusLabel(anchor.status)) }}
+            </el-tag>
+            <el-tag v-if="node.is_historical" size="small" type="info">
+              {{ $t('apps.standardMgr.historicalVersion') }}
             </el-tag>
             <span class="sm-tree-anchor-text">
               {{ anchor.source_text?.slice(0, 60) }}{{ (anchor.source_text?.length || 0) > 60 ? '...' : '' }}
@@ -138,6 +146,7 @@ interface SectionNode {
   displayTitle: string
   level: number
   children: SectionNode[]
+  is_historical?: boolean
 }
 
 const props = defineProps<{
@@ -194,7 +203,9 @@ function handleHeaderClick() {
   if (hasExpandable.value && !isExpanded.value) {
     emit('toggle', props.node.outline_id)
   }
-  emit('jumpToSection', props.node.outline_id)
+  if (!props.node.is_historical) {
+    emit('jumpToSection', props.node.outline_id)
+  }
 }
 
 function toggle() {
@@ -212,10 +223,13 @@ function toggle() {
   transition: background .2s, border-color .2s;
 }
 .sm-tree-chapter-header:hover { background: #e8eaed; border-color: #c0c4cc; }
+.sm-tree-chapter-header.is-historical { background: #f4f4f5; border-color: #dcdfe6; }
+.sm-tree-chapter-header.is-historical:hover { background: #eef0f2; }
 .sm-tree-arrow { transition: transform .2s; font-size: 12px; flex-shrink: 0; color: #909399; }
 .sm-tree-arrow.expanded { transform: rotate(90deg); color: #409eff; }
 .sm-tree-arrow-spacer { width: 12px; flex-shrink: 0; }
 .sm-tree-chapter-title { font-weight: 600; font-size: 13px; flex: 1; cursor: pointer; color: #303133; }
+.sm-tree-chapter-header.is-historical .sm-tree-chapter-title { color: #909399; }
 .sm-tree-chapter-title:hover { color: #409eff; }
 .sm-tree-chapter-badge { flex-shrink: 0; }
 .sm-tree-chapter-body { padding-top: 2px; }
@@ -236,8 +250,11 @@ function toggle() {
 .sm-tree-anchor-item.status-gap { border-left-color: #f56c6c; }
 .sm-tree-anchor-item.status-suspected { border-left-color: #e6a23c; }
 .sm-tree-anchor-item.status-invalid { border-left-color: #909399; }
+.sm-tree-anchor-item.is-historical { background: #f4f4f5; border-color: #dcdfe6; border-left-color: #c0c4cc; }
+.sm-tree-anchor-item.is-historical.active { background: #f4f4f5; border-color: #dcdfe6; }
 
 .sm-tree-anchor-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .sm-tree-anchor-text { font-size: 13px; color: #303133; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-tree-anchor-item.is-historical .sm-tree-anchor-text { color: #909399; }
 .sm-tree-anchor-actions { display: flex; gap: 4px; }
 </style>

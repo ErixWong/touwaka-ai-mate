@@ -154,6 +154,7 @@ interface SectionNode {
   /** 数字层级：5 → 1 级；5.2 → 2 级；无数字前缀 → 0（顶层） */
   level: number
   children: SectionNode[]
+  is_historical?: boolean
 }
 
 /** 解析标题开头的数字前缀："5.2.1 外观检查" → { parts: [5,2,1], prefix: '5.2.1' } */
@@ -209,6 +210,28 @@ const sortedSections = computed(() => {
   return [...props.sections].sort((a, b) => a.seq - b.seq)
 })
 
+const HISTORICAL_OUTLINE_ID = '__standard_mgr_historical_invalid_anchors__'
+const sectionOutlineIds = computed(() => new Set(props.sections.map(section => section.outline_id)))
+const historicalAnchors = computed(() => {
+  return props.anchors.filter(anchor => !sectionOutlineIds.value.has(anchor.source_outline_id))
+})
+const historicalNode = computed<SectionNode | null>(() => {
+  if (historicalAnchors.value.length === 0) return null
+  const title = i18n.global.t('apps.standardMgr.historicalInvalidAnchors')
+  return {
+    outline_id: HISTORICAL_OUTLINE_ID,
+    seq: Number.MAX_SAFE_INTEGER,
+    title,
+    displayTitle: title,
+    level: 0,
+    children: [],
+    is_historical: true,
+  }
+})
+const treeRootsWithHistorical = computed(() => {
+  return historicalNode.value ? [...treeRoots.value, historicalNode.value] : treeRoots.value
+})
+
 // ==================== 展开/收起（多级） ====================
 
 const expandedNodes = ref(new Set<string>())
@@ -237,13 +260,17 @@ const initExpand = () => {
       walk(node.children, [...ancestors, node.outline_id])
     }
   }
-  walk(treeRoots.value, [])
+  walk(treeRootsWithHistorical.value, [])
   expandedNodes.value = next
 }
 
 // 数据变化后重新构建展开状态
 watch(() => [props.sections, props.anchors], () => {
-  if (expandedNodes.value.size === 0 && filterStatus.value === 'all') return
+  if (
+    expandedNodes.value.size === 0 &&
+    filterStatus.value === 'all' &&
+    historicalAnchors.value.length === 0
+  ) return
   initExpand()
 })
 
@@ -256,7 +283,7 @@ function expandAll() {
       walk(node.children)
     }
   }
-  walk(treeRoots.value)
+  walk(treeRootsWithHistorical.value)
   expandedNodes.value = next
 }
 
@@ -266,7 +293,9 @@ function expandAll() {
 const anchorsByOutline = computed(() => {
   const map: Record<string, RefAnchor[]> = {}
   for (const a of props.anchors) {
-    const key = a.source_outline_id
+    const key = sectionOutlineIds.value.has(a.source_outline_id)
+      ? a.source_outline_id
+      : HISTORICAL_OUTLINE_ID
     if (!map[key]) map[key] = []
     map[key].push(a)
   }
@@ -301,7 +330,7 @@ function nodeVisible(node: SectionNode): boolean {
 
 /** 可见树：筛选时过滤掉无匹配章节（含其子树） */
 const visibleTree = computed<SectionNode[]>(() => {
-  if (filterStatus.value === 'all') return treeRoots.value
+  if (filterStatus.value === 'all') return treeRootsWithHistorical.value
   const filterNodes = (nodes: SectionNode[]): SectionNode[] => {
     const out: SectionNode[] = []
     for (const node of nodes) {
@@ -312,7 +341,7 @@ const visibleTree = computed<SectionNode[]>(() => {
     }
     return out
   }
-  return filterNodes(treeRoots.value)
+  return filterNodes(treeRootsWithHistorical.value)
 })
 
 // 切换筛选时：自动展开有匹配锚点章节的祖先链，确保结果可见
@@ -328,7 +357,7 @@ watch(filterStatus, () => {
       walk(node.children, [...ancestors, node.outline_id])
     }
   }
-  walk(treeRoots.value, [])
+  walk(treeRootsWithHistorical.value, [])
   expandedNodes.value = next
 })
 
