@@ -1366,7 +1366,7 @@ export default {
       rebuildAnchorCopy: '重建锚点副本',
       rebuilding: '重建中...',
       rebuildSuccess: '重建完成',
-      rebuildTimeout: '重建超时（超过 10 分钟）',
+      rebuildTimeout: '清洗超时（超过 30 分钟）',
       rebuildFailed: '触发清洗失败',
       rebuildNoPermission: '需要管理员权限',
       notCleaned: '该标准尚未清洗',
@@ -1463,6 +1463,7 @@ export default {
       cleanSuccess: '清洗完成',
       cleanFailed: '清洗失败',
       cleaningStarted: '清洗任务已提交，完成后自动更新',
+      cleanProgress: '已处理 {processed}/{total} 章节 · 锚点 {anchors} 条',
       // R8-1 文档平台选择
       selectFromPlatform: '从文档平台选择',
       uploadNewFile: '上传新文件',

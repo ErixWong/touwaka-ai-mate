@@ -201,22 +201,95 @@ class StandardMgrService {
    *
    * @param {string} standardId
    * @param {string} revisionId - 限定版本范围（source_revision_id）
+   * @param {string[]} [outlineIds] - 仅删除指定章节；省略时保持历史上的全量删除行为
    * @returns {Promise<number>} 删除条数
    */
-  async deleteAutoRefAnchors(standardId, revisionId) {
+  async deleteAutoRefAnchors(standardId, revisionId, outlineIds) {
     const RefAnchor = this._refAnchor();
-    const deleted = await RefAnchor.destroy({
-      where: {
-        standard_id: standardId,
-        source_revision_id: revisionId,
-        source: [REF_SOURCE.AUTO, REF_SOURCE.AUTO_BACKFILL],
-      },
-    });
+    const where = {
+      standard_id: standardId,
+      source_revision_id: revisionId,
+      source: [REF_SOURCE.AUTO, REF_SOURCE.AUTO_BACKFILL],
+    };
+
+    if (outlineIds !== undefined) {
+      if (!Array.isArray(outlineIds)) {
+        throw new TypeError('outlineIds must be an array when provided');
+      }
+      if (outlineIds.length === 0) {
+        logger.info(
+          `[standard-mgr] deleteAutoRefAnchors: standard=${standardId} revision=${revisionId} ` +
+          'no sections require cleaning, deleted=0 rows'
+        );
+        return 0;
+      }
+      where.source_outline_id = { [Op.in]: outlineIds };
+    }
+
+    const deleted = await RefAnchor.destroy({ where });
     logger.info(
       `[standard-mgr] deleteAutoRefAnchors: standard=${standardId} revision=${revisionId} ` +
       `deleted=${deleted} rows`
     );
     return deleted;
+  }
+
+  /**
+   * 计算本次清洗要处理的章节，以及可以明确跳过的章节。
+   *
+   * 章节级副本只有在同一 revision 且 source_text_hash 与当前 outline 的
+   * text_hash 一致时才算完成。没有成功清洗时间时不信任任何历史数据，首次
+   * 清洗自然退化为全量；之后无副本、hash 变化的章节都视为新增/变更/上次
+   * 未完成，必须重新交给 agent。
+   */
+  async _getCleaningPlan(standardId, revisionId, lastAnchorBuildAt) {
+    const DocOutline = this.db.getModel('document_outline');
+    const AnchoredSection = this._anchoredSection();
+    const outlines = await DocOutline.findAll({
+      where: { revision_id: revisionId },
+      attributes: ['id', 'title', 'text_hash'],
+      order: [['seq', 'ASC']],
+      raw: true,
+    });
+
+    if (!lastAnchorBuildAt) {
+      return {
+        outlineIds: outlines.map(outline => outline.id),
+        skippedSections: [],
+      };
+    }
+
+    const anchoredSections = await AnchoredSection.findAll({
+      where: {
+        standard_id: standardId,
+        revision_id: revisionId,
+      },
+      attributes: ['outline_id', 'source_text_hash'],
+      raw: true,
+    });
+    const anchoredByOutline = new Map(
+      anchoredSections.map(section => [section.outline_id, section])
+    );
+    const outlineIds = [];
+    const skippedSections = [];
+
+    for (const outline of outlines) {
+      const anchored = anchoredByOutline.get(outline.id);
+      // anchored_section 只有成功生成过副本才存在；没有它表示新章节或上次
+      // 清洗在写出该章节副本前中断。hash 不一致则说明正文已变更，旧 auto
+      // 锚点对应的是旧文本，也必须删除后重洗。只有 hash 一致的副本可复用。
+      const isCompleted = Boolean(anchored) && anchored.source_text_hash === outline.text_hash;
+      if (isCompleted) {
+        skippedSections.push({
+          outline_id: outline.id,
+          title: outline.title || '',
+        });
+      } else {
+        outlineIds.push(outline.id);
+      }
+    }
+
+    return { outlineIds, skippedSections };
   }
 
   // ============================================================
@@ -764,6 +837,79 @@ class StandardMgrService {
     }
 
     return standard;
+  }
+
+  /**
+   * 获取标准当前版本的锚点清洗进度。
+   *
+   * processed_sections 按当前 revision 的 ref_anchor 去重统计；这样清洗中的
+   * 新写入会立即反映出来，同时不会把历史版本的锚点混入当前进度。
+   */
+  async getCleanProgress(standardId) {
+    const AppStandard = this._appStandard();
+    const standard = await AppStandard.findByPk(standardId, {
+      attributes: [
+        'anchor_build_status',
+        'current_revision_id',
+        'last_anchor_build_at',
+        'last_anchor_build_error',
+      ],
+      raw: true,
+    });
+
+    if (!standard) return null;
+
+    const progress = {
+      anchor_build_status: standard.anchor_build_status,
+      total_sections: 0,
+      processed_sections: 0,
+      anchor_counts: {
+        valid: 0,
+        suspected: 0,
+        gap: 0,
+        invalid: 0,
+      },
+      last_anchor_build_at: standard.last_anchor_build_at,
+      last_anchor_build_error: standard.last_anchor_build_error,
+    };
+
+    const revisionId = standard.current_revision_id;
+    if (!revisionId) return progress;
+
+    const DocOutline = this.db.getModel('document_outline');
+    const RefAnchor = this._refAnchor();
+    const refWhere = {
+      standard_id: standardId,
+      source_revision_id: revisionId,
+    };
+
+    const [totalSections, processedSections, groupedCounts] = await Promise.all([
+      DocOutline.count({ where: { revision_id: revisionId } }),
+      RefAnchor.count({
+        where: refWhere,
+        distinct: true,
+        col: 'source_outline_id',
+      }),
+      RefAnchor.findAll({
+        where: refWhere,
+        attributes: [
+          'status',
+          [this.db.sequelize.fn('COUNT', this.db.sequelize.col('id')), 'count'],
+        ],
+        group: ['status'],
+        raw: true,
+      }),
+    ]);
+
+    progress.total_sections = Number(totalSections) || 0;
+    progress.processed_sections = Number(processedSections) || 0;
+    for (const row of groupedCounts) {
+      if (Object.prototype.hasOwnProperty.call(progress.anchor_counts, row.status)) {
+        progress.anchor_counts[row.status] = Number(row.count) || 0;
+      }
+    }
+
+    return progress;
   }
 
   /**
@@ -1801,7 +1947,7 @@ class StandardMgrService {
    *   3. 生成后台任务长期 token（防止工具回调 401）
    *   4. 异步执行清洗会话（_runCleaningAsync）：
    *      - 查找锚点清洗专家
-   *      - 清理 auto 记录（deleteAutoRefAnchors）
+   *      - 按章节 hash 计算增量清洗范围并清理对应 auto 记录（deleteAutoRefAnchors）
    *      - 创建 Topic
    *      - 构造开工消息（buildCleanMessage）
    *      - 驱动 agent（streamChat，带超时）
@@ -1888,6 +2034,7 @@ class StandardMgrService {
       documentId,
       revisionId,
       modelId: appModelId,
+      lastAnchorBuildAt: standard.last_anchor_build_at,
     }).catch(err => {
       logger.error(`[standard-mgr] runCleaningPipeline async error for ${standardId}: ${err.message}`);
     });
@@ -2066,7 +2213,16 @@ class StandardMgrService {
   /**
    * 异步清洗会话（内部实现，编排在 runCleaningPipeline 中声明）
    */
-  async _runCleaningAsync({ chatService, userId, session, standardId, documentId, revisionId, modelId = null }) {
+  async _runCleaningAsync({
+    chatService,
+    userId,
+    session,
+    standardId,
+    documentId,
+    revisionId,
+    modelId = null,
+    lastAnchorBuildAt = null,
+  }) {
     let expertId = null;
 
     try {
@@ -2083,21 +2239,39 @@ class StandardMgrService {
         `[standard-mgr] 开始清洗: standard=${standardId} doc=${documentId} revision=${revisionId} expert=${expertId}`
       );
 
-      // ── 2. 清空 auto 记录（R15-6），manual/user_confirmed 永久保留 ──
-      const deletedCount = await this.deleteAutoRefAnchors(standardId, revisionId);
-      logger.info(`[standard-mgr] 清洗前置清理: 删除 ${deletedCount} 条 auto 记录`);
+      // ── 2. 计算增量范围并清理对应 auto 记录（R15-6） ──
+      // manual/user_confirmed 永久保留；未变章节连同已有副本一起跳过。
+      const cleaningPlan = await this._getCleaningPlan(
+        standardId,
+        revisionId,
+        lastAnchorBuildAt,
+      );
+      const deletedCount = await this.deleteAutoRefAnchors(
+        standardId,
+        revisionId,
+        cleaningPlan.outlineIds,
+      );
+      logger.info(
+        `[standard-mgr] 清洗前置清理: sections=${cleaningPlan.outlineIds.length} ` +
+        `skipped=${cleaningPlan.skippedSections.length} deleted=${deletedCount} auto rows`
+      );
 
       // ── 3. 创建会话 ──
       const topicId = await chatService.createNewTopic(userId, expertId, `标准清洗 — ${standardId}`, null);
 
       // ── 4. 构造开工消息 ──
-      const content = buildCleanMessage(documentId, revisionId, standardId);
+      const content = buildCleanMessage(
+        documentId,
+        revisionId,
+        standardId,
+        cleaningPlan.skippedSections,
+      );
 
       // ── 5. 驱动 AgentLoop（带超时） ──
       const result = await new Promise((resolve) => {
         let settled = false;
         const timeoutId = setTimeout(() => {
-          if (!settled) { settled = true; resolve({ ok: false, error: '清洗超时（15 分钟）' }); }
+          if (!settled) { settled = true; resolve({ ok: false, error: '清洗超时（30 分钟）' }); }
         }, CLEAN_TIMEOUT_MS);
 
         chatService.streamChat(
@@ -3035,12 +3209,24 @@ class StandardMgrService {
 /**
  * R17-1：构造清洗开工消息（原位于 handlers/standards/clean.js，随编排收编迁入 service）
  */
-function buildCleanMessage(documentId, revisionId, standardId) {
+function buildCleanMessage(documentId, revisionId, standardId, skippedSections = []) {
+  const skippedSectionText = skippedSections.length > 0
+    ? skippedSections
+      .map(section => `- outline_id=${section.outline_id}，title=${section.title || '（无标题）'}`)
+      .join('\n')
+    : '- 无（首次清洗或没有可跳过的已完成章节）';
+
   return `请对以下标准文档执行完整的引用清洗（含外部引用和内部交叉引用）。
 
 文档 ID: ${documentId}
 版本 ID: ${revisionId}
 标准 ID: ${standardId}
+
+### 增量/断点续洗
+以下章节的 text_hash 与已落库的锚点副本一致，表示它们已完成处理。请跳过这些章节：
+${skippedSectionText}
+跳过章节不得调用 read_section_context、list_section_references 或 write_anchor_result。
+除上述章节外，其余章节必须按下面的阶段 2 逐批读取并写入；没有锚点副本或 hash 不一致的章节是本次需要处理的范围。
 
 请按以下流程执行：
 
