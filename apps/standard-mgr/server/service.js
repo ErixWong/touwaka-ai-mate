@@ -891,6 +891,78 @@ class StandardMgrService {
   }
 
   /**
+   * 聚合全部活跃标准的 gap 引用，按被引用标准编号分组。
+   *
+   * 未能提取标准编号的记录按 source_text 前 50 个字符分组，并保留
+   * “未识别编号”前缀，避免不同引用片段在展示层无法区分。
+   */
+  async aggregateGaps() {
+    const enterprisePrefixes = await this._loadEnterprisePrefixes();
+    const rows = await this.db.query(`
+      SELECT
+        a.source_text,
+        a.standard_id,
+        s.standard_code,
+        s.standard_name
+      FROM app_standard_ref_anchor a
+      INNER JOIN app_standard s ON s.id = a.standard_id
+      WHERE a.status = ? AND s.is_active = 1
+    `, [REF_STATUS.GAP]);
+
+    const groups = new Map();
+
+    for (const row of rows) {
+      const sourceText = typeof row.source_text === 'string' ? row.source_text : '';
+      const extractedCodes = this._extractStandardCodes(sourceText, enterprisePrefixes)
+        .map(code => this._normalizeCode(code))
+        .filter(Boolean);
+      const normalizedCodes = [...new Set(extractedCodes)];
+
+      const groupEntries = normalizedCodes.length > 0
+        ? normalizedCodes.map(code => ({ key: code, code }))
+        : [{
+          key: `unrecognized:${sourceText.slice(0, 50)}`,
+          code: sourceText ? `未识别编号：${sourceText.slice(0, 50)}` : '未识别编号',
+        }];
+
+      for (const { key, code } of groupEntries) {
+        let group = groups.get(key);
+        if (!group) {
+          group = {
+            code,
+            total: 0,
+            referenced_by: new Map(),
+          };
+          groups.set(key, group);
+        }
+
+        group.total += 1;
+        const sourceKey = row.standard_id;
+        let source = group.referenced_by.get(sourceKey);
+        if (!source) {
+          source = {
+            standard_id: row.standard_id,
+            standard_code: row.standard_code,
+            standard_name: row.standard_name,
+            count: 0,
+          };
+          group.referenced_by.set(sourceKey, source);
+        }
+        source.count += 1;
+      }
+    }
+
+    return [...groups.values()]
+      .map(group => ({
+        code: group.code,
+        total: group.total,
+        referenced_by: [...group.referenced_by.values()]
+          .sort((a, b) => b.count - a.count || String(a.standard_code).localeCompare(String(b.standard_code))),
+      }))
+      .sort((a, b) => b.total - a.total || a.code.localeCompare(b.code));
+  }
+
+  /**
    * P0-2 / R2-5: 获取标准文档所有章节 + 锚点覆盖
    *
    * 返回文档的全部 outline（按 seq 排序），每个 outline 附：

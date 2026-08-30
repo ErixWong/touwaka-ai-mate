@@ -21,7 +21,7 @@
       </el-empty>
     </div>
 
-    <!-- R8-3: 页签切换 —— 标准管理 | 标准筛选 -->
+    <!-- R8-3: 页签切换 —— 标准管理 | 标准筛选 | 缺口清单 -->
     <div v-else class="sm-layout">
       <el-tabs v-model="activePageTab" class="sm-page-tabs">
         <el-tab-pane name="manage">
@@ -122,6 +122,13 @@
           </template>
           <FilterPanel />
         </el-tab-pane>
+
+        <el-tab-pane name="gaps">
+          <template #label>
+            {{ $t('apps.standardMgr.gapAggregateTab') }}
+          </template>
+          <GapAggregatePanel @open-standard="handleGapOpenStandard" />
+        </el-tab-pane>
       </el-tabs>
     </div>
 
@@ -198,6 +205,7 @@ import AnchorPanel from '../components/AnchorPanel.vue'
 import UploadDialog from '../components/UploadDialog.vue'
 import ManualFixDialog from '../components/ManualFixDialog.vue'
 import FilterPanel from '../components/FilterPanel.vue'
+import GapAggregatePanel from '../components/GapAggregatePanel.vue'
 import AdminConfigDialog from '../components/AdminConfigDialog.vue'
 import CreateAnchorDialog from '../components/CreateAnchorDialog.vue'
 import { getConfig, type StandardMgrConfig } from '../api/standard-mgr'
@@ -300,6 +308,10 @@ onMounted(() => {
 
 function handleSelectStandard(standardId: string) {
   store.selectStandard(standardId)
+}
+
+function handleGapOpenStandard() {
+  activePageTab.value = 'manage'
 }
 
 function handleAnchorClick(anchorId: string) {
