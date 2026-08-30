@@ -1424,7 +1424,7 @@ export default {
       rebuildAnchorCopy: 'Rebuild Anchor Sections',
       rebuilding: 'Rebuilding...',
       rebuildSuccess: 'Cleaning completed',
-      rebuildTimeout: 'Cleaning timeout (over 10 min)',
+      rebuildTimeout: 'Cleaning timeout (over 30 min)',
       rebuildFailed: 'Failed to trigger cleaning',
       rebuildNoPermission: 'Admin permission required',
       notCleaned: 'This standard has not been cleaned',
@@ -1521,6 +1521,7 @@ export default {
       cleanSuccess: 'Cleaning completed',
       cleanFailed: 'Cleaning failed',
       cleaningStarted: 'Cleaning submitted, will auto-update when done',
+      cleanProgress: 'Processed {processed}/{total} sections · {anchors} anchors',
       // R8-1 Doc platform selector
       selectFromPlatform: 'Select from Document Platform',
       uploadNewFile: 'Upload New File',

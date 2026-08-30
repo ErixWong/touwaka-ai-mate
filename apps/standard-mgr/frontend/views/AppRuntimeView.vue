@@ -80,6 +80,7 @@
                     :selected-anchor-id="store.selectedAnchorId"
                     :rebuild-loading="store.rebuildLoading"
                     :rebuild-error="store.rebuildError"
+                    :clean-progress="store.cleanProgress"
                     :enterprises="store.enterprises"
                     :picking="pickingMode"
                     @anchor-click="handleAnchorClick"

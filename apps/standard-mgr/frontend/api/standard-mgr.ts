@@ -48,6 +48,20 @@ export type AnchorBuildStatus = 'pending' | 'processing' | 'done' | 'error'
 export type RefStatus = 'valid' | 'suspected' | 'gap' | 'invalid'
 export type RefSource = 'auto' | 'user_confirmed' | 'manual' | 'auto_backfill'
 
+export interface CleanProgress {
+  anchor_build_status: AnchorBuildStatus
+  total_sections: number
+  processed_sections: number
+  anchor_counts: {
+    valid: number
+    suspected: number
+    gap: number
+    invalid: number
+  }
+  last_anchor_build_at: string | null
+  last_anchor_build_error: string | null
+}
+
 export interface StandardItem {
   id: string
   document_id: string
@@ -356,6 +370,13 @@ export async function updateBuildStatus(
 export async function startCleaning(standardId: string): Promise<{ accepted: boolean; standard_id: string }> {
   return apiRequest<{ accepted: boolean; standard_id: string }>(
     apiClient.post(`${PREFIX}/standards/${standardId}/clean`),
+  )
+}
+
+/** 获取当前版本的锚点清洗进度 */
+export async function getCleanProgress(standardId: string): Promise<CleanProgress> {
+  return apiRequest<CleanProgress>(
+    apiClient.get(`${PREFIX}/standards/${standardId}/clean-progress`),
   )
 }
 

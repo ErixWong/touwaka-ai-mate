@@ -21,6 +21,7 @@ import {
   listRefAnchors,
   listGaps,
   startCleaning,
+  getCleanProgress,
   writeAnchorResult,
   updateStandard,
   deleteStandard,
@@ -31,6 +32,7 @@ import {
   type GapItem,
   type AnchoredSection,
   type EnterpriseItem,
+  type CleanProgress,
 } from '../api/standard-mgr'
 import { useToastStore } from '@/stores/toast'
 import { i18n } from '@/i18n'
@@ -80,6 +82,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   const selectedAnchorId = ref<string | null>(null)
   const rebuildLoading = ref(false)
   const rebuildError = ref<string | null>(null)
+  const cleanProgress = ref<CleanProgress | null>(null)
 
   // R11: 企业花名册
   const enterprises = ref<EnterpriseItem[]>([])
@@ -336,6 +339,15 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     }
 
     await Promise.all(fetchTasks)
+    if (cache.detail?.anchor_build_status === 'processing') {
+      try {
+        cleanProgress.value = await getCleanProgress(standardId)
+      } catch (err: unknown) {
+        useToastStore().error(
+          err instanceof Error ? err.message : i18n.global.t('apps.standardMgr.loadDetailFailed'),
+        )
+      }
+    }
   }
 
   /** R21: 强制刷新锚点数据（新建/修改锚点后调用，绕开缓存） */
@@ -407,21 +419,23 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
    * 触发锚点清洗（调服务端 POST /clean）
    *
    * 流程：提交清洗任务 → 轮询等待完成 → 刷新数据
-   * 后端 15 分钟超时，前端最多等 120 轮（10 分钟）后报超时。
+   * 后端 30 分钟超时，前端最多等 360 轮（30 分钟）后报超时。
    */
   async function triggerRebuild(standardId: string) {
     rebuildLoading.value = true
     rebuildError.value = null
+    cleanProgress.value = null
     try {
       // 1. 提交清洗任务
       await startCleaning(standardId)
       await fetchStandardDetail(standardId)
 
       // 2. 轮询等待完成
-      const detail = await pollBuildStatus(standardId)
-      if (detail.anchor_build_status === 'error') {
-        rebuildError.value = detail.last_anchor_build_error || i18n.global.t('apps.standardMgr.cleanFailed')
+      const progress = await pollBuildStatus(standardId)
+      if (progress.anchor_build_status === 'error') {
+        rebuildError.value = progress.last_anchor_build_error || i18n.global.t('apps.standardMgr.cleanFailed')
         useToastStore().error(rebuildError.value!)
+        await fetchStandardDetail(standardId)
       } else {
         useToastStore().success(i18n.global.t('apps.standardMgr.cleanSuccess'))
         await refreshTabData(standardId)
@@ -438,13 +452,16 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   }
 
   /** 轮询等待清洗完成 */
-  async function pollBuildStatus(standardId: string): Promise<StandardItem> {
-    const maxAttempts = 120 // 10 分钟
+  async function pollBuildStatus(standardId: string): Promise<CleanProgress> {
+    const maxAttempts = 360 // 30 分钟
     for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(resolve => setTimeout(resolve, 5000))
-      const detail = await getStandard(standardId)
-      if (detail.anchor_build_status === 'done' || detail.anchor_build_status === 'error') {
-        return detail
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 5000))
+      }
+      const progress = await getCleanProgress(standardId)
+      cleanProgress.value = progress
+      if (progress.anchor_build_status === 'done' || progress.anchor_build_status === 'error') {
+        return progress
       }
     }
     throw new Error(i18n.global.t('apps.standardMgr.rebuildTimeout'))
@@ -497,6 +514,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     selectedAnchorId,
     rebuildLoading,
     rebuildError,
+    cleanProgress,
     // R8-4: 页签状态
     openTabs,
     activeTabId,

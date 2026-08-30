@@ -30,6 +30,16 @@
         >
           {{ rebuildLoading ? $t('apps.standardMgr.rebuilding') : rebuildLabel }}
         </el-button>
+        <div v-if="standard.anchor_build_status === 'processing'" class="sm-clean-progress">
+          <el-progress :percentage="cleanProgressPercentage" :stroke-width="8" />
+          <span class="sm-clean-progress-text">
+            {{ $t('apps.standardMgr.cleanProgress', {
+              processed: cleanProgressProcessedSections,
+              total: cleanProgressTotalSections,
+              anchors: cleanProgressAnchorCount,
+            }) }}
+          </span>
+        </div>
         <el-button size="small" @click="openReferencedByDialog">
           {{ $t('apps.standardMgr.referencedBy', { n: referencedByTotal }) }}
         </el-button>
@@ -278,6 +288,7 @@ import type {
  EnterpriseItem,
  ReferencedByResult,
  RefStatus,
+ CleanProgress,
 } from '../api/standard-mgr'
 import { i18n } from '@/i18n'
 import { useToastStore } from '@/stores/toast'
@@ -290,6 +301,7 @@ const props = defineProps<{
   selectedAnchorId: string | null
   rebuildLoading: boolean
   rebuildError: string | null
+  cleanProgress: CleanProgress | null
   /** R11-5: 企业列表（用于编辑元数据时选择企业） */
   enterprises?: EnterpriseItem[]
   /** R21: 框选模式——正文中划选文字创建锚点 */
@@ -570,6 +582,21 @@ const rebuildLabel = computed(() => {
     ? i18n.global.t('apps.standardMgr.rebuild')
     : i18n.global.t('apps.standardMgr.rebuildAgain')
 })
+
+const cleanProgressProcessedSections = computed(() => props.cleanProgress?.processed_sections ?? 0)
+const cleanProgressTotalSections = computed(() => props.cleanProgress?.total_sections ?? 0)
+const cleanProgressAnchorCount = computed(() => {
+  const counts = props.cleanProgress?.anchor_counts
+  if (!counts) return 0
+  return counts.valid + counts.suspected + counts.gap + counts.invalid
+})
+const cleanProgressPercentage = computed(() => {
+  const total = cleanProgressTotalSections.value
+  if (total <= 0) return 0
+  return Math.min(100, Math.max(0, Math.round(
+    (cleanProgressProcessedSections.value / total) * 100,
+  )))
+})
 </script>
 
 <style scoped>
@@ -617,7 +644,22 @@ const rebuildLabel = computed(() => {
 .sm-detail-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.sm-clean-progress {
+  display: flex;
+  flex: 1 1 240px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 220px;
+  max-width: 360px;
+}
+
+.sm-clean-progress-text {
+  color: #606266;
+  font-size: 12px;
 }
 
 .sm-rebuild-error {
