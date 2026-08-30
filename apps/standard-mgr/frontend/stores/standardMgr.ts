@@ -21,6 +21,7 @@ import {
   listRefAnchors,
   listGaps,
   startCleaning,
+  upgradeRevision,
   getCleanProgress,
   writeAnchorResult,
   updateStandard,
@@ -444,18 +445,52 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
       await fetchStandardDetail(standardId)
 
       // 2. 轮询等待完成
-      const progress = await pollBuildStatus(standardId)
-      if (progress.anchor_build_status === 'error') {
-        rebuildError.value = progress.last_anchor_build_error || i18n.global.t('apps.standardMgr.cleanFailed')
-        useToastStore().error(rebuildError.value!)
-        await fetchStandardDetail(standardId)
-      } else {
-        useToastStore().success(i18n.global.t('apps.standardMgr.cleanSuccess'))
-        await refreshTabData(standardId)
-        await fetchStandards()
-      }
+      await pollAndRefresh(standardId)
     } catch (err: any) {
       const msg = err?.message || i18n.global.t('apps.standardMgr.rebuildFailed')
+      rebuildError.value = msg
+      useToastStore().error(msg)
+      await fetchStandardDetail(standardId)
+    } finally {
+      rebuildLoading.value = false
+    }
+  }
+
+  /** 等待服务端清洗完成，并刷新当前页签与标准列表 */
+  async function pollAndRefresh(standardId: string) {
+    const progress = await pollBuildStatus(standardId)
+    if (progress.anchor_build_status === 'error') {
+      rebuildError.value = progress.last_anchor_build_error || i18n.global.t('apps.standardMgr.cleanFailed')
+      useToastStore().error(rebuildError.value)
+      await fetchStandardDetail(standardId)
+      return
+    }
+
+    useToastStore().success(i18n.global.t('apps.standardMgr.cleanSuccess'))
+    await refreshTabData(standardId)
+    await fetchStandards()
+  }
+
+  /** 切换到文档平台最新版本，并轮询已接受的清洗任务 */
+  async function upgradeToLatestRevision(standardId: string) {
+    rebuildLoading.value = true
+    rebuildError.value = null
+    cleanProgress.value = null
+    try {
+      const result = await upgradeRevision(standardId)
+      await fetchStandardDetail(standardId)
+
+      if (result.cleaning_accepted) {
+        await pollAndRefresh(standardId)
+      } else {
+        await refreshTabData(standardId)
+        await fetchStandards()
+        useToastStore().warning(i18n.global.t('apps.standardMgr.upgradeRevisionCleaningUnavailable'))
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error && err.message
+        ? err.message
+        : i18n.global.t('apps.standardMgr.rebuildFailed')
       rebuildError.value = msg
       useToastStore().error(msg)
       await fetchStandardDetail(standardId)
@@ -547,6 +582,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     selectStandard,
     fetchGaps,
     triggerRebuild,
+    upgradeToLatestRevision,
     submitManualFix,
     // R9-1: 页签操作
     openTab,

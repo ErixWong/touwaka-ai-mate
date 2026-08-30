@@ -13,6 +13,16 @@
             {{ $t('apps.standardMgr.newVersionTag') }}
           </el-tag>
         </el-tooltip>
+        <el-button
+          v-if="hasNewVersion"
+          type="warning"
+          size="small"
+          :loading="rebuildLoading"
+          :disabled="standard.anchor_build_status === 'processing'"
+          @click="handleUpgradeRevision"
+        >
+          {{ $t('apps.standardMgr.upgradeRevision') }}
+        </el-button>
         <span class="sm-counts">
           {{ $t('apps.standardMgr.anchorValid') }} {{ standard.valid_reference_count }} |
           {{ $t('apps.standardMgr.anchorSuspected') }} {{ standard.suspected_reference_count }} |
@@ -276,6 +286,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { Pointer } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
 import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 import { renderAnchoredText } from '../utils/anchor-render'
 import { getReferencedBy } from '../api/standard-mgr'
@@ -311,6 +322,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   anchorClick: [anchorId: string]
   rebuild: []
+  upgradeRevision: []
   selectAnchor: [anchorId: string]
   /** R11-5: 元数据更新 */
   editMetadata: [standardId: string, data: {
@@ -334,6 +346,26 @@ const hasNewVersion = computed(() => Boolean(
   props.standard.document_current_revision_id &&
   props.standard.current_revision_id !== props.standard.document_current_revision_id,
 ))
+
+async function handleUpgradeRevision() {
+  if (!props.standard || props.rebuildLoading) return
+
+  try {
+    await ElMessageBox.confirm(
+      i18n.global.t('apps.standardMgr.upgradeRevisionConfirmMessage'),
+      i18n.global.t('apps.standardMgr.upgradeRevisionConfirmTitle'),
+      {
+        type: 'warning',
+        confirmButtonText: i18n.global.t('common.confirm'),
+        cancelButtonText: i18n.global.t('common.cancel'),
+      },
+    )
+  } catch {
+    return
+  }
+
+  emit('upgradeRevision')
+}
 
 // ---- 反向引用 ----
 const showReferencedByDialog = ref(false)

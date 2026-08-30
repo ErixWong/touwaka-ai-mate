@@ -2035,6 +2035,80 @@ class StandardMgrService {
   }
 
   /**
+   * 将标准切换到文档平台最新版本，并按需触发锚点清洗。
+   *
+   * 旧版本锚点按 source_revision_id 归属历史版本，因此这里只更新标准
+   * 当前版本和构建状态，不删除任何已有锚点记录。
+   *
+   * @returns {Promise<{
+   *   upgraded: boolean,
+   *   from_revision_id: string|null,
+   *   to_revision_id: string,
+   *   cleaning_accepted: boolean
+   * }>}
+   */
+  async upgradeToLatestRevision(standardId, { session, chatService } = {}) {
+    const standard = await this.getStandard(standardId);
+    if (!standard) {
+      const err = new Error('Standard not found');
+      err.status = 404;
+      throw err;
+    }
+
+    const fromRevisionId = standard.current_revision_id;
+    const toRevisionId = standard.document_current_revision_id;
+    if (!toRevisionId || fromRevisionId === toRevisionId) {
+      const err = new Error('无新版本');
+      err.status = 400;
+      throw err;
+    }
+
+    if (standard.anchor_build_status === ANCHOR_BUILD_STATUS.PROCESSING) {
+      const err = new Error('标准正在清洗中，无法切换版本');
+      err.status = 409;
+      throw err;
+    }
+
+    const AppStandard = this._appStandard();
+    const [affected] = await AppStandard.update(
+      {
+        current_revision_id: toRevisionId,
+        anchor_build_status: ANCHOR_BUILD_STATUS.PENDING,
+        last_anchor_build_error: null,
+        updated_at: new Date(),
+      },
+      {
+        where: {
+          id: standardId,
+          current_revision_id: fromRevisionId,
+        },
+      },
+    );
+
+    if (affected === 0) {
+      const err = new Error('标准版本已发生变化，请刷新后重试');
+      err.status = 409;
+      throw err;
+    }
+
+    let cleaningAccepted = false;
+    if (chatService) {
+      const result = await this.runCleaningPipeline(standardId, {
+        session,
+        chatService,
+      });
+      cleaningAccepted = Boolean(result.accepted);
+    }
+
+    return {
+      upgraded: true,
+      from_revision_id: fromRevisionId,
+      to_revision_id: toRevisionId,
+      cleaning_accepted: cleaningAccepted,
+    };
+  }
+
+  /**
    * 查找文档已完成处理、等待锚点清洗的纳管标准。
    *
    * @returns {Promise<Array>}

@@ -79,6 +79,7 @@
                     :picking="pickingMode"
                     @anchor-click="handleAnchorClick"
                     @rebuild="handleRebuild"
+                    @upgrade-revision="handleUpgradeRevision"
                     @select-anchor="handleSelectAnchor"
                     @edit-metadata="handleEditMetadata"
                     @delete-standard="handleDeleteStandard"
@@ -346,6 +347,13 @@ function handleRebuild() {
   const stdId = store.activeStandardId
   if (stdId) {
     store.triggerRebuild(stdId)
+  }
+}
+
+function handleUpgradeRevision() {
+  const stdId = store.activeStandardId
+  if (stdId) {
+    store.upgradeToLatestRevision(stdId)
   }
 }
 

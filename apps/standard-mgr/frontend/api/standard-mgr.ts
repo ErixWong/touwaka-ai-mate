@@ -373,6 +373,20 @@ export async function startCleaning(standardId: string): Promise<{ accepted: boo
   )
 }
 
+/** 将标准切换到文档平台最新版本并触发清洗 */
+export interface UpgradeRevisionResult {
+  upgraded: boolean
+  from_revision_id: string | null
+  to_revision_id: string
+  cleaning_accepted: boolean
+}
+
+export async function upgradeRevision(standardId: string): Promise<UpgradeRevisionResult> {
+  return apiRequest<UpgradeRevisionResult>(
+    apiClient.post(`${PREFIX}/standards/${standardId}/upgrade-revision`),
+  )
+}
+
 /** 获取当前版本的锚点清洗进度 */
 export async function getCleanProgress(standardId: string): Promise<CleanProgress> {
   return apiRequest<CleanProgress>(
