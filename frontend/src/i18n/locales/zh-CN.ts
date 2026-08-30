@@ -1379,6 +1379,7 @@ export default {
       notCleanedHint: '点击"开始清洗"按钮触发',
       anchors: '引用锚点',
       anchorsCount: '{count} 条',
+      anchorsTruncated: '锚点过多，仅显示前 5000 条',
       noAnchors: '暂无锚点数据',
       anchorValid: '有效',
       anchorSuspected: '存疑',

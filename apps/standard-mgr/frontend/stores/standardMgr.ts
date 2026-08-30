@@ -54,11 +54,20 @@ interface TabCache {
   sections: AnchoredSection[]
   anchors: RefAnchor[]
   gaps: GapItem[]
+  anchor_truncated: boolean
 }
 
 let _tabSeq = 0
 function generateTabId(): string {
   return `tab_${Date.now()}_${++_tabSeq}`
+}
+
+const ANCHOR_PAGE_SIZE = 500
+const MAX_ANCHORS = 5000
+
+interface FetchAllAnchorsResult {
+  anchors: RefAnchor[]
+  truncated: boolean
 }
 
 // ============================================================
@@ -157,9 +166,44 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   /** 确保缓存槽存在 */
   function ensureCache(standardId: string): TabCache {
     if (!tabCaches.value[standardId]) {
-      tabCaches.value[standardId] = { detail: null, sections: [], anchors: [], gaps: [] }
+      tabCaches.value[standardId] = {
+        detail: null,
+        sections: [],
+        anchors: [],
+        gaps: [],
+        anchor_truncated: false,
+      }
     }
     return tabCaches.value[standardId]
+  }
+
+  const anchor_truncated = computed(() => {
+    const id = activeStandardId.value
+    return id ? tabCaches.value[id]?.anchor_truncated ?? false : false
+  })
+
+  async function fetchAllAnchors(standardId: string): Promise<FetchAllAnchorsResult> {
+    const anchors: RefAnchor[] = []
+    let offset = 0
+
+    while (anchors.length < MAX_ANCHORS) {
+      const page = await listRefAnchors(standardId, {
+        limit: ANCHOR_PAGE_SIZE,
+        offset,
+      })
+      anchors.push(...page)
+
+      if (page.length < ANCHOR_PAGE_SIZE) {
+        return { anchors, truncated: false }
+      }
+
+      offset += page.length
+    }
+
+    console.warn(
+      `[standard-mgr] Anchor list for standard ${standardId} exceeded ${MAX_ANCHORS} records; truncating results`,
+    )
+    return { anchors: anchors.slice(0, MAX_ANCHORS), truncated: true }
   }
 
   /** R9-1: 打开/切换到标准。allowDuplicate=true 时总是新建页签 */
@@ -346,7 +390,10 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     }
     if (cache.anchors.length === 0) {
       fetchTasks.push(
-        listRefAnchors(standardId, { limit: 500 }).then(a => { cache.anchors = a }).catch(err => {
+        fetchAllAnchors(standardId).then(({ anchors, truncated }) => {
+          cache.anchors = anchors
+          cache.anchor_truncated = truncated
+        }).catch(err => {
           useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadAnchorsFailed'))
         })
       )
@@ -371,7 +418,10 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
       listAnchoredSections(standardId).then(s => { cache.sections = s }).catch(() => {
         cache.sections = []
       }),
-      listRefAnchors(standardId, { limit: 500 }).then(a => { cache.anchors = a }).catch(err => {
+      fetchAllAnchors(standardId).then(({ anchors, truncated }) => {
+        cache.anchors = anchors
+        cache.anchor_truncated = truncated
+      }).catch(err => {
         useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadAnchorsFailed'))
       }),
     ])
@@ -387,7 +437,10 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
       listAnchoredSections(standardId).then(s => { cache.sections = s }).catch(() => {
         cache.sections = []
       }),
-      listRefAnchors(standardId, { limit: 500 }).then(a => { cache.anchors = a }).catch(err => {
+      fetchAllAnchors(standardId).then(({ anchors, truncated }) => {
+        cache.anchors = anchors
+        cache.anchor_truncated = truncated
+      }).catch(err => {
         useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadAnchorsFailed'))
       }),
     ])
@@ -414,7 +467,9 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
   async function fetchRefAnchors(standardId: string) {
     try {
       const cache = ensureCache(standardId)
-      cache.anchors = await listRefAnchors(standardId, { limit: 500 })
+      const result = await fetchAllAnchors(standardId)
+      cache.anchors = result.anchors
+      cache.anchor_truncated = result.truncated
     } catch (err: any) {
       useToastStore().error(err?.message || i18n.global.t('apps.standardMgr.loadAnchorsFailed'))
     }
@@ -563,6 +618,7 @@ export const useStandardMgrStore = defineStore('standardMgr', () => {
     rebuildLoading,
     rebuildError,
     cleanProgress,
+    anchor_truncated,
     // R8-4: 页签状态
     openTabs,
     activeTabId,

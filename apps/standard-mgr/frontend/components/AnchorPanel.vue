@@ -1,5 +1,13 @@
 <template>
   <div class="sm-anchor-panel">
+    <el-alert
+      v-if="store.anchor_truncated"
+      :title="$t('apps.standardMgr.anchorsTruncated')"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="sm-anchor-truncated-alert"
+    />
     <div class="sm-anchor-header">
       <h3>{{ $t('apps.standardMgr.anchors') }}</h3>
       <span class="sm-anchor-count">{{ $t('apps.standardMgr.anchorsCount', { count: anchors.length }) }}</span>
@@ -120,8 +128,11 @@ import { ref, computed, watch } from 'vue'
 import { CopyDocument, Plus } from '@element-plus/icons-vue'
 import { i18n } from '@/i18n'
 import { useToastStore } from '@/stores/toast'
+import { useStandardMgrStore } from '../stores/standardMgr'
 import TreeNodeView from './TreeNodeView.vue'
 import type { RefAnchor, RefStatus, AnchoredSection } from '../api/standard-mgr'
+
+const store = useStandardMgrStore()
 
 const props = defineProps<{
   anchors: RefAnchor[]
@@ -464,6 +475,7 @@ initExpand()
 
 <style scoped>
 .sm-anchor-panel { padding: 12px; }
+.sm-anchor-truncated-alert { margin-bottom: 12px; }
 .sm-anchor-header {
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 12px; flex-wrap: wrap;
