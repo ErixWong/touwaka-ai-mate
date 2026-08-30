@@ -42,7 +42,7 @@ export async function post(ctx, deps) {
 
     const service = new StandardMgrService(deps.db);
 
-    // R2-4 过渡策略：忽略客户端传入的 enterprise_id
+    // 企业维度为分类标签，不承担权限隔离；引用写入仅校验 standard 实际存在。
     const result = await service.writeAnchorResult({
       ...body,
       user_id: userId,
