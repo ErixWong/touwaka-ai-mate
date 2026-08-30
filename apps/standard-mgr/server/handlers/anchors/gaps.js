@@ -27,7 +27,7 @@ export async function get(ctx, deps) {
       return;
     }
 
-    // R2-4 过渡策略：不过滤 enterprise_id
+    // 企业维度为分类标签，查询不按 enterprise_id 过滤。
     const standard = await service.getStandard(standard_id);
     if (!standard) {
       ctx.error('Standard not found', 404);

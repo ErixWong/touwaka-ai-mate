@@ -6,7 +6,7 @@
  * 更新标准的锚点构建状态。
  * 当 status='done' 时自动触发 rebuildAnchoredSections 生成带锚点副本。
  *
- * 需要管理员权限（R2-4）。
+ * 需要管理员权限。
  */
 
 import StandardMgrService from '../../service.js';
@@ -22,7 +22,7 @@ export const route = {
 
 export async function post(ctx, deps) {
   try {
-    // R2-4：管理员权限校验
+    // 管理员权限校验
     if (!ctx.state.session?.isAdmin) {
       ctx.error('需要管理员权限', 403);
       return;

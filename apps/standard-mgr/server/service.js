@@ -8,11 +8,10 @@
  * === 幂等键 ===
  * UNIQUE (source_revision_id, source_outline_id, occurrence_index)
  *
- * === 企业隔离（R2-4 过渡策略） ===
- * 企业对象与企业成员关系尚未建立。当前阶段：
- * - 忽略一切客户端/请求传入的 enterprise_id
- * - 查询不过滤（全部返回），写路径标准必须已在 app_standard 中存在
- * - 公共标准库：enterprise_id IS NULL；企业标准：留待企业表建立后迁移
+ * === 企业分类标签（正式设计） ===
+ * enterprise_id 标记标准归属的主机厂客户，用于分类展示与归属推断，不承担权限隔离。
+ * 平台为单租户供应商内部共用，查询不按 enterprise_id 过滤，标准统一可见。
+ * 标准创建/更新保留企业花名册存在性与启用状态校验；引用写入仅校验 standard 实际存在。
  *
  * === 状态管理 ===
  * 使用"status 列 + 常量 + 单点转换函数"模式，不引入状态机引擎。
@@ -389,7 +388,7 @@ class StandardMgrService {
    * 幂等键：(source_revision_id, source_outline_id, occurrence_index)
    * 同事务写：引用记录 + 带锚点副本 + 标准汇总计数
    *
-   * R2-4：忽略客户端传入的 enterprise_id（过渡策略）
+   * 企业维度为分类标签，不承担权限隔离；引用写入仅校验 standard 实际存在。
    * R2-5：修复 anchor_count、双重 rollback、人工治理字段
    * R2-9：状态转换校验改为真实规则
    *
@@ -465,8 +464,8 @@ class StandardMgrService {
     const standard = await AppStandard.findByPk(standard_id, { raw: true });
     if (!standard) throw new Error(`Standard not found: ${standard_id}`);
 
-    // R2-4 过渡策略：忽略客户端传入的 enterprise_id
-    // 仅校验 standard 实际存在，不校验企业归属（企业映射尚未建立）
+    // 企业维度为分类标签，不承担权限隔离。
+    // 此处仅校验 standard 实际存在，不校验企业归属权限。
 
     // R2-8/N8：目标文档权限校验从 warn 升级为阻断
     if (target_document_id && user_id) {
@@ -737,15 +736,14 @@ class StandardMgrService {
   }
 
   // ============================================================
-  // R2-4: 企业隔离查询（过渡策略）
+  // 企业分类标签查询（正式设计）
   //
-  // 在企业对象与企业成员关系落地前：
-  // - listAllStandards / getStandard / findStandards：不过滤 enterprise_id
-  // - 旧版 listStandards(enterpriseId) 保留但内部不再按 enterprise_id 过滤
+  // - listAllStandards / getStandard / findStandards：正式不按 enterprise_id 过滤
+  // - 平台为单租户供应商内部共用，enterprise_id 仅用于标准分类与展示
   // ============================================================
 
   /**
-   * 列出所有标准（过渡策略：不过滤企业）
+   * 列出所有标准（企业维度为分类标签，查询不按 enterprise_id 过滤）
    *
    * @param {object} [options]
    * @param {string} [options.standard_type]
@@ -793,16 +791,9 @@ class StandardMgrService {
   }
 
   /**
-   * 按企业查询标准列表（保留兼容，过渡策略下等同 listAllStandards）
-   */
-  async listStandards(enterpriseId, options = {}) {
-    return await this.listAllStandards(options);
-  }
-
-  /**
    * 获取单个标准详情
    *
-   * R2-4：不再按 enterprise_id 过滤；undefined 与 null 语义统一为"不过滤"
+   * 企业维度为分类标签，查询不按 enterprise_id 过滤。
    */
   async getStandard(standardId) {
     const AppStandard = this._appStandard();
@@ -916,7 +907,7 @@ class StandardMgrService {
   /**
    * 按标准编号/名称查找标准
    *
-   * R2-4 过渡策略：不过滤 enterprise_id
+   * 企业维度为分类标签，查询不按 enterprise_id 过滤。
    *
    * R17-1：编号匹配改为归一化模糊匹配（先 LIKE 精确，再内存归一化兜底）。
    *   根因：库内标准编号形态不统一（`QC-T 413` / `QC T 636-2000` / `QC/T 413-2002`），
@@ -1347,7 +1338,7 @@ class StandardMgrService {
    * 通道 1：已知标准化组织前缀 + 动态企业前缀
    *   - 企业前缀来自 app_enterprise.code_prefixes（如 Q-JL、Q-JLY、Q/JL、Q/JLY），
    *     支持连字符/斜杠形态，随企业花名册动态扩展
-   *   - 原 QJLY/QJL 硬编码保留作为兜底（企业表未配置时仍可用）
+   *   - 原 QJLY/QJL 硬编码保留作为兜底（企业花名册未配置前缀时仍可用）
    * 通道 2：通用形态兜底——大写前缀(1-6 字母) + 可选 [/或-]分段 + 数字主体(≥2 位)
    *
    * @param {string} text
@@ -2733,7 +2724,7 @@ class StandardMgrService {
    * R2-5: updateStandard — 更新标准元数据
    *
    * 可更新字段：standard_name, standard_code, standard_type, is_active, enterprise_id
-   * R11-5: 扩展 enterprise_id 用于人工修改企业归属
+   * R11-5: 扩展 enterprise_id 用于人工修改企业分类标签
    *
    * @param {string} standardId
    * @param {object} updates
@@ -3040,7 +3031,7 @@ class StandardMgrService {
 
     let standard_code = '';
     let standard_name = trimmed;
-    let matchedEnterprise = null; // { id, name } —— 前缀命中的企业归属
+    let matchedEnterprise = null; // { id, name } —— 前缀命中的企业分类标签
 
     // 1. 动态企业前缀优先（Q-JL、Q-JLY、Q/JL 等）
     //    必须放在通用 Q 形态之前：避免 "Q-JLY J7111029E" 被 /^(Q[/\s]*[\d.\-]+)/ 截成 "Q-"

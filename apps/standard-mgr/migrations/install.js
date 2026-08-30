@@ -47,7 +47,7 @@ export default {
         standard_type VARCHAR(20) NOT NULL COMMENT '标准类型，当前取值 national/industry/enterprise/international，应用层校验，可扩展',
         standard_code VARCHAR(100) NOT NULL COMMENT '标准编号，如 GB/T 19001-2016',
         standard_name VARCHAR(500) NOT NULL COMMENT '标准名称',
-        enterprise_id VARCHAR(32) NULL COMMENT '归属企业；NULL=公共标准库（承接国家/行业/国际标准），企业表建立后迁移为企业记录',
+        enterprise_id VARCHAR(32) NULL COMMENT '归属企业分类标签；NULL=公共标准库（承接国家/行业/国际标准）',
         current_revision_id VARCHAR(32) NULL COMMENT '当前采用版本 document_revisions.id',
         is_active BIT(1) DEFAULT 1 COMMENT '是否启用',
         anchor_build_status ENUM('pending','processing','done','error') DEFAULT 'pending' COMMENT '引用清洗状态',

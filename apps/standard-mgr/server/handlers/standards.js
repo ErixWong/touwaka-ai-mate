@@ -1,7 +1,7 @@
 /**
  * standards handler
  *
- * GET  /api/apps/standard-mgr/standards — 列表（R2-4：忽略客户端 enterprise_id）
+ * GET  /api/apps/standard-mgr/standards — 列表（企业维度为分类标签，查询不按 enterprise_id 过滤）
  * GET  /api/apps/standard-mgr/standards/:standardId — 详情
  * POST /api/apps/standard-mgr/standards — 纳管新标准（P0-1：从文档平台纳管标准文档）
  *
@@ -26,8 +26,7 @@ export async function get(ctx, deps) {
     const userId = getUserId(ctx);
     const service = new StandardMgrService(deps.db);
 
-    // R2-4：在企业对象用户映射落地前，忽略客户端传入的 enterprise_id
-    // 统一按"不过滤"处理，由 getStandard/listStandards 内部按实际需求处理
+    // enterprise_id 仅作为标准归属的分类标签，不参与访问控制或查询过滤。
 
     if (ctx.params.standardId) {
       // 获取单个标准详情
@@ -43,7 +42,7 @@ export async function get(ctx, deps) {
     const standard_type = ctx.query.standard_type || null;
     const is_active = ctx.query.is_active !== undefined ? parseInt(ctx.query.is_active, 10) : undefined;
 
-    // R2-4 过渡策略：不过滤 enterprise_id，返回全部
+    // 企业维度为分类标签，查询不按 enterprise_id 过滤，返回全部标准。
     const standards = await service.listAllStandards({ standard_type, is_active });
     ctx.success(standards);
   } catch (err) {
@@ -60,6 +59,7 @@ export async function get(ctx, deps) {
  * - standard_type：national / industry / enterprise / international
  * - standard_code：标准编号，如 "GB/T 19001-2016"
  * - standard_name：标准名称
+ * - enterprise_id：可选的主机厂客户分类标签
  *
  * 校验：文档存在、processing_status 为 ready 或处理中状态、document_id 不重复；
  * 文档类型不限（contract / knowledge / department_doc / standard 均可），
@@ -67,7 +67,7 @@ export async function get(ctx, deps) {
  */
 export async function post(ctx, deps) {
   try {
-    // R2-4：纳管操作需要管理员权限
+    // 纳管操作需要管理员权限
     if (!ctx.state.session?.isAdmin) {
       ctx.error('需要管理员权限', 403);
       return;
@@ -155,12 +155,12 @@ export async function post(ctx, deps) {
 /**
  * PUT /api/apps/standard-mgr/standards/:standardId — 更新标准元数据
  *
- * 可更新字段：standard_name, standard_code, standard_type, is_active
- * 需要管理员权限（R2-4）。
+ * 可更新字段：standard_name, standard_code, standard_type, is_active, enterprise_id（分类标签）
+ * 需要管理员权限。
  */
 export async function put(ctx, deps) {
   try {
-    // R2-4：管理员权限校验
+    // 管理员权限校验
     if (!ctx.state.session?.isAdmin) {
       ctx.error('需要管理员权限', 403);
       return;

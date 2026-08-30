@@ -20,7 +20,7 @@ export async function get(ctx, deps) {
     const userId = getUserId(ctx);
     const service = new StandardMgrService(deps.db);
 
-    // R2-4 过渡策略：忽略客户端传入的 enterprise_id
+    // enterprise_id 仅作为标准归属的分类标签，不参与访问控制或查询过滤。
     const standard_code = ctx.query.standard_code || null;
     const standard_name = ctx.query.standard_name || null;
 
