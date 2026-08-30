@@ -1437,6 +1437,7 @@ export default {
       notCleanedHint: 'Click "Start Cleaning" to trigger',
       anchors: 'Reference Anchors',
       anchorsCount: '{count} items',
+      anchorsTruncated: 'Too many anchors, showing only the first 5,000',
       noAnchors: 'No anchor data',
       anchorValid: 'Valid',
       anchorSuspected: 'Suspected',
