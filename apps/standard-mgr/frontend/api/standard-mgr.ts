@@ -156,6 +156,19 @@ export interface GapItem extends RefAnchor {
   // gap 专用，继承 RefAnchor 所有字段
 }
 
+export interface GapAggregateSource {
+  standard_id: string
+  standard_code: string
+  standard_name: string
+  count: number
+}
+
+export interface GapAggregateItem {
+  code: string
+  total: number
+  referenced_by: GapAggregateSource[]
+}
+
 export interface CandidateSection {
   id: string
   revision_id: string
@@ -287,6 +300,11 @@ export async function listGaps(
   params?: { limit?: number; offset?: number },
 ): Promise<GapItem[]> {
   return apiRequest<GapItem[]>(apiClient.get(`${PREFIX}/anchors/gaps`, { params: { standard_id: standardId, ...params } }))
+}
+
+/** 获取跨标准 gap 聚合清单 */
+export async function aggregateGaps(): Promise<GapAggregateItem[]> {
+  return apiRequest<GapAggregateItem[]>(apiClient.get(`${PREFIX}/gaps/aggregate`))
 }
 
 /** 更新锚点构建状态 */
@@ -478,4 +496,3 @@ export async function getConfig(): Promise<StandardMgrConfig> {
 export async function saveConfig(config: StandardMgrConfig): Promise<StandardMgrConfig> {
   return apiRequest<StandardMgrConfig>(apiClient.put(`${PREFIX}/config`, config))
 }
-
