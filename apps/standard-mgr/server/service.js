@@ -23,6 +23,7 @@ import jwt from 'jsonwebtoken';
 import DocAccessService from '../../../lib/doc-access-service.js';
 import { getSystemUserSession } from '../../../lib/system-account.js';
 import { Op } from 'sequelize';
+import { DEFAULT_PROMPT } from '../../../scripts/setup-anchor-expert.mjs';
 
 // R18-2: 清洗总超时 15→30 分钟（长标准 + 读写交替策略下 15 分钟偏紧）
 const CLEAN_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟
@@ -2266,11 +2267,11 @@ class StandardMgrService {
 
     try {
       // ── 1. 查找锚点清洗专家 ──
-      expertId = await this._findAnchorExpert();
+      expertId = await this._ensureAnchorExpert();
       if (!expertId) {
         throw Object.assign(
-          new Error('未找到标准引用清洗专家，请先运行 scripts/setup-anchor-expert.mjs'),
-          { status: 404 },
+          new Error('自动创建标准引用清洗专家失败，请手动运行 scripts/setup-anchor-expert.mjs'),
+          { status: 500 },
         );
       }
 
@@ -2387,6 +2388,71 @@ class StandardMgrService {
     });
 
     return record?.expert_id || null;
+  }
+
+  /**
+   * 确保存在绑定 skill-standard-anchor 且启用的锚点清洗专家
+   */
+  async _ensureAnchorExpert() {
+    const existingExpertId = await this._findAnchorExpert();
+    if (existingExpertId) return existingExpertId;
+
+    const Expert = this.db.getModel('expert');
+    const ExpertSkill = this.db.getModel('expert_skill');
+    const expertName = '标准引用清洗专家';
+    const skillId = 'skill-standard-anchor';
+    const existingExpert = await Expert.findOne({
+      where: { name: expertName },
+      raw: true,
+    });
+
+    if (existingExpert) {
+      await Expert.update(
+        { is_active: true },
+        { where: { id: existingExpert.id } },
+      );
+      await ExpertSkill.findOrCreate({
+        where: { expert_id: existingExpert.id, skill_id: skillId },
+        defaults: { is_enabled: true },
+      });
+      await ExpertSkill.update(
+        { is_enabled: true },
+        { where: { expert_id: existingExpert.id, skill_id: skillId } },
+      );
+      logger.info(`[standard-mgr] 修复锚点清洗专家: expert=${existingExpert.id}`);
+      return existingExpert.id;
+    }
+
+    const modelExpert = await Expert.findOne({
+      where: {
+        is_active: true,
+        expressive_model_id: { [Op.ne]: null },
+      },
+      attributes: ['expressive_model_id', 'reflective_model_id'],
+      order: [['updated_at', 'DESC']],
+      raw: true,
+    });
+    const expertId = Utils.newID();
+    await Expert.create({
+      id: expertId,
+      name: expertName,
+      introduction: '通读标准文档全文，识别对其他标准的引用并定位到目标章节，写入引用记录。',
+      prompt_template: DEFAULT_PROMPT,
+      is_active: true,
+      max_tool_rounds: 60,
+      expressive_model_id: modelExpert?.expressive_model_id || null,
+      reflective_model_id: modelExpert?.reflective_model_id || null,
+    });
+    await ExpertSkill.findOrCreate({
+      where: { expert_id: expertId, skill_id: skillId },
+      defaults: { is_enabled: true },
+    });
+    await ExpertSkill.update(
+      { is_enabled: true },
+      { where: { expert_id: expertId, skill_id: skillId } },
+    );
+    logger.info(`[standard-mgr] 自动创建锚点清洗专家: expert=${expertId}`);
+    return expertId;
   }
 
   /**
