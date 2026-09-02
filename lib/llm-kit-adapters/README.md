@@ -13,13 +13,13 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 
 ## 测试
 
-契约测试（接口兼容断言来自库的 `@erix/llm-kit/contract-tests`，当前用相对路径引用，
-待 `@erix/llm-kit` 发布到 Gitea npm registry 后换包导入）：
+契约测试消费已发布的 `erix-agent@0.2.0` 包，通过
+`erix-agent/contract-tests` 导入接口兼容断言：
 
 ```bash
 # 凭据：~/.config/mcp/creds/touwaka-test-db.json（600，不入库）
 #   { "host": "127.0.0.1", "port": 3306, "user": "eric", "password": "…", "database": "llm_kit_test" }
-node --test tests/llm-kit-adapters/
+node --test tests/llm-kit-adapters/*.test.mjs
 ```
 
 契约测试使用默认的 `llm_kit_transcripts` 表；元数据测试使用独立的

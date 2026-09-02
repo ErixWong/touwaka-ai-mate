@@ -1,5 +1,5 @@
 /**
- * touwaka ModelConfigProvider 适配器 × erix-llm-kit 契约测试（真实 MariaDB）
+ * touwaka ModelConfigProvider 适配器 × erix-agent 契约测试（真实 MariaDB）
  *
  * 在测试库（llm_kit_test）内用 sequelize sync 建出 providers / ai_models 两表的真实结构，
  * 播种后跑库的 modelConfigProviderContract 全部断言。
@@ -24,9 +24,7 @@ for (const m of ["info", "warn", "error", "debug"]) {
 import Database from "../../lib/db.js";
 import { createTouwakaModelConfigProvider } from "../../lib/llm-kit-adapters/model-config-provider.js";
 
-// TODO: @erix/llm-kit 发布到 Gitea npm registry 后改为包导入：
-//   import { modelConfigProviderContract } from "@erix/llm-kit/contract-tests";
-import { modelConfigProviderContract } from "../../../erix-llm-kit/test/contract/model-config-provider.js";
+import { modelConfigProviderContract } from "erix-agent/contract-tests";
 
 const CREDS_PATH = join(homedir(), ".config/mcp/creds/touwaka-test-db.json");
 

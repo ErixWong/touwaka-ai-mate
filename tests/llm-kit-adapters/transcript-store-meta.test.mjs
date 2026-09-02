@@ -1,5 +1,6 @@
 import { test, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -39,6 +40,15 @@ if (creds) {
   });
 
   await db.connect();
+  await db.sequelize.query(`
+    CREATE TABLE IF NOT EXISTS llm_kit_run_state (
+      run_id VARCHAR(128) NOT NULL,
+      state VARCHAR(32) NULL,
+      checkpoint JSON NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (run_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
   const setupStore = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
   Transcript = db.sequelize.models[MODEL_NAME];
   await setupStore.sync({ force: true });
@@ -145,5 +155,27 @@ if (!creds) {
 
     const limited = await store.findByTopic("topic-target", { limit: 2 });
     assert.deepEqual(limited.map((item) => item.messages[0].content[0].text), ["a1", "a3"]);
+  });
+
+  test("checkpoint 保存、追加覆盖并可读回，run state 写入不抛错", async () => {
+    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
+    const runId = `run-checkpoint-${randomUUID()}`;
+    const checkpoint = {
+      round: 2,
+      messages: [{ role: "assistant", content: "first" }],
+    };
+    const replacement = {
+      round: 3,
+      messages: [{ role: "assistant", content: "replacement" }],
+    };
+
+    assert.equal(await store.loadLatestCheckpoint(runId), undefined);
+    await store.markRunState(runId, "running");
+    await store.saveCheckpoint(runId, checkpoint);
+    assert.deepEqual(await store.loadLatestCheckpoint(runId), checkpoint);
+
+    await store.appendCheckpoint(runId, replacement);
+    assert.deepEqual(await store.loadLatestCheckpoint(runId), replacement);
+    assert.equal(await store.loadLatestCheckpoint(`run-missing-${randomUUID()}`), undefined);
   });
 }
