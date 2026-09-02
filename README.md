@@ -75,7 +75,7 @@
 ## 🚀 快速开始
 
 ### 环境要求
-- Node.js 20+
+- Node.js 22+（对齐 erix-agent 引擎要求；Node 20 亦兼容运行）
 - MariaDB 11.x (支持原生向量类型)
 - (可选) Python 3.10+ - 用于 Python 技能支持
 
@@ -131,7 +131,7 @@ npm run dev:frontend # 前端 :5173
 
 ### 推荐方案：使用预构建镜像（快速部署）
 
-我们推荐使用 `nikolaik/python-nodejs:python3.12-nodejs20-bullseye` 镜像，它已经预装了 Python 3.12 和 Node.js 20，无需本地构建。
+我们推荐使用 `nikolaik/python-nodejs:python3.12-nodejs22-bookworm` 镜像，它已经预装了 Python 3.12 和 Node.js 22，无需本地构建。
 
 ```bash
 # 1. 创建部署目录
