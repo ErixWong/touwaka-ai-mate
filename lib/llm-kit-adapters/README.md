@@ -10,6 +10,7 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 | `model-config-provider.js` | ModelConfigProvider | `ai_models` + `providers` 表（经 lib/db.js） |
 | `transcript-store.js` | TranscriptStore | `llm_kit_transcripts` 表（可通过 `tableName` 指定其他表，适配器内 Sequelize 模型） |
 | `message-converter.js` | OpenAI ↔ canonical 双向转换 | 纯函数，无 DB 依赖 |
+| `provider-adapter.js` | erix Provider (`chatStream`/`chat`) | `LLMClient.callStream`/`call`，纯桥接 |
 
 ## 测试
 
