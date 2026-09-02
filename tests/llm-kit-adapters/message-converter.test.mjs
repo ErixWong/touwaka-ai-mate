@@ -129,7 +129,7 @@ test("reasoning、inner_voice、usage 和业务元数据进入同一轮", () => 
   });
   assert.deepEqual(records[0].messages[0].content, [
     { type: "text", text: "回答" },
-    { type: "raw", protocol: "touwaka", payload: { kind: "reasoning", text: "先思考" } },
+    { type: "reasoning", text: "先思考" },
     { type: "raw", protocol: "touwaka", payload: { kind: "inner_voice", text: "保持谨慎" } },
   ]);
 
@@ -141,6 +141,25 @@ test("reasoning、inner_voice、usage 和业务元数据进入同一轮", () => 
     created_at: "2026-08-29T00:02:01.000Z",
   }]);
   assert.equal(Object.hasOwn(incompleteUsage.records[0].meta, "usage"), false);
+});
+
+test("兼容读取旧 reasoning raw 包装", () => {
+  const restored = canonicalToLegacyMessages([{
+    round: 1,
+    messages: [{
+      role: "assistant",
+      content: [
+        { type: "text", text: "回答" },
+        {
+          type: "raw",
+          protocol: "touwaka",
+          payload: { kind: "reasoning", text: "历史思考" },
+        },
+      ],
+    }],
+  }]);
+
+  assert.equal(restored[0].reasoning_content, "历史思考");
 });
 
 test("孤儿 tool 行归入 round 0", () => {
