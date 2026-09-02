@@ -1,6 +1,6 @@
 services:
   app:
-    image: nikolaik/python-nodejs:python3.12-nodejs20-bullseye
+    image: nikolaik/python-nodejs:python3.12-nodejs22-bookworm
     container_name: touwaka-mate
     restart: unless-stopped
     ports:
