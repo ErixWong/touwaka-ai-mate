@@ -1,5 +1,5 @@
 /**
- * touwaka TranscriptStore 适配器 × erix-llm-kit 契约测试（真实 MariaDB）
+ * touwaka TranscriptStore 适配器 × erix-agent 契约测试（真实 MariaDB）
  *
  * 在测试库（llm_kit_test）内用适配器定义的 Sequelize 模型建出
  * llm_kit_transcripts 表，逐测试清空后跑库的 transcriptStoreContract 全部断言。
@@ -24,9 +24,7 @@ for (const m of ["info", "warn", "error", "debug"]) {
 import Database from "../../lib/db.js";
 import { createTouwakaTranscriptStore } from "../../lib/llm-kit-adapters/transcript-store.js";
 
-// TODO: @erix/llm-kit 发布到 Gitea npm registry 后改为包导入：
-//   import { transcriptStoreContract } from "@erix/llm-kit/contract-tests";
-import { transcriptStoreContract } from "../../../erix-llm-kit/test/contract/transcript-store.js";
+import { transcriptStoreContract } from "erix-agent/contract-tests";
 
 const CREDS_PATH = join(homedir(), ".config/mcp/creds/touwaka-test-db.json");
 

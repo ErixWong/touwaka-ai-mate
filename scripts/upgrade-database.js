@@ -3945,6 +3945,24 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== erix-agent TranscriptStore run state ====================
+  {
+    name: 'llm_kit_run_state table create',
+    check: async (conn) => await hasTable(conn, 'llm_kit_run_state'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS llm_kit_run_state (
+          run_id VARCHAR(128) NOT NULL,
+          state VARCHAR(32) NULL,
+          checkpoint JSON NULL,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (run_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('  ✓ Created llm_kit_run_state table');
+    }
+  },
+
 ];
 
 /**
