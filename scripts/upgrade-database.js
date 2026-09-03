@@ -3963,6 +3963,38 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== erix-agent TranscriptStore transcripts ====================
+  {
+    name: 'llm_kit_transcripts table create',
+    check: async (conn) => await hasTable(conn, 'llm_kit_transcripts'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS llm_kit_transcripts (
+          run_id VARCHAR(128) NOT NULL,
+          round INT NOT NULL,
+          ts VARCHAR(32) NOT NULL,
+          folded TINYINT(1) NOT NULL DEFAULT 0,
+          messages JSON NOT NULL,
+          folded_payload JSON NULL,
+          topic_id VARCHAR(64) NULL,
+          user_id VARCHAR(64) NULL,
+          expert_id VARCHAR(64) NULL,
+          model_name VARCHAR(128) NULL,
+          provider_name VARCHAR(128) NULL,
+          \`usage\` JSON NULL,
+          latency_ms INT NULL,
+          error_info JSON NULL,
+          is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (run_id, round),
+          KEY idx_llm_kit_transcripts_topic_id (topic_id),
+          KEY idx_llm_kit_transcripts_user_id (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('  ✓ Created llm_kit_transcripts table');
+    }
+  },
+
 ];
 
 /**
