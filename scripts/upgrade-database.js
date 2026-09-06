@@ -3976,6 +3976,7 @@ const MIGRATIONS = [
           folded TINYINT(1) NOT NULL DEFAULT 0,
           messages JSON NOT NULL,
           folded_payload JSON NULL,
+          record_json JSON NULL,
           topic_id VARCHAR(64) NULL,
           user_id VARCHAR(64) NULL,
           expert_id VARCHAR(64) NULL,
@@ -3992,6 +3993,22 @@ const MIGRATIONS = [
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
       console.log('  ✓ Created llm_kit_transcripts table');
+    }
+  },
+
+  // ==================== erix-agent TranscriptStore record snapshot ====================
+  {
+    name: 'llm_kit_transcripts.record_json column add',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'llm_kit_transcripts')) return true;
+      return await hasColumn(conn, 'llm_kit_transcripts', 'record_json');
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE llm_kit_transcripts
+        ADD COLUMN record_json JSON NULL AFTER folded_payload
+      `);
+      console.log('  ✓ Added record_json column to llm_kit_transcripts table');
     }
   },
 

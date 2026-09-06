@@ -98,6 +98,53 @@ if (!creds) {
     assert.deepEqual(loaded[0].meta, meta);
   });
 
+  test("appendRound 持久化并还原 judge record 快照", async () => {
+    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
+    const record = {
+      round: 2,
+      ts: "2026-08-29T10:00:01.000Z",
+      folded: true,
+      messages: [{ role: "assistant", content: [{ type: "text", text: "done" }] }],
+      foldedPayload: [{ role: "user", content: "folded" }],
+      judge: {
+        done: true,
+        confidence: 0.98,
+        reason: "完成目标",
+        evidence: ["工具返回成功", "结果已确认"],
+        direction: "wrapup",
+        directionReason: "无需继续调用工具",
+      },
+      summary: "已完成任务",
+      l0facts: ["用户要求已满足"],
+      wrapup: { status: "completed", reason: "judge_done" },
+      response: "任务已完成",
+      textPreview: "任务已完成",
+      toolUses: [{ name: "finish", success: true }],
+      roundKey: "round-2",
+      dedupKey: "dedup-round-2",
+    };
+
+    await store.appendRound("run-judge", record);
+
+    const [loaded] = await store.load("run-judge");
+    const [loadedWithMeta] = await store.loadWithMeta("run-judge");
+    for (const value of [loaded, loadedWithMeta]) {
+      assert.deepEqual(value.judge, record.judge);
+      assert.deepEqual(value.summary, record.summary);
+      assert.deepEqual(value.l0facts, record.l0facts);
+      assert.deepEqual(value.wrapup, record.wrapup);
+      assert.deepEqual(value.response, record.response);
+      assert.deepEqual(value.textPreview, record.textPreview);
+      assert.deepEqual(value.toolUses, record.toolUses);
+      assert.equal(value.roundKey, record.roundKey);
+      assert.equal(value.dedupKey, record.dedupKey);
+    }
+    assert.deepEqual(loaded.messages, record.messages);
+    assert.deepEqual(loaded.foldedPayload, record.foldedPayload);
+    assert.deepEqual(loadedWithMeta.messages, record.messages);
+    assert.deepEqual(loadedWithMeta.foldedPayload, record.foldedPayload);
+  });
+
   test("load 保持纯净，不返回 meta", async () => {
     const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
     await store.appendRound("run-clean", {

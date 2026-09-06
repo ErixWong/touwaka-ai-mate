@@ -37,7 +37,7 @@
     "docx": "^9.6.1",
     "dotenv": "^16.6.1",
     "echarts": "^5.5.0",
-    "erix-agent": "^0.2.0",
+    "erix-agent": "^0.3.2",
     "exceljs": "^4.4.0",
     "hyperformula": "^2.7.0",
     "jsonwebtoken": "^9.0.3",

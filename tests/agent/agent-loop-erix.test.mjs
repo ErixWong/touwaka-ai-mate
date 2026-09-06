@@ -308,8 +308,10 @@ test('runErix maps evidence and multimodal tool results before the next provider
   });
   const evidenceResult = await createLoop().runErix(evidenceExpert, createInput());
   assert.equal(evidenceResult.fullContent, 'Need tool任务完成 Final answer');
-  assert.equal(evidenceExpert.getSecondRoundMessages()[0].role, 'system');
-  assert.equal(evidenceExpert.getSecondRoundMessages()[0].content, 'DOCUMENT EVIDENCE');
+  const evidenceMessage = evidenceExpert.getSecondRoundMessages().find(message => (
+    message.role === 'system' && message.content === 'DOCUMENT EVIDENCE'
+  ));
+  assert.ok(evidenceMessage);
 
   const imageExpert = createFakeExpertService({
     result: {
