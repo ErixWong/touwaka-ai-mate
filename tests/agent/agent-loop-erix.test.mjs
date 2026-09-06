@@ -192,6 +192,7 @@ function createScriptedExpertService({
       async callStream(_modelConfig, _messages, options) {
         const script = scripts[streamCalls] || scripts.at(-1) || {};
         streamCalls += 1;
+        if (script.usage) options.onUsage(script.usage);
         if (script.reasoning) options.onReasoningDelta(script.reasoning);
         if (script.content) options.onDelta(script.content);
         if (script.toolCalls) options.onToolCall(script.toolCalls);
@@ -234,6 +235,44 @@ function createScriptedExpertService({
     },
   };
 
+  return expertService;
+}
+
+function createJudgeCapableExpertService({
+  maxToolRounds = 20,
+  reflectiveModel = { model_name: 'reflective-model' },
+} = {}) {
+  const expertService = createScriptedExpertService({
+    maxToolRounds,
+    scripts: [{
+      content: '任务完成 Final answer',
+      usage: {
+        input_tokens: 11,
+        output_tokens: 5,
+      },
+    }],
+  });
+  const resolvedMinds = [];
+  const judgeCalls = [];
+  expertService.llmClient.getModelForMind = async mindType => {
+    resolvedMinds.push(mindType);
+    return reflectiveModel;
+  };
+  expertService.llmClient.call = async (modelConfig, messages) => {
+    judgeCalls.push({ modelConfig, messages });
+    return {
+      content: [{
+        type: 'text',
+        text: '{"done":true,"confidence":0.95,"reason":"任务已完成","evidence":"已返回最终结果"}',
+      }],
+      usage: {
+        prompt_tokens: 7,
+        completion_tokens: 3,
+      },
+    };
+  };
+  expertService.getResolvedMinds = () => resolvedMinds;
+  expertService.getJudgeCalls = () => judgeCalls;
   return expertService;
 }
 
@@ -557,6 +596,61 @@ test('runErix emits history_compacted with the compaction shape', async () => {
   assert.ok(compactedEvent.foldedRounds > 0);
   assert.ok(compactedEvent.tokensBefore > compactedEvent.tokensAfter);
   assert.match(compactedEvent.content, /自动压缩/);
+});
+
+test('runErix judge falls back to the primary model when reflective config is unavailable', async () => {
+  const input = createInput();
+  const expertService = createJudgeCapableExpertService();
+  delete expertService.llmClient.getModelForMind;
+
+  const result = await withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, {
+        ...input,
+        onDelta: () => {},
+      })
+    ))
+  ));
+
+  assert.equal(expertService.getJudgeCalls().length, 1);
+  assert.equal(expertService.getJudgeCalls()[0].modelConfig, input.modelConfig);
+  assert.deepEqual(result.tokenUsage, {
+    prompt_tokens: 18,
+    completion_tokens: 8,
+    total_tokens: 26,
+  });
+});
+
+test('runErix uses the reflective model for long-task judge calls', async () => {
+  const reflectiveModel = { model_name: 'marked-reflective-model' };
+  const expertService = createJudgeCapableExpertService({ reflectiveModel });
+
+  await withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        onDelta: () => {},
+      }))
+    ))
+  ));
+
+  assert.deepEqual(expertService.getResolvedMinds(), ['reflective']);
+  assert.equal(expertService.getJudgeCalls().length, 1);
+  assert.equal(expertService.getJudgeCalls()[0].modelConfig, reflectiveModel);
+});
+
+test('runErix disables long-task judge calls when ERIX_NO_REFLECTION is enabled', async () => {
+  const expertService = createJudgeCapableExpertService();
+
+  await withEnv('ERIX_NO_REFLECTION', '1', () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        onDelta: () => {},
+      }))
+    ))
+  ));
+
+  assert.deepEqual(expertService.getResolvedMinds(), []);
+  assert.deepEqual(expertService.getJudgeCalls(), []);
 });
 
 test('run routes to runErix by default and to the legacy loop with ERIX_LOOP=0', async () => {
