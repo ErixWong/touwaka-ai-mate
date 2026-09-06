@@ -98,6 +98,34 @@ if (!creds) {
     assert.deepEqual(loaded[0].meta, meta);
   });
 
+  test("appendRound 按 run_id/round 幂等并保留首条", async () => {
+    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
+    const runId = "run-idempotent";
+    const first = {
+      round: 1,
+      ts: "2026-08-29T10:00:00.000Z",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "first" }] }],
+    };
+    const second = {
+      round: 1,
+      ts: "2026-08-29T10:00:01.000Z",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "second" }] }],
+    };
+
+    await store.appendRound(runId, first, {
+      topicId: "topic-first",
+    });
+    await assert.doesNotReject(() => store.appendRound(runId, second, {
+      topicId: "topic-second",
+    }));
+
+    const loaded = await store.loadWithMeta(runId);
+    assert.equal(loaded.length, 1);
+    assert.equal(loaded[0].ts, first.ts);
+    assert.deepEqual(loaded[0].messages, first.messages);
+    assert.equal(loaded[0].meta.topicId, "topic-first");
+  });
+
   test("appendRound 持久化并还原 judge record 快照", async () => {
     const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
     const record = {

@@ -2,7 +2,7 @@
 
 ## 环境要求
 
-- **Node.js** 18+
+- **Node.js** 22+
 - **MySQL** 8.0+ / MariaDB
 - **Python** 3.10+ (可选，用于 Python 技能支持)
 
