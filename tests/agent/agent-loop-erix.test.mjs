@@ -312,6 +312,16 @@ test('runErix maps evidence and multimodal tool results before the next provider
     message.role === 'system' && message.content === 'DOCUMENT EVIDENCE'
   ));
   assert.ok(evidenceMessage);
+  assert.equal(
+    evidenceExpert.getSecondRoundMessages().some(message => (
+      typeof message.content === 'string'
+      && (
+        message.content.includes('任务完成或需要给出结论时')
+        || message.content.includes('{"done":true')
+      )
+    )),
+    false,
+  );
 
   const imageExpert = createFakeExpertService({
     result: {
