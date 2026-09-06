@@ -716,6 +716,52 @@ test('runErix treats a missing task README as the goal-definition phase', async 
   assert.deepEqual(expertService.getJudgeCalls(), []);
 });
 
+test('runErix treats action instructions without an explicit goal field as the goal-definition phase', async () => {
+  const expertService = createJudgeCapableExpertService();
+
+  await withTemporaryWorkspace({
+    mode: 'task',
+    readme: '# 使用说明\n请运行 npm test 进行验证。\n',
+  }, taskContext => withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        taskContext,
+        onDelta: () => {},
+      }))
+    ))
+  )));
+
+  assert.deepEqual(expertService.getJudgeCalls(), []);
+});
+
+test('runErix extracts numbered and English goal headings', async () => {
+  for (const readme of [
+    '## 1. 项目目标\nNUMBERED_GOAL_MARKER: 完成可验证的任务交付流程。\n',
+    '## Requirements\nENGLISH_GOAL_MARKER: 完成可验证的任务交付流程。\n',
+  ]) {
+    const expertService = createJudgeCapableExpertService();
+    await withTemporaryWorkspace({
+      mode: 'task',
+      readme,
+    }, taskContext => withEnv('ERIX_NO_REFLECTION', undefined, () => (
+      withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+        createLoop().runErix(expertService, createInput({
+          taskContext,
+          onDelta: () => {},
+        }))
+      ))
+    )));
+
+    assert.equal(expertService.getJudgeCalls().length, 1);
+    const judgePrompt = expertService.getJudgeCalls()[0].messages
+      .map(message => typeof message.content === 'string'
+        ? message.content
+        : JSON.stringify(message.content))
+      .join('\n');
+    assert.match(judgePrompt, new RegExp(readme.match(/MARKER[^\n]*/u)[0]));
+  }
+});
+
 test('runErix uses SKILL.md as a skill brief without the README goal template', async () => {
   const expertService = createJudgeCapableExpertService();
   const skillMarker = 'SKILL_TARGET_MARKER: 通过技能完成可验证的文件处理流程。';
@@ -740,6 +786,32 @@ test('runErix uses SKILL.md as a skill brief without the README goal template', 
     .join('\n');
   assert.match(judgePrompt, new RegExp(skillMarker));
   assert.doesNotMatch(judgePrompt, /写入 README\.md|README 尚无/);
+});
+
+test('runErix prefers SKILL.md when the task context readme is empty', async () => {
+  const expertService = createJudgeCapableExpertService();
+  const skillMarker = 'SKILL_EMPTY_README_MARKER: 使用技能完成可验证的文件处理流程。';
+
+  await withTemporaryWorkspace({
+    mode: 'skill',
+    skill: `# 技能说明\n${skillMarker}\n`,
+    context: { readme: '' },
+  }, taskContext => withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        taskContext,
+        onDelta: () => {},
+      }))
+    ))
+  )));
+
+  assert.equal(expertService.getJudgeCalls().length, 1);
+  const judgePrompt = expertService.getJudgeCalls()[0].messages
+    .map(message => typeof message.content === 'string'
+      ? message.content
+      : JSON.stringify(message.content))
+    .join('\n');
+  assert.match(judgePrompt, new RegExp(skillMarker));
 });
 
 test('runErix does not enable judge calls for chat mode', async () => {
@@ -784,6 +856,25 @@ test('runErix extracts a task goal located after the first 600 code points', asy
       : JSON.stringify(message.content))
     .join('\n');
   assert.match(judgePrompt, new RegExp(lateGoal));
+});
+
+test('runErix reads only the capped prefix of an oversized README', async () => {
+  const expertService = createJudgeCapableExpertService();
+  const oversizedReadme = `${'前置说明。'.repeat(60000)}\n## 项目目标\nOVERSIZED_GOAL_MARKER: 这个目标位于读取上限之后。\n`;
+
+  await withTemporaryWorkspace({
+    mode: 'task',
+    readme: oversizedReadme,
+  }, taskContext => withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        taskContext,
+        onDelta: () => {},
+      }))
+    ))
+  )));
+
+  assert.deepEqual(expertService.getJudgeCalls(), []);
 });
 
 test('runErix disables long-task judge calls when ERIX_NO_REFLECTION is enabled', async () => {
