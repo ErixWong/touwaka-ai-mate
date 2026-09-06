@@ -67,6 +67,16 @@ function createTaskDirContext(overrides = {}) {
   };
 }
 
+function createSkillContext(overrides = {}) {
+  const context = createTaskDirContext({
+    workspace_mode: 'skill',
+    absolute_workspace_path: '/tmp/file-processing',
+    ...overrides,
+  });
+  delete context.description;
+  return context;
+}
+
 async function withTaskDir(callback) {
   return callback(createTaskDirContext());
 }
@@ -666,18 +676,24 @@ test('runErix uses the reflective model for long-task judge calls', async () => 
   assert.equal(expertService.getJudgeCalls()[0].modelConfig, reflectiveModel);
 });
 
-test('runErix uses the task description for skill task briefs', async () => {
+test('runErix includes the matching skill description in skill task briefs', async () => {
   const expertService = createJudgeCapableExpertService();
-  const taskContext = createTaskDirContext({
-    workspace_mode: 'skill',
-    description: 'SKILL_DESCRIPTION_MARKER: 通过技能完成文件处理流程。',
-  });
+  const taskContext = createSkillContext();
 
   await withEnv('ERIX_NO_REFLECTION', undefined, () => (
     withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
       createLoop().runErix(expertService, createInput({
         taskContext,
-        currentMessages: [{ role: 'user', content: '请执行技能并返回结果' }],
+        currentMessages: [
+          {
+            role: 'system',
+            content: [{
+              type: 'text',
+              text: '系统约束\n【可用技能】\n- file-processing: SKILL_DESCRIPTION_MARKER: 通过技能完成文件处理流程。',
+            }],
+          },
+          { role: 'user', content: '请执行技能并返回结果' },
+        ],
         onDelta: () => {},
       }))
     ))
@@ -689,7 +705,37 @@ test('runErix uses the task description for skill task briefs', async () => {
       ? message.content
       : JSON.stringify(message.content))
     .join('\n');
-  assert.match(judgePrompt, /任务描述:SKILL_DESCRIPTION_MARKER/);
+  assert.match(judgePrompt, /技能任务:（技能描述:file-processing: SKILL_DESCRIPTION_MARKER: 通过技能完成文件处理流程。）/);
+  assert.match(judgePrompt, /最新指令:请执行技能并返回结果/);
+});
+
+test('runErix uses the skill brief fallback when no skill matches', async () => {
+  const expertService = createJudgeCapableExpertService();
+  const taskContext = createSkillContext();
+
+  await withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        taskContext,
+        currentMessages: [
+          {
+            role: 'system',
+            content: '【可用技能】\n- spreadsheet: 处理表格数据。',
+          },
+          { role: 'user', content: '请执行技能并返回结果' },
+        ],
+        onDelta: () => {},
+      }))
+    ))
+  ));
+
+  assert.equal(expertService.getJudgeCalls().length, 1);
+  const judgePrompt = expertService.getJudgeCalls()[0].messages
+    .map(message => typeof message.content === 'string'
+      ? message.content
+      : JSON.stringify(message.content))
+    .join('\n');
+  assert.match(judgePrompt, /技能任务:（技能描述:详见技能定义）/);
   assert.match(judgePrompt, /最新指令:请执行技能并返回结果/);
 });
 
