@@ -122,9 +122,48 @@ if (!creds) {
       toolUses: [{ name: "finish", success: true }],
       roundKey: "round-2",
       dedupKey: "dedup-round-2",
+      meta: {
+        topicId: "topic-judge",
+        userId: "user-judge",
+        expertId: "expert-judge",
+        modelName: "model-judge",
+        providerName: "provider-judge",
+        usage: { prompt_tokens: 20, completion_tokens: 8, cost: 0.2 },
+        latencyMs: 456,
+        errorInfo: { retryable: false },
+        isDeleted: false,
+      },
     };
 
     await store.appendRound("run-judge", record);
+
+    const [rawRow] = await db.sequelize.query(`
+      SELECT
+        record_json,
+        JSON_TYPE(record_json) AS record_json_type,
+        JSON_EXTRACT(record_json, '$.judge') AS judge_json
+      FROM ${TABLE_NAME}
+      WHERE run_id = ? AND round = ?
+    `, {
+      replacements: ["run-judge", record.round],
+    });
+    assert.equal(rawRow.length, 1);
+    const rawRecordJson = rawRow[0].record_json;
+    const parsedRecordJson = typeof rawRecordJson === "string"
+      ? JSON.parse(rawRecordJson)
+      : rawRecordJson;
+    assert.equal(rawRow[0].record_json_type, "OBJECT");
+    assert.equal(
+      typeof parsedRecordJson,
+      "object",
+      "record_json must be stored as a JSON object, not a JSON-encoded string",
+    );
+    assert.notEqual(parsedRecordJson, null);
+    assert.deepEqual(parsedRecordJson.judge, record.judge);
+    const judgeFromJsonPath = typeof rawRow[0].judge_json === "string"
+      ? JSON.parse(rawRow[0].judge_json)
+      : rawRow[0].judge_json;
+    assert.deepEqual(judgeFromJsonPath, record.judge);
 
     const [loaded] = await store.load("run-judge");
     const [loadedWithMeta] = await store.loadWithMeta("run-judge");
@@ -139,6 +178,8 @@ if (!creds) {
       assert.equal(value.roundKey, record.roundKey);
       assert.equal(value.dedupKey, record.dedupKey);
     }
+    assert.equal(Object.hasOwn(loaded, "meta"), false);
+    assert.deepEqual(loadedWithMeta.meta, record.meta);
     assert.deepEqual(loaded.messages, record.messages);
     assert.deepEqual(loaded.foldedPayload, record.foldedPayload);
     assert.deepEqual(loadedWithMeta.messages, record.messages);
