@@ -5,7 +5,7 @@
 **一个具备自我反思能力的 AI 专家副本系统**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-green.svg)](https://nodejs.org/)
 [![Vue.js](https://img.shields.io/badge/Vue.js-3+-4FC08D.svg)](https://vuejs.org/)
 [![MariaDB](https://img.shields.io/badge/MariaDB-11.x-003545.svg)](https://mariadb.org/)
 
@@ -75,7 +75,7 @@
 ## 🚀 快速开始
 
 ### 环境要求
-- Node.js 22+（对齐 erix-agent 引擎要求；Node 20 亦兼容运行）
+- Node.js 22+（对齐 erix-agent 引擎要求，Node <22 不再支持）
 - MariaDB 11.x (支持原生向量类型)
 - (可选) Python 3.10+ - 用于 Python 技能支持
 
