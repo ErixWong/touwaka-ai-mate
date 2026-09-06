@@ -762,6 +762,101 @@ test('runErix extracts numbered and English goal headings', async () => {
   }
 });
 
+test('runErix treats acceptance criteria without a goal as the goal-definition phase', async () => {
+  const expertService = createJudgeCapableExpertService();
+
+  await withTemporaryWorkspace({
+    mode: 'task',
+    readme: '## Acceptance Criteria\n- 完成验收检查。\n## 验收标准\n- 不作为任务目标。\n',
+  }, taskContext => withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        taskContext,
+        onDelta: () => {},
+      }))
+    ))
+  )));
+
+  assert.deepEqual(expertService.getJudgeCalls(), []);
+});
+
+test('runErix ignores non-goal lines when extracting a task goal', async () => {
+  const expertService = createJudgeCapableExpertService();
+
+  await withTemporaryWorkspace({
+    mode: 'task',
+    readme: '## Non-goals: 不做 X\n非目标: 不做 Y\nNon-objectives: 不做 Z\n',
+  }, taskContext => withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        taskContext,
+        onDelta: () => {},
+      }))
+    ))
+  )));
+
+  assert.deepEqual(expertService.getJudgeCalls(), []);
+});
+
+test('runErix caps a large task context readme without introducing replacement characters', async () => {
+  const expertService = createJudgeCapableExpertService();
+  const maxBytes = 256 * 1024;
+  const goalHeading = '## 项目目标\nTASK_CONTEXT_GOAL_MARKER: ';
+  const paddingLength = maxBytes - Buffer.byteLength(goalHeading, 'utf8') - 2;
+  const readme = `${'x'.repeat(paddingLength)}\n${goalHeading}中文内容\nTASK_CONTEXT_LATE_MARKER`;
+
+  await withTemporaryWorkspace({
+    mode: 'task',
+    context: { readme },
+  }, taskContext => withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        taskContext,
+        onDelta: () => {},
+      }))
+    ))
+  )));
+
+  assert.equal(expertService.getJudgeCalls().length, 1);
+  const judgePrompt = expertService.getJudgeCalls()[0].messages
+    .map(message => typeof message.content === 'string'
+      ? message.content
+      : JSON.stringify(message.content))
+    .join('\n');
+  assert.match(judgePrompt, /TASK_CONTEXT_GOAL_MARKER/);
+  assert.doesNotMatch(judgePrompt, /TASK_CONTEXT_LATE_MARKER/);
+  assert.doesNotMatch(judgePrompt, /\uFFFD/u);
+});
+
+test('runErix reads a README prefix without a replacement character at a multibyte boundary', async () => {
+  const expertService = createJudgeCapableExpertService();
+  const maxBytes = 256 * 1024;
+  const goalHeading = '## 项目目标\nBOUNDARY_GOAL_MARKER: ';
+  const paddingLength = maxBytes - Buffer.byteLength(goalHeading, 'utf8') - 2;
+  const readme = `${'x'.repeat(paddingLength)}\n${goalHeading}中文内容\n`;
+
+  await withTemporaryWorkspace({
+    mode: 'task',
+    readme,
+  }, taskContext => withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        taskContext,
+        onDelta: () => {},
+      }))
+    ))
+  )));
+
+  assert.equal(expertService.getJudgeCalls().length, 1);
+  const judgePrompt = expertService.getJudgeCalls()[0].messages
+    .map(message => typeof message.content === 'string'
+      ? message.content
+      : JSON.stringify(message.content))
+    .join('\n');
+  assert.match(judgePrompt, /BOUNDARY_GOAL_MARKER/);
+  assert.doesNotMatch(judgePrompt, /\uFFFD/u);
+});
+
 test('runErix uses SKILL.md as a skill brief without the README goal template', async () => {
   const expertService = createJudgeCapableExpertService();
   const skillMarker = 'SKILL_TARGET_MARKER: 通过技能完成可验证的文件处理流程。';
