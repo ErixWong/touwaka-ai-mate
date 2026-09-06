@@ -98,6 +98,122 @@ if (!creds) {
     assert.deepEqual(loaded[0].meta, meta);
   });
 
+  test("appendRound 按 run_id/round 幂等并保留首条", async () => {
+    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
+    const runId = "run-idempotent";
+    const first = {
+      round: 1,
+      ts: "2026-08-29T10:00:00.000Z",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "first" }] }],
+    };
+    const second = {
+      round: 1,
+      ts: "2026-08-29T10:00:01.000Z",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "second" }] }],
+    };
+
+    await store.appendRound(runId, first, {
+      topicId: "topic-first",
+    });
+    await assert.doesNotReject(() => store.appendRound(runId, second, {
+      topicId: "topic-second",
+    }));
+
+    const loaded = await store.loadWithMeta(runId);
+    assert.equal(loaded.length, 1);
+    assert.equal(loaded[0].ts, first.ts);
+    assert.deepEqual(loaded[0].messages, first.messages);
+    assert.equal(loaded[0].meta.topicId, "topic-first");
+  });
+
+  test("appendRound 持久化并还原 judge record 快照", async () => {
+    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
+    const record = {
+      round: 2,
+      ts: "2026-08-29T10:00:01.000Z",
+      folded: true,
+      messages: [{ role: "assistant", content: [{ type: "text", text: "done" }] }],
+      foldedPayload: [{ role: "user", content: "folded" }],
+      judge: {
+        done: true,
+        confidence: 0.98,
+        reason: "完成目标",
+        evidence: ["工具返回成功", "结果已确认"],
+        direction: "wrapup",
+        directionReason: "无需继续调用工具",
+      },
+      summary: "已完成任务",
+      l0facts: ["用户要求已满足"],
+      wrapup: { status: "completed", reason: "judge_done" },
+      response: "任务已完成",
+      textPreview: "任务已完成",
+      toolUses: [{ name: "finish", success: true }],
+      roundKey: "round-2",
+      dedupKey: "dedup-round-2",
+      meta: {
+        topicId: "topic-judge",
+        userId: "user-judge",
+        expertId: "expert-judge",
+        modelName: "model-judge",
+        providerName: "provider-judge",
+        usage: { prompt_tokens: 20, completion_tokens: 8, cost: 0.2 },
+        latencyMs: 456,
+        errorInfo: { retryable: false },
+        isDeleted: false,
+      },
+    };
+
+    await store.appendRound("run-judge", record);
+
+    const [rawRow] = await db.sequelize.query(`
+      SELECT
+        record_json,
+        JSON_TYPE(record_json) AS record_json_type,
+        JSON_EXTRACT(record_json, '$.judge') AS judge_json
+      FROM ${TABLE_NAME}
+      WHERE run_id = ? AND round = ?
+    `, {
+      replacements: ["run-judge", record.round],
+    });
+    assert.equal(rawRow.length, 1);
+    const rawRecordJson = rawRow[0].record_json;
+    const parsedRecordJson = typeof rawRecordJson === "string"
+      ? JSON.parse(rawRecordJson)
+      : rawRecordJson;
+    assert.equal(rawRow[0].record_json_type, "OBJECT");
+    assert.equal(
+      typeof parsedRecordJson,
+      "object",
+      "record_json must be stored as a JSON object, not a JSON-encoded string",
+    );
+    assert.notEqual(parsedRecordJson, null);
+    assert.deepEqual(parsedRecordJson.judge, record.judge);
+    const judgeFromJsonPath = typeof rawRow[0].judge_json === "string"
+      ? JSON.parse(rawRow[0].judge_json)
+      : rawRow[0].judge_json;
+    assert.deepEqual(judgeFromJsonPath, record.judge);
+
+    const [loaded] = await store.load("run-judge");
+    const [loadedWithMeta] = await store.loadWithMeta("run-judge");
+    for (const value of [loaded, loadedWithMeta]) {
+      assert.deepEqual(value.judge, record.judge);
+      assert.deepEqual(value.summary, record.summary);
+      assert.deepEqual(value.l0facts, record.l0facts);
+      assert.deepEqual(value.wrapup, record.wrapup);
+      assert.deepEqual(value.response, record.response);
+      assert.deepEqual(value.textPreview, record.textPreview);
+      assert.deepEqual(value.toolUses, record.toolUses);
+      assert.equal(value.roundKey, record.roundKey);
+      assert.equal(value.dedupKey, record.dedupKey);
+    }
+    assert.equal(Object.hasOwn(loaded, "meta"), false);
+    assert.deepEqual(loadedWithMeta.meta, record.meta);
+    assert.deepEqual(loaded.messages, record.messages);
+    assert.deepEqual(loaded.foldedPayload, record.foldedPayload);
+    assert.deepEqual(loadedWithMeta.messages, record.messages);
+    assert.deepEqual(loadedWithMeta.foldedPayload, record.foldedPayload);
+  });
+
   test("load 保持纯净，不返回 meta", async () => {
     const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
     await store.appendRound("run-clean", {
