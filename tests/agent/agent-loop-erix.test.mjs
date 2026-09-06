@@ -266,8 +266,8 @@ function createJudgeCapableExpertService({
         text: '{"done":true,"confidence":0.95,"reason":"任务已完成","evidence":"已返回最终结果"}',
       }],
       usage: {
-        input_tokens: 7,
-        output_tokens: 3,
+        prompt_tokens: 7,
+        completion_tokens: 3,
       },
     };
   };
@@ -604,10 +604,12 @@ test('runErix judge falls back to the primary model when reflective config is un
   delete expertService.llmClient.getModelForMind;
 
   const result = await withEnv('ERIX_NO_REFLECTION', undefined, () => (
-    createLoop().runErix(expertService, {
-      ...input,
-      onDelta: () => {},
-    })
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, {
+        ...input,
+        onDelta: () => {},
+      })
+    ))
   ));
 
   assert.equal(expertService.getJudgeCalls().length, 1);
@@ -624,9 +626,11 @@ test('runErix uses the reflective model for long-task judge calls', async () => 
   const expertService = createJudgeCapableExpertService({ reflectiveModel });
 
   await withEnv('ERIX_NO_REFLECTION', undefined, () => (
-    createLoop().runErix(expertService, createInput({
-      onDelta: () => {},
-    }))
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        onDelta: () => {},
+      }))
+    ))
   ));
 
   assert.deepEqual(expertService.getResolvedMinds(), ['reflective']);
@@ -638,9 +642,11 @@ test('runErix disables long-task judge calls when ERIX_NO_REFLECTION is enabled'
   const expertService = createJudgeCapableExpertService();
 
   await withEnv('ERIX_NO_REFLECTION', '1', () => (
-    createLoop().runErix(expertService, createInput({
-      onDelta: () => {},
-    }))
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
+      createLoop().runErix(expertService, createInput({
+        onDelta: () => {},
+      }))
+    ))
   ));
 
   assert.deepEqual(expertService.getResolvedMinds(), []);
