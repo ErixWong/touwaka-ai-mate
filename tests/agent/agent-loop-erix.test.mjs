@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import test from 'node:test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { AgentLoop } from '../../lib/agent/agent-loop.js';
 import logger from '../../lib/logger.js';
@@ -53,6 +56,33 @@ function createInput(overrides = {}) {
     request_id: 'request_1',
     ...overrides,
   };
+}
+
+function createTaskDirContext(overrides = {}) {
+  return {
+    id: 'task-abc',
+    title: '测试任务',
+    description: '在任务目录创建一个俄罗斯方块游戏',
+    workspace_mode: 'task',
+    absolute_workspace_path: '/tmp/erix-judge-test-task',
+    logical_workspace_path: 'user/task',
+    ...overrides,
+  };
+}
+
+async function withTaskDir(callback) {
+  const taskDir = await mkdtemp(join(tmpdir(), 'erix-judge-test-'));
+  try {
+    await writeFile(
+      join(taskDir, 'README.md'),
+      '目标: 创建俄罗斯方块游戏\n需求: 完成核心玩法、界面交互、计分和验收说明，确保任务结果可验证。\n',
+    );
+    return await callback(createTaskDirContext({
+      absolute_workspace_path: taskDir,
+    }));
+  } finally {
+    await rm(taskDir, { recursive: true, force: true });
+  }
 }
 
 async function withEnv(name, value, callback) {
@@ -599,18 +629,19 @@ test('runErix emits history_compacted with the compaction shape', async () => {
 });
 
 test('runErix judge falls back to the primary model when reflective config is unavailable', async () => {
-  const input = createInput();
   const expertService = createJudgeCapableExpertService();
   delete expertService.llmClient.getModelForMind;
+  let input;
 
-  const result = await withEnv('ERIX_NO_REFLECTION', undefined, () => (
-    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
-      createLoop().runErix(expertService, {
+  const result = await withTaskDir(taskContext => withEnv('ERIX_NO_REFLECTION', undefined, () => (
+    withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => {
+      input = createInput({ taskContext });
+      return createLoop().runErix(expertService, {
         ...input,
         onDelta: () => {},
-      })
-    ))
-  ));
+      });
+    })
+  )));
 
   assert.equal(expertService.getJudgeCalls().length, 1);
   assert.equal(expertService.getJudgeCalls()[0].modelConfig, input.modelConfig);
@@ -625,13 +656,14 @@ test('runErix uses the reflective model for long-task judge calls', async () => 
   const reflectiveModel = { model_name: 'marked-reflective-model' };
   const expertService = createJudgeCapableExpertService({ reflectiveModel });
 
-  await withEnv('ERIX_NO_REFLECTION', undefined, () => (
+  await withTaskDir(taskContext => withEnv('ERIX_NO_REFLECTION', undefined, () => (
     withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
       createLoop().runErix(expertService, createInput({
+        taskContext,
         onDelta: () => {},
       }))
     ))
-  ));
+  )));
 
   assert.deepEqual(expertService.getResolvedMinds(), ['reflective']);
   assert.equal(expertService.getJudgeCalls().length, 1);
@@ -641,13 +673,14 @@ test('runErix uses the reflective model for long-task judge calls', async () => 
 test('runErix disables long-task judge calls when ERIX_NO_REFLECTION is enabled', async () => {
   const expertService = createJudgeCapableExpertService();
 
-  await withEnv('ERIX_NO_REFLECTION', '1', () => (
+  await withTaskDir(taskContext => withEnv('ERIX_NO_REFLECTION', '1', () => (
     withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
       createLoop().runErix(expertService, createInput({
+        taskContext,
         onDelta: () => {},
       }))
     ))
-  ));
+  )));
 
   assert.deepEqual(expertService.getResolvedMinds(), []);
   assert.deepEqual(expertService.getJudgeCalls(), []);
