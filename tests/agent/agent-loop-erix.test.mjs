@@ -71,6 +71,7 @@ function createSkillContext(overrides = {}) {
   const context = createTaskDirContext({
     workspace_mode: 'skill',
     absolute_workspace_path: '/tmp/file-processing',
+    logical_workspace_path: 'skills/file-processing',
     ...overrides,
   });
   delete context.description;
@@ -649,6 +650,8 @@ test('runErix judge falls back to the primary model when reflective config is un
       ? message.content
       : JSON.stringify(message.content))
     .join('\n');
+  assert.match(judgePrompt, /任务目录:user\/task/);
+  assert.doesNotMatch(judgePrompt, /\/(?:home|tmp)\//);
   assert.match(judgePrompt, /任务描述:在任务目录创建一个俄罗斯方块游戏/);
   assert.match(judgePrompt, /最新指令:请完成俄罗斯方块验收/);
   assert.deepEqual(result.tokenUsage, {
@@ -676,7 +679,7 @@ test('runErix uses the reflective model for long-task judge calls', async () => 
   assert.equal(expertService.getJudgeCalls()[0].modelConfig, reflectiveModel);
 });
 
-test('runErix includes the matching skill description in skill task briefs', async () => {
+test('runErix keeps skill judges enabled without a skill task brief', async () => {
   const expertService = createJudgeCapableExpertService();
   const taskContext = createSkillContext();
 
@@ -685,13 +688,7 @@ test('runErix includes the matching skill description in skill task briefs', asy
       createLoop().runErix(expertService, createInput({
         taskContext,
         currentMessages: [
-          {
-            role: 'system',
-            content: [{
-              type: 'text',
-              text: '系统约束\n【可用技能】\n- file-processing: SKILL_DESCRIPTION_MARKER: 通过技能完成文件处理流程。',
-            }],
-          },
+          { role: 'system', content: '系统约束\nSKILL_DESCRIPTION_MARKER' },
           { role: 'user', content: '请执行技能并返回结果' },
         ],
         onDelta: () => {},
@@ -705,25 +702,23 @@ test('runErix includes the matching skill description in skill task briefs', asy
       ? message.content
       : JSON.stringify(message.content))
     .join('\n');
-  assert.match(judgePrompt, /技能任务:（技能描述:file-processing: SKILL_DESCRIPTION_MARKER: 通过技能完成文件处理流程。）/);
-  assert.match(judgePrompt, /最新指令:请执行技能并返回结果/);
+  assert.match(judgePrompt, /请执行技能并返回结果/);
+  assert.doesNotMatch(judgePrompt, /任务目录:|任务描述:|技能任务:/);
+  assert.doesNotMatch(judgePrompt, /SKILL_DESCRIPTION_MARKER/);
 });
 
-test('runErix uses the skill brief fallback when no skill matches', async () => {
+test('runErix redacts absolute paths from repo task briefs', async () => {
   const expertService = createJudgeCapableExpertService();
-  const taskContext = createSkillContext();
+  const taskContext = createTaskDirContext({
+    workspace_mode: 'repo_task',
+    absolute_workspace_path: '/home/eric/projects/private-repo-task',
+    logical_workspace_path: 'user/repo-task',
+  });
 
   await withEnv('ERIX_NO_REFLECTION', undefined, () => (
     withEnv('ERIX_NO_ROUND_JUDGE', undefined, () => (
       createLoop().runErix(expertService, createInput({
         taskContext,
-        currentMessages: [
-          {
-            role: 'system',
-            content: '【可用技能】\n- spreadsheet: 处理表格数据。',
-          },
-          { role: 'user', content: '请执行技能并返回结果' },
-        ],
         onDelta: () => {},
       }))
     ))
@@ -735,8 +730,9 @@ test('runErix uses the skill brief fallback when no skill matches', async () => 
       ? message.content
       : JSON.stringify(message.content))
     .join('\n');
-  assert.match(judgePrompt, /技能任务:（技能描述:详见技能定义）/);
-  assert.match(judgePrompt, /最新指令:请执行技能并返回结果/);
+  assert.match(judgePrompt, /任务目录:user\/repo-task/);
+  assert.doesNotMatch(judgePrompt, /\/home\/eric\/projects\/private-repo-task/);
+  assert.match(judgePrompt, /最新指令:hello/);
 });
 
 test('runErix does not enable judge calls for chat or missing task context', async () => {
