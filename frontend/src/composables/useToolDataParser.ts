@@ -12,7 +12,7 @@ export interface ToolCallData {
   arguments?: Record<string, unknown>
   result?: unknown
   result_preview?: string
-  context?: string
+  context?: string | null
   /** round03：原子工具执行轨迹（仅 document_retrieval skill） */
   atomic_steps?: string[]
 }
@@ -95,7 +95,10 @@ const getToolData = (message: ChatMessage): NormalizedToolData => {
 const parseToolCallsToArray = (message: ChatMessage): ToolCallData[] => {
   const toolCalls = parseToolCallsRaw(message)
   if (!toolCalls) return []
-  return Array.isArray(toolCalls) ? toolCalls : [toolCalls]
+  return (Array.isArray(toolCalls) ? toolCalls : [toolCalls]).map(call => ({
+    ...call,
+    context: typeof call?.context === 'string' ? call.context : null,
+  }))
 }
 
 const formatToolCallTime = (toolCall: ToolCallData): string => {
