@@ -83,7 +83,7 @@ const getToolData = (message: ChatMessage): NormalizedToolData => {
     name: toolData?.name || toolData?.tool_name || 'unknown_tool',
     success: toolData?.success ?? true,
     duration: toolData?.duration ?? null,
-    context: toolData?.context ?? null,
+    context: typeof toolData?.context === 'string' ? toolData.context : null,
     timestamp: toolData?.timestamp ?? null,
     arguments: toolData?.arguments ?? null,
   }
@@ -201,6 +201,7 @@ const buildToolContextIndex = (allMessages: ChatMessage[]): ToolContextIndex => 
 
     if (msg.role !== 'tool' || !msg.request_id) return
 
+    // getToolData filters legacy/structured object contexts to keep display data string-only.
     const context = getToolData(msg).context?.trim()
     if (!context) return
 
