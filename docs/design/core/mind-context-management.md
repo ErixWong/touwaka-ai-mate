@@ -51,9 +51,9 @@ Psyche 上下文 = System Prompt（含 Psyche 文本）+ 用户消息 + 可选�
     ↓
 【生成阶段】LLM 基于 Psyche 生成回复
     ↓
-【可选】LLM 调用 notes.take 存入新材料
+【可选】LLM 调用 notes_take 存入新材料
     ↓
-【可选】LLM 调用 notes.read 获取 Notes 材料
+【可选】LLM 调用 notes_read 获取 Notes 材料
     ↓
 返回用户
 ```
@@ -119,7 +119,7 @@ const psycheText = `
 - 总预算：50 万元
 - 分配比例：服务器 60%（30万），云服务 40%（20万）
 
-可用笔记（通过 notes.read 获取）：
+可用笔记（通过 notes_read 获取）：
 - notes:q1_budget → Q1 预算报告，实际支出 42 万
 - notes:server_quote → 服务器供应商报价单
 `;
@@ -1051,9 +1051,9 @@ _buildSystemPrompt(basePrompt, psycheText, taskContext = null) {
 
 【使用说明】
 - 以上【心神】是你的工作记忆，包含当前主题、关键决策和可用笔记
-- 如需查看笔记内容，使用 notes.read 工具
-- 如需保存新材料，使用 notes.take 工具
-- 如需查看所有笔记，使用 notes.list 工具`);
+- 如需查看笔记内容，使用 notes_read 工具
+- 如需保存新材料，使用 notes_take 工具
+- 如需查看所有笔记，使用 notes_list 工具`);
 
   return parts.join('\n');
 }
@@ -1062,9 +1062,9 @@ _buildSystemPrompt(basePrompt, psycheText, taskContext = null) {
 ### 4.5 Notes 工具接口
 
 ```typescript
-// notes.take - 存入笔记
+// notes_take - 存入笔记
 {
-  "name": "notes.take",
+  "name": "notes_take",
   "description": "将材料存入 Notes，供后续对话使用",
   "parameters": {
     "key": "string",           // 笔记标识
@@ -1074,18 +1074,18 @@ _buildSystemPrompt(basePrompt, psycheText, taskContext = null) {
   }
 }
 
-// notes.read - 读取笔记
+// notes_read - 读取笔记
 {
-  "name": "notes.read", 
+  "name": "notes_read",
   "description": "从 Notes 加载笔记内容",
   "parameters": {
     "key": "string"            // 笔记标识
   }
 }
 
-// notes.list - 列出笔记（可选）
+// notes_list - 列出笔记（可选）
 {
-  "name": "notes.list",
+  "name": "notes_list",
   "description": "列出当前 Notes 中的笔记清单",
   "parameters": {}
 }
@@ -1144,7 +1144,7 @@ LLM 调用 recall({query: "技术部 Q1 预算"})
   ↓
 LLM 分析后，筛选出 3 条关键数据
   ↓
-LLM 调用 notes.take({
+LLM 调用 notes_take({
   key: "q1_key_metrics",
   content: "Q1 实际支出 42 万，服务器占 60%...",
   relevance: 0.95
@@ -1163,13 +1163,13 @@ LLM 生成预算框架
 System Prompt：
   【心神】
   ...
-  可用笔记（通过 notes.read 获取）：
+  可用笔记（通过 notes_read 获取）：
   - notes:q1_key_metrics → Q1 实际支出 42 万
   
   【当前任务】
   服务器具体要什么配置？
 
-LLM 看到引用 → 调用 notes.read("q1_key_metrics")
+LLM 看到引用 → 调用 notes_read("q1_key_metrics")
   ↓
 获取 Q1 数据作为参考
   ↓
@@ -1189,7 +1189,7 @@ FullContextOrganizer：
   System Prompt + 最近 15 条 Messages + Topics
   
   使用 Notes：
-  - LLM 可以 notes.take 存材料
+  - LLM 可以 notes_take 存材料
   - 但 Psyche 不会自动注入 Notes 引用
   - LLM 需要主动记住"我存了啥"
   - 效果 ≈ 30%
@@ -1205,7 +1205,7 @@ MinimalContextOrganizer：
   
   使用 Notes：
   - Psyche 自动包含 Notes 引用列表
-  - LLM 看到引用 → 自动 notes.read
+  - LLM 看到引用 → 自动 notes_read
   - 形成"Psyche 指引 → Notes 补充"闭环
   - 效果 ≈ 90%
 ```
@@ -1247,7 +1247,7 @@ export class MinimalContextOrganizer extends IContextOrganizer {
 // 全局注册，所有策略可用
 skillManager.register({
   name: 'notes',
-  tools: ['notes.take', 'notes.read', 'notes.list']
+  tools: ['notes_take', 'notes_read', 'notes_list']
 });
 ```
 

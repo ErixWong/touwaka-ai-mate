@@ -24,20 +24,21 @@ describe('notes governance', () => {
       enable_notes: false,
     }));
 
-    expect(fullNames).not.to.include('notes.take');
-    expect(minimalNames).to.include('notes.take');
-    expect(minimalNames).to.include('notes.read');
-    expect(minimalNames).to.include('notes.list');
-    expect(disabledNames).not.to.include('notes.take');
+    expect(fullNames).not.to.include('notes_take');
+    expect(minimalNames).to.include('notes_take');
+    expect(minimalNames).to.include('notes_read');
+    expect(minimalNames).to.include('notes_list');
+    expect(disabledNames).not.to.include('notes_take');
+    expect(manager._isNotesTool(['notes', 'take'].join('.'))).to.equal(true);
   });
 
   it('rejects direct notes execution outside minimal strategy', async () => {
     const manager = new ToolManager({ getModel: () => null }, 'expert_1');
     const result = await manager.executeNotesTool(
-      'notes.take',
+      'notes_take',
       { key: 'k', content: 'content' },
       { userId: 'user_1', expertId: 'expert_1', context_strategy: 'full', enable_notes: true },
-      'notes.take'
+      'notes_take'
     );
 
     expect(result.success).to.equal(false);
@@ -51,22 +52,22 @@ describe('notes governance', () => {
     const context = { userId: 'user_1', expertId: 'expert_1', context_strategy: 'minimal', enable_notes: true };
 
     const first = await manager.executeNotesTool(
-      'notes.take',
+      'notes_take',
       { key: 'k', content: 'short note', relevance: 5 },
       context,
-      'notes.take'
+      'notes_take'
     );
     const second = await manager.executeNotesTool(
-      'notes.take',
+      'notes_take',
       { key: 'k', content: 'updated note', relevance: -1 },
       context,
-      'notes.take'
+      'notes_take'
     );
     const oversized = await manager.executeNotesTool(
-      'notes.take',
+      'notes_take',
       { key: 'large', content: 'x'.repeat(4001) },
       context,
-      'notes.take'
+      'notes_take'
     );
     const note = await store.read('user_1', 'expert_1', 'k');
 
@@ -99,7 +100,7 @@ describe('notes governance', () => {
     expect(calls).to.deep.equal([{ key: 'k', ttl: 123 }]);
   });
 
-  it('uses listWithDetails for notes.list without read N+1', async () => {
+  it('uses listWithDetails for notes_list without read N+1', async () => {
     const manager = new ToolManager({ getModel: () => null }, 'expert_1');
     manager._notesStore = {
       listWithDetails: async () => [{
@@ -117,10 +118,10 @@ describe('notes governance', () => {
     };
 
     const result = await manager.executeNotesTool(
-      'notes.list',
+      'notes_list',
       {},
       { userId: 'user_1', expertId: 'expert_1', context_strategy: 'minimal', enable_notes: true },
-      'notes.list'
+      'notes_list'
     );
 
     expect(result.success).to.equal(true);
