@@ -12,9 +12,16 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 | `message-converter.js` | OpenAI ↔ canonical 双向转换 | 纯函数，无 DB 依赖 |
 | `provider-adapter.js` | erix Provider (`chatStream`/`chat`) | `LLMClient.callStream`/`call`，纯桥接 |
 
+## 与 erix-agent 0.3.5 的行为变化（touwaka 侧知悉项）
+
+- checkpoint 执行后写失败由静默改为 fail-closed（抛出 `KitError` `checkpoint_failed`），该次请求会显式失败。由于 `request_id` 每请求新生成，且本项目没有复用 `runId` 的 resume 场景，无需按 tool id 做幂等保护。
+- observer 回调异常改走 `onObserverError`，不再掀掉整轮循环；`runErix` 已接线到 `logger.warn`。
+- 流式 `onDelta` 时机不变。本项目显式传入 `retry.attempts >= 1`，仍在尝试成功后批量 flush；仅 `CHAT_STREAM_RECOVERY_MAX_ATTEMPTS=0` 时才会启用 0.3.5 的实时透传路径。
+- 其余 0.3.5 变化（file store `runId` 哈希、`ERIX_*` env 校验、`providerOptions` 保护、内置 provider 的 SSE 解析）本项目不适用。
+
 ## 测试
 
-契约测试消费已发布的 `erix-agent@0.2.0` 包，通过
+契约测试消费已发布的 `erix-agent@0.3.5` 包，通过
 `erix-agent/contract-tests` 导入接口兼容断言：
 
 ```bash
