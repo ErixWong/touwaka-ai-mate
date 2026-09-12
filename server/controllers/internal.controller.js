@@ -13,6 +13,7 @@ import Utils from '../../lib/utils.js';
 import { verifyAgentDelegationIntegrity } from '../../lib/agent/agent-delegation-integrity.js';
 import { getPermissionService } from '../services/permission.service.js';
 import { ResidentCapabilityError } from '../../lib/resident-capability-executor.js';
+import { normalizeToolContext } from '../../lib/tool-context.js';
 
 class InternalController {
   /**
@@ -260,6 +261,9 @@ class InternalController {
 
         // 发送工具结果给前端
         for (const toolResult of toolResults) {
+          if (toolResult && typeof toolResult === 'object') {
+            toolResult.context = normalizeToolContext(toolResult.context);
+          }
           if (!userConnection.res.writableEnded) {
             userConnection.res.write(`event: tool_result\n`);
             userConnection.res.write(`data: ${JSON.stringify({ result: toolResult })}\n\n`);
