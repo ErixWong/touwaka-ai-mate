@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import Utils from "../../lib/utils.js";
 import {
   canonicalToLegacyMessages,
   legacyRowsToTranscript,
@@ -181,6 +182,58 @@ test("孤儿 tool 行归入 round 0", () => {
       content: "孤儿结果",
     }],
   });
+});
+
+test("同秒消息按 newID 插入序稳定排序，跨毫秒时也保持插入序", () => {
+  const originalNow = Date.now;
+  const fixedNow = 1778712600123;
+  const createdAt = "2026-05-13T12:10:00.000Z";
+
+  const messageTexts = (transcript) => transcript.records
+    .flatMap((record) => record.messages)
+    .map((message) => message.content[0]?.text);
+
+  try {
+    Date.now = () => fixedNow;
+    const sameMillisecondRows = Array.from({ length: 12 }, (_, index) => ({
+      id: Utils.newID(),
+      role: "user",
+      content: `同毫秒-${index}`,
+      created_at: createdAt,
+    }));
+    const sameMillisecondTranscript = legacyRowsToTranscript(
+      "request-same-millisecond",
+      [...sameMillisecondRows].reverse(),
+    );
+
+    assert.deepEqual(
+      messageTexts(sameMillisecondTranscript),
+      sameMillisecondRows.map((row) => row.content),
+    );
+
+    let currentNow = fixedNow;
+    Date.now = () => currentNow;
+    const crossMillisecondRows = Array.from({ length: 12 }, (_, index) => {
+      currentNow = fixedNow + index;
+      return {
+        id: Utils.newID(),
+        role: "user",
+        content: `跨毫秒-${index}`,
+        created_at: createdAt,
+      };
+    });
+    const crossMillisecondTranscript = legacyRowsToTranscript(
+      "request-cross-millisecond",
+      [...crossMillisecondRows].reverse(),
+    );
+
+    assert.deepEqual(
+      messageTexts(crossMillisecondTranscript),
+      crossMillisecondRows.map((row) => row.content),
+    );
+  } finally {
+    Date.now = originalNow;
+  }
 });
 
 test("legacy → canonical → legacy 保留关键字段", () => {

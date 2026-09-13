@@ -313,7 +313,7 @@ const TABLES = [
     tool_calls LONGTEXT COMMENT '工具调用（JSON格式）',
     error_info LONGTEXT COMMENT '错误信息（JSON格式）',
     is_deleted BIT(1) DEFAULT b'0',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
     FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE SET NULL,

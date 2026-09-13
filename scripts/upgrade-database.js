@@ -4011,6 +4011,27 @@ const MIGRATIONS = [
       console.log('  ✓ Added record_json column to llm_kit_transcripts table');
     }
   },
+  {
+    name: 'messages.created_at 时间精度提升到毫秒',
+    check: async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT DATETIME_PRECISION
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = ?
+           AND TABLE_NAME = ?
+           AND COLUMN_NAME = ?`,
+        [DB_CONFIG.database, 'messages', 'created_at']
+      );
+      return rows.length > 0 && Number(rows[0].DATETIME_PRECISION) >= 3;
+    },
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE ${quoteIdentifier('messages')}
+        MODIFY COLUMN ${quoteIdentifier('created_at')} DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3)
+      `);
+      console.log('  ✓ Updated messages.created_at precision to milliseconds');
+    }
+  },
 
 ];
 
