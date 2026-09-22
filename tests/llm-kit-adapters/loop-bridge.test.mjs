@@ -54,21 +54,29 @@ function createFakeProvider(responses) {
 function createRecordingStore() {
   const calls = {
     appendRound: [],
+    load: [],
     saveCheckpoint: [],
+    appendCheckpoint: [],
+    loadLatestCheckpoint: [],
+    saveRunState: [],
+    loadRunState: [],
     markRunState: [],
+  };
+  const record = (bucket, fn) => async (...args) => {
+    calls[bucket].push(args);
+    return fn(...args);
   };
   return {
     calls,
     store: {
-      async appendRound(...args) {
-        calls.appendRound.push(args);
-      },
-      async saveCheckpoint(...args) {
-        calls.saveCheckpoint.push(args);
-      },
-      async markRunState(...args) {
-        calls.markRunState.push(args);
-      },
+      appendRound: record("appendRound", async () => {}),
+      load: record("load", async () => []),
+      saveCheckpoint: record("saveCheckpoint", async () => {}),
+      appendCheckpoint: record("appendCheckpoint", async () => {}),
+      loadLatestCheckpoint: record("loadLatestCheckpoint", async () => undefined),
+      saveRunState: record("saveRunState", async () => {}),
+      loadRunState: record("loadRunState", async () => undefined),
+      markRunState: record("markRunState", async () => {}),
     },
   };
 }
@@ -98,7 +106,7 @@ test("builds an erix loop with structured tool execution and canonical results",
   };
 
   const options = buildErixRunOptions({
-    ...provider,
+    provider: provider.provider,
     executeTool,
     store: store.store,
     runId: "run-bridge-1",
@@ -106,7 +114,6 @@ test("builds an erix loop with structured tool execution and canonical results",
     stream: true,
     toolContext: { trace_id: "trace-1" },
     modelConfig: { max_tokens: 32768, max_output_tokens: 4096 },
-    requestMeta: { user_id: "user-1", expert_id: "expert-1" },
     signals: ["done"],
     onEvent: (event) => events.push(event),
   });
@@ -122,8 +129,12 @@ test("builds an erix loop with structured tool execution and canonical results",
     backoffMaxMs: 10000,
   });
   assert.deepEqual(options.stallDetection, { window: 4 });
-  assert.deepEqual(options.user_id, "user-1");
-  assert.deepEqual(options.expert_id, "expert-1");
+  // erix 0.10.0 顶层选项白名单不再接受 user_id/expert_id/request_id 等宿主
+  // 字段（provider 走 createTouwakaProvider 的 defaultUserId/defaultRequestId 闭包），
+  // requestMeta 不得扩散到 runToolLoop 顶层选项。
+  assert.equal(options.requestMeta, undefined);
+  assert.equal(options.user_id, undefined);
+  assert.equal(options.expert_id, undefined);
 
   const result = await runWith(options);
   const toolResultMessage = result.messages.find((message) => (
@@ -137,9 +148,15 @@ test("builds an erix loop with structured tool execution and canonical results",
     id: "t1",
     name: "echo",
     input: { text: "hi" },
-    context: { trace_id: "trace-1", round: 1 },
+    // erix 0.10.0 向 executeTool context 注入宿主持久化失败上报端口。
+    context: {
+      trace_id: "trace-1",
+      round: 1,
+      reportPersistenceFailure: toolCalls[0].context.reportPersistenceFailure,
+    },
     signal: toolCalls[0].signal,
   });
+  assert.equal(typeof toolCalls[0].context.reportPersistenceFailure, "function");
   assert.ok(toolCalls[0].signal);
   assert.equal(result.rounds, 2);
   assert.equal(result.finalText, "done");
@@ -162,6 +179,26 @@ test("builds an erix loop with structured tool execution and canonical results",
   }
 });
 
+test("requestMeta is dropped instead of leaking into top-level run options", () => {
+  // 回归：erix 0.10.0 顶层选项白名单不再接受 requestMeta 及其内部宿主字段，
+  // 若放任其落入 ...passthrough 会以未知键透传进 runToolLoop 触发 TypeError。
+  const options = buildErixRunOptions({
+    provider: {},
+    executeTool: async () => "ok",
+    runId: "run-request-meta",
+    requestMeta: {
+      user_id: "user-1",
+      expert_id: "expert-1",
+      request_id: "req-1",
+    },
+  });
+
+  assert.equal(options.requestMeta, undefined);
+  assert.equal(options.user_id, undefined);
+  assert.equal(options.expert_id, undefined);
+  assert.equal(options.request_id, undefined);
+});
+
 test("completion signals stop immediately, while missing signals use the no-tool limit", async () => {
   const completionProvider = createFakeProvider([
     toolResponse(),
@@ -169,7 +206,7 @@ test("completion signals stop immediately, while missing signals use the no-tool
     textResponse("should not be called"),
   ]);
   const completionResult = await runWith(buildErixRunOptions({
-    ...completionProvider,
+    provider: completionProvider.provider,
     executeTool: async () => "ok",
     initialUserMessage: "start",
     stream: true,
@@ -187,7 +224,7 @@ test("completion signals stop immediately, while missing signals use the no-tool
     textResponse("should not be called"),
   ]);
   const noSignalResult = await runWith(buildErixRunOptions({
-    ...noSignalProvider,
+    provider: noSignalProvider.provider,
     executeTool: async () => "ok",
     initialUserMessage: "start",
     stream: true,
@@ -205,7 +242,7 @@ test("failed tool execution becomes an error tool_result without breaking the lo
     textResponse("任务完成"),
   ]);
   const result = await runWith(buildErixRunOptions({
-    ...provider,
+    provider: provider.provider,
     executeTool: async () => {
       throw new Error("tool exploded");
     },

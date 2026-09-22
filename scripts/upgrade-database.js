@@ -3953,13 +3953,29 @@ const MIGRATIONS = [
       await conn.execute(`
         CREATE TABLE IF NOT EXISTS llm_kit_run_state (
           run_id VARCHAR(128) NOT NULL,
-          state VARCHAR(32) NULL,
+          state TEXT NULL,
           checkpoint JSON NULL,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (run_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
       console.log('  ✓ Created llm_kit_run_state table');
+    }
+  },
+
+  // erix-agent 0.10.0：run state 允许存整段 JSON（stateVersion/deterministic 等），
+  // 存量库从 varchar(32) 无损加宽到 TEXT；生产最长存量值仅 9 字符，ALTER 安全。
+  {
+    name: 'llm_kit_run_state.state column widen to TEXT',
+    check: async (conn) => {
+      if (!await hasTable(conn, 'llm_kit_run_state')) return true;
+      return (await getColumnType(conn, 'llm_kit_run_state', 'state')) === 'text';
+    },
+    migrate: async (conn) => {
+      await conn.execute(
+        'ALTER TABLE llm_kit_run_state MODIFY state TEXT NULL'
+      );
+      console.log('  ✓ Widened llm_kit_run_state.state to TEXT');
     }
   },
 
