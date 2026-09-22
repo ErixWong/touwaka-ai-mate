@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import ToolManager from '../../lib/tool-manager.js';
 import NotesManager from '../../lib/notes/notes-manager.js';
 import { MemoryNotesStore } from '../../lib/psyche-store/memory-store.js';
+import { getExpertChildScopedTools } from '../../lib/agent/expert-child-scoped-tools.js';
 
 function toolNames(tools) {
   return tools.map(tool => tool.function?.name).filter(Boolean);
@@ -28,7 +29,15 @@ describe('notes governance', () => {
     expect(minimalNames).to.include('notes_take');
     expect(minimalNames).to.include('notes_read');
     expect(minimalNames).to.include('notes_list');
+    expect(minimalNames).to.include('notes_forget');
+    expect(minimalNames).to.include('note_take');
+    expect(minimalNames).to.include('note_read');
+    expect(minimalNames).to.include('note_list');
+    expect(minimalNames).to.include('note_forget');
     expect(disabledNames).not.to.include('notes_take');
+    expect(disabledNames).not.to.include('note_take');
+    expect(fullNames).not.to.include('note_take');
+    expect(fullNames).not.to.include('note_forget');
     expect(manager._isNotesTool(['notes', 'take'].join('.'))).to.equal(true);
   });
 
@@ -127,5 +136,57 @@ describe('notes governance', () => {
     expect(result.success).to.equal(true);
     expect(result.count).to.equal(1);
     expect(result.notes[0].key).to.equal('k');
+  });
+
+  it('routes note_* aliases through the shared host NotesStore', async () => {
+    const store = new MemoryNotesStore();
+    const manager = new ToolManager({ getModel: () => null }, 'expert_1');
+    manager._notesStore = store;
+    const context = {
+      userId: 'user_1',
+      expertId: 'expert_1',
+      context_strategy: 'minimal',
+      enable_notes: true,
+    };
+
+    const saved = await manager.executeTool('note_take', {
+      key: 'alias-key',
+      content: 'saved through note_take',
+    }, context);
+    const read = await manager.executeTool('notes_read', { key: 'alias-key' }, context);
+    const listed = await manager.executeTool('note_list', {}, context);
+    const forgotten = await manager.executeTool('note_forget', { key: 'alias-key' }, context);
+    const afterForget = await store.read('user_1', 'expert_1', 'alias-key');
+
+    expect(saved.success).to.equal(true);
+    expect(read.success).to.equal(true);
+    expect(read.content).to.equal('saved through note_take');
+    expect(listed.success).to.equal(true);
+    expect(listed.notes.map(note => note.key)).to.include('alias-key');
+    expect(forgotten.success).to.equal(true);
+    expect(afterForget).to.equal(null);
+    store.stopCleanupTimer();
+  });
+
+  it('keeps note aliases visible to child agents through scoped ToolManager definitions', async () => {
+    const manager = new ToolManager({ getModel: () => null }, 'expert_1');
+    const tools = await getExpertChildScopedTools({
+      expert_service: {
+        toolManager: manager,
+        expertConfig: {
+          expert: { context_strategy: 'minimal' },
+          psyche: { enable_notes: true },
+        },
+      },
+      invocation_context: {
+        principal_user_id: 'user_1',
+        callee_agent_id: 'expert_1',
+      },
+      effective_scope: {
+        tools: ['note_take', 'notes_read'],
+      },
+    });
+
+    expect(toolNames(tools).sort()).to.deep.equal(['note_take', 'notes_read']);
   });
 });
