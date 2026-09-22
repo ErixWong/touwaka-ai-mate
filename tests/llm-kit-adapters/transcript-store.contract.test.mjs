@@ -40,6 +40,10 @@ const creds = loadCreds();
 
 let db = null;
 let Transcript = null;
+// run-state 契约断言（saveRunState/loadRunState/markRunState）独占一张表
+// llm_kit_run_state_contract_test：无条件拥有——开头 DROP + 按生产 DDL 重建，
+// 结束 DROP，避免并发测试进程共享 llm_kit_run_state 时互相误删/误清。
+const RUN_STATE_TABLE_NAME = "llm_kit_run_state_contract_test";
 
 if (creds) {
   db = new Database({
@@ -52,7 +56,23 @@ if (creds) {
 
   await db.connect();
 
-  const setupStore = createTouwakaTranscriptStore({ db });
+  // 独占表：无条件重建（DROP IF EXISTS + 生产 DDL），不检查存在性、不清他人行。
+  await db.sequelize.query(`DROP TABLE IF EXISTS ${RUN_STATE_TABLE_NAME}`);
+  // 与 scripts/upgrade-database.js 迁移后的生产 schema 保持一致（state TEXT NULL）
+  await db.sequelize.query(`
+    CREATE TABLE ${RUN_STATE_TABLE_NAME} (
+      run_id VARCHAR(128) NOT NULL,
+      state TEXT NULL,
+      checkpoint JSON NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (run_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  const setupStore = createTouwakaTranscriptStore({
+    db,
+    runStateTableName: RUN_STATE_TABLE_NAME,
+  });
   Transcript = db.sequelize.models.llm_kit_transcript;
   await setupStore.sync({ force: true });
 }
@@ -60,6 +80,7 @@ if (creds) {
 after(async () => {
   if (!db) return;
 
+  await db.sequelize.query(`DROP TABLE IF EXISTS ${RUN_STATE_TABLE_NAME}`);
   await Transcript.drop();
   if (typeof db.close === "function") {
     await db.close();
@@ -75,6 +96,9 @@ if (!creds) {
 } else {
   transcriptStoreContract("touwaka TranscriptStore", async () => {
     await Transcript.destroy({ truncate: true });
-    return createTouwakaTranscriptStore({ db });
+    return createTouwakaTranscriptStore({
+      db,
+      runStateTableName: RUN_STATE_TABLE_NAME,
+    });
   });
 }
