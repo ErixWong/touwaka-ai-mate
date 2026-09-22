@@ -14,6 +14,7 @@ import { verifyAgentDelegationIntegrity } from '../../lib/agent/agent-delegation
 import { getPermissionService } from '../services/permission.service.js';
 import { ResidentCapabilityError } from '../../lib/resident-capability-executor.js';
 import { normalizeToolContext } from '../../lib/tool-context.js';
+import { isNotesEnabled } from '../../lib/psyche/notes-config.js';
 
 class InternalController {
   /**
@@ -182,7 +183,7 @@ class InternalController {
         user_id,
         expert_id,
         context_strategy: expertService.expertConfig?.expert?.context_strategy || 'full',
-        enable_notes: expertService.expertConfig?.psyche?.enable_notes !== false,
+        enable_notes: isNotesEnabled(expertService.expertConfig),
       };
       const tools = await expertService.toolManager.getToolDefinitions(toolContext);
 

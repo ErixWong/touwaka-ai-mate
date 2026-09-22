@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import ToolManager from '../../lib/tool-manager.js';
 import NotesManager from '../../lib/notes/notes-manager.js';
 import { MemoryNotesStore } from '../../lib/psyche-store/memory-store.js';
+import { isNotesEnabled } from '../../lib/psyche/notes-config.js';
 import { getExpertChildScopedTools } from '../../lib/agent/expert-child-scoped-tools.js';
 
 function toolNames(tools) {
@@ -9,6 +10,18 @@ function toolNames(tools) {
 }
 
 describe('notes governance', () => {
+  it('reads enable_notes from object and JSON psyche_config values', () => {
+    expect(isNotesEnabled({
+      expert: { psyche_config: { enable_notes: false } },
+    })).to.equal(false);
+    expect(isNotesEnabled({
+      expert: { psyche_config: JSON.stringify({ enable_notes: false }) },
+    })).to.equal(false);
+    expect(isNotesEnabled({
+      expert: { psyche_config: { enable_notes: true } },
+    })).to.equal(true);
+  });
+
   it('exposes notes tools only for minimal strategy with notes enabled', async () => {
     const manager = new ToolManager({ getModel: () => null }, 'expert_1');
 
@@ -174,8 +187,10 @@ describe('notes governance', () => {
       expert_service: {
         toolManager: manager,
         expertConfig: {
-          expert: { context_strategy: 'minimal' },
-          psyche: { enable_notes: true },
+          expert: {
+            context_strategy: 'minimal',
+            psyche_config: { enable_notes: true },
+          },
         },
       },
       invocation_context: {
@@ -188,5 +203,29 @@ describe('notes governance', () => {
     });
 
     expect(toolNames(tools).sort()).to.deep.equal(['note_take', 'notes_read']);
+  });
+
+  it('hides note tools from child agents when psyche_config disables notes', async () => {
+    const manager = new ToolManager({ getModel: () => null }, 'expert_1');
+    const tools = await getExpertChildScopedTools({
+      expert_service: {
+        toolManager: manager,
+        expertConfig: {
+          expert: {
+            context_strategy: 'minimal',
+            psyche_config: { enable_notes: false },
+          },
+        },
+      },
+      invocation_context: {
+        principal_user_id: 'user_1',
+        callee_agent_id: 'expert_1',
+      },
+      effective_scope: {
+        tools: ['note_take', 'notes_read'],
+      },
+    });
+
+    expect(tools).to.deep.equal([]);
   });
 });
