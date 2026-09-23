@@ -67,6 +67,49 @@ describe('notes governance', () => {
     expect(result.error).to.include('minimal context strategy');
   });
 
+  it('keeps notes execution gating aligned with visible tool definitions', async () => {
+    const manager = new ToolManager({ getModel: () => null }, 'expert_1');
+    const definitionContext = {
+      context_strategy: 'minimal',
+      enable_notes: true,
+    };
+    const executionContext = {
+      expert_id: 'expert_1',
+      user_id: 'user_1',
+      topicId: null,
+      accessToken: null,
+      memorySystem: null,
+      taskContext: null,
+      session: null,
+      agent_invocation: null,
+    };
+
+    const definitions = await manager.getToolDefinitions(definitionContext);
+    expect(toolNames(definitions)).to.include('notes_take');
+
+    const blocked = await manager.executeTool(
+      'notes_take',
+      { key: 'execution-gate', content: 'blocked without flags' },
+      executionContext
+    );
+    expect(blocked.success).to.equal(false);
+    expect(blocked.error).to.include('minimal context strategy');
+
+    const store = new MemoryNotesStore();
+    manager._notesStore = store;
+    const allowed = await manager.executeTool(
+      'notes_take',
+      { key: 'execution-gate', content: 'allowed with flags' },
+      {
+        ...executionContext,
+        ...definitionContext,
+      }
+    );
+
+    expect(allowed.success).to.equal(true);
+    store.stopCleanupTimer();
+  });
+
   it('clamps relevance, reports overwrite, and rejects oversized content', async () => {
     const store = new MemoryNotesStore();
     const manager = new ToolManager({ getModel: () => null }, 'expert_1');
