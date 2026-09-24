@@ -83,6 +83,9 @@ async function testFiltersToolsByEffectiveScope() {
     expertId: 'expert_child',
     session,
     taskContext,
+    // #1131：notes 门控上下文随子 agent 工具定义下发（minimal + enable_notes）
+    context_strategy: 'full',
+    enable_notes: true,
   }]);
 }
 
