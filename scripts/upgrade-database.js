@@ -4049,6 +4049,31 @@ const MIGRATIONS = [
     }
   },
 
+  // ==================== Notes NoteRecord 持久化（issue #1132 决策 3 修订） ====================
+  {
+    name: 'create note_record table',
+    check: async (conn) => await hasTable(conn, 'note_record'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS note_record (
+          id             VARCHAR(32)  NOT NULL,
+          scope          VARCHAR(16)  NOT NULL DEFAULT 'run',
+          scope_ref      VARCHAR(128) NOT NULL,
+          note_key       VARCHAR(191) NOT NULL,
+          record         LONGTEXT     NOT NULL,
+          record_version VARCHAR(32)  NOT NULL,
+          expires_at     BIGINT       NULL DEFAULT NULL,
+          created_at     BIGINT       NOT NULL,
+          updated_at     BIGINT       NOT NULL,
+          PRIMARY KEY (id),
+          UNIQUE KEY uk_scope_ref_key (scope_ref, note_key),
+          KEY idx_expires_at (expires_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('  ✓ Created note_record table');
+    }
+  },
+
 ];
 
 /**

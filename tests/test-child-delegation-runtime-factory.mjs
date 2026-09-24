@@ -177,6 +177,10 @@ async function testComposesDelegationExecutorRunnerAndScopedTools() {
     expert_id: 'expert_child',
     expertId: 'expert_child',
     session,
+    // #1131：notes 门控上下文随子 agent 工具定义下发（minimal + enable_notes）
+    context_strategy: 'full',
+    enable_notes: true,
+    taskContext: null,
   }]);
   assert.deepEqual(onDeltaEvents, [{ type: 'delta', content: 'child' }]);
 }
