@@ -211,6 +211,26 @@ console.log('\n场景 5（D3-i）：legacy 路径不传旗标保持写 role=tool
   assert(saved === 1, 'legacy 路径照旧 saveToolMessage');
 }
 
+console.log('\n场景 6（回归）：saveUserMessage / saveToolMessage 显式传合法 created_at');
+{
+  const { db, state } = createFakeDb();
+  const service = createService({ db });
+
+  const isValidDate = (v) => v instanceof Date && !isNaN(v.getTime());
+
+  await service.saveUserMessage('topic-1', 'user-1', '你好', 'exp-1', null, 'req-1');
+  assert(state.messageCreates.length === 1, 'saveUserMessage 落一行');
+  assert(isValidDate(state.messageCreates[0].created_at),
+    'saveUserMessage 传入合法 Date 类型的 created_at');
+
+  await service.saveToolMessage('topic-1', 'user-1', {
+    toolCallId: 'c1', toolName: 'echo', success: true, data: 'ok', duration: 5,
+  }, 'exp-1');
+  assert(state.messageCreates.length === 2, 'saveToolMessage 落一行');
+  assert(isValidDate(state.messageCreates[1].created_at),
+    'saveToolMessage 传入合法 Date 类型的 created_at');
+}
+
 console.log(`\n完成：${passed} passed, ${failed} failed`);
 if (failed > 0) {
   process.exit(1);
