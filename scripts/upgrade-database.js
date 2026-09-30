@@ -4160,6 +4160,20 @@ const MIGRATIONS = [
       console.log('  ✓ Added messages.idx_messages_round index');
     }
   },
+  {
+    // issue #1134 adaptor 幂等：messages 拆行按 (round_id, sequence_no) 逐行幂等，
+    // 重复 appendRound（persist 重试/dedup_key 撞车）不产生孤儿行。
+    // 存量行 round_id 为 NULL，唯一键对 NULL 不冲突，不受影响。
+    name: 'messages uk_messages_round_seq unique key',
+    check: async (conn) => await hasIndex(conn, 'messages', 'uk_messages_round_seq'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD UNIQUE KEY uk_messages_round_seq (round_id, sequence_no)
+      `);
+      console.log('  ✓ Added messages.uk_messages_round_seq unique key');
+    }
+  },
 
 ];
 
