@@ -3979,54 +3979,6 @@ const MIGRATIONS = [
     }
   },
 
-  // ==================== erix-agent TranscriptStore transcripts ====================
-  {
-    name: 'llm_kit_transcripts table create',
-    check: async (conn) => await hasTable(conn, 'llm_kit_transcripts'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE IF NOT EXISTS llm_kit_transcripts (
-          run_id VARCHAR(128) NOT NULL,
-          round INT NOT NULL,
-          ts VARCHAR(32) NOT NULL,
-          folded TINYINT(1) NOT NULL DEFAULT 0,
-          messages JSON NOT NULL,
-          folded_payload JSON NULL,
-          record_json JSON NULL,
-          topic_id VARCHAR(64) NULL,
-          user_id VARCHAR(64) NULL,
-          expert_id VARCHAR(64) NULL,
-          model_name VARCHAR(128) NULL,
-          provider_name VARCHAR(128) NULL,
-          \`usage\` JSON NULL,
-          latency_ms INT NULL,
-          error_info JSON NULL,
-          is_deleted TINYINT(1) NOT NULL DEFAULT 0,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (run_id, round),
-          KEY idx_llm_kit_transcripts_topic_id (topic_id),
-          KEY idx_llm_kit_transcripts_user_id (user_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `);
-      console.log('  ✓ Created llm_kit_transcripts table');
-    }
-  },
-
-  // ==================== erix-agent TranscriptStore record snapshot ====================
-  {
-    name: 'llm_kit_transcripts.record_json column add',
-    check: async (conn) => {
-      if (!await hasTable(conn, 'llm_kit_transcripts')) return true;
-      return await hasColumn(conn, 'llm_kit_transcripts', 'record_json');
-    },
-    migrate: async (conn) => {
-      await conn.execute(`
-        ALTER TABLE llm_kit_transcripts
-        ADD COLUMN record_json JSON NULL AFTER folded_payload
-      `);
-      console.log('  ✓ Added record_json column to llm_kit_transcripts table');
-    }
-  },
   {
     name: 'messages.created_at 时间精度提升到毫秒',
     check: async (conn) => {
@@ -4172,6 +4124,17 @@ const MIGRATIONS = [
         ADD UNIQUE KEY uk_messages_round_seq (round_id, sequence_no)
       `);
       console.log('  ✓ Added messages.uk_messages_round_seq unique key');
+    }
+  },
+  // issue #1134 T4：llm_kit_transcripts 直接退役（用户拍板：历史不搬运不归档）。
+  // adaptor 已重写为 agent_rounds/messages/chat_tool_calls 三层拆行，老建表步骤
+  // 已删；本步骤对存量库 DROP 该表，对全新库 check 为 false 自然跳过。
+  {
+    name: 'llm_kit_transcripts table drop（#1134 退役）',
+    check: async (conn) => !(await hasTable(conn, 'llm_kit_transcripts')),
+    migrate: async (conn) => {
+      await conn.execute('DROP TABLE IF EXISTS llm_kit_transcripts');
+      console.log('  ✓ Dropped llm_kit_transcripts table');
     }
   },
 

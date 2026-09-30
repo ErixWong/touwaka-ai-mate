@@ -8,7 +8,7 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 | 文件 | 接口 | 后端 |
 |---|---|---|
 | `model-config-provider.js` | ModelConfigProvider | `ai_models` + `providers` 表（经 lib/db.js） |
-| `transcript-store.js` | TranscriptStore | `llm_kit_transcripts` 表（可通过 `tableName` 指定其他表，适配器内 Sequelize 模型）；run-state/checkpoint 走 `llm_kit_run_state` 表，可用 `runStateTableName` 指定其他表 |
+| `transcript-store.js` | TranscriptStore | `agent_rounds`/`messages`/`chat_tool_calls` 三层拆行（issue #1134，sequelize 参数化 raw query） |
 | `message-converter.js` | OpenAI ↔ canonical 双向转换 | 纯函数，无 DB 依赖 |
 | `provider-adapter.js` | erix Provider (`chatStream`/`chat`) | `LLMClient.callStream`/`call`，纯桥接 |
 
@@ -30,8 +30,8 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 node --test tests/llm-kit-adapters/*.test.mjs
 ```
 
-契约测试使用默认的 `llm_kit_transcripts` 表；元数据测试使用独立的
-`llm_kit_transcripts_meta_test` 表，因此可以在 Node.js 测试默认并发下安全运行。
+契约与元数据测试共用同一组三层表（agent_rounds/messages/chat_tool_calls），
+以独立 runId 命名空间隔离，因此可以在 Node.js 测试默认并发下安全运行。
 
 测试会在 `llm_kit_test` 库内建/删 `providers` 与 `ai_models` 两表（sequelize sync 真实模型定义），
 **不要**把凭据指向 touwaka_mate 生产库。
