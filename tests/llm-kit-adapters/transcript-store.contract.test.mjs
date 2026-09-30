@@ -207,6 +207,10 @@ if (!creds) {
     const store = createTouwakaTranscriptStore({ db, requestContext });
     const id = runId("dedup");
     await store.appendRound(id, ROUND_1);
+    const [firstCount] = await db.sequelize.query(
+      "SELECT COUNT(*) AS n FROM messages WHERE request_id = :id",
+      { replacements: { id } },
+    );
     await store.appendRound(id, { ...ROUND_1, ts: "2026-08-29T00:09:00.000Z" });
 
     const [rounds] = await db.sequelize.query(
@@ -216,11 +220,80 @@ if (!creds) {
     assert.equal(rounds.length, 1);
     assert.equal(rounds[0].ts, ROUND_1.ts, "重复写入不覆盖首轮行");
 
+    // 全局按 request_id 计数：重复调用不得产生挂在孤儿 round_id 下的拆分行
+    const [afterCount] = await db.sequelize.query(
+      "SELECT COUNT(*) AS n FROM messages WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(afterCount[0].n, firstCount[0].n, "messages 全局行数不变（无孤儿行）");
+
     const [messages] = await db.sequelize.query(
       "SELECT * FROM messages WHERE round_id = :roundId",
       { replacements: { roundId: rounds[0].id } },
     );
     assert.equal(messages.length, 1);
+  });
+
+  test("部分失败重试：agent_rounds 已落、messages 未落时复用 round_id", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("partial-retry");
+    // 模拟上轮写入部分失败：agent_rounds 行已落（带 dedup_key），messages 拆行未落
+    const preexistingRoundId = `round_manual_${ns}`;
+    await db.sequelize.query(`
+      INSERT INTO agent_rounds
+        (id, request_id, round_no, dedup_key, stop_reason, \`usage\`, latency_ms,
+         folded, folded_range, record_json, ts, created_at)
+      VALUES
+        (:id, :runId, :roundNo, :dedupKey, NULL, NULL, NULL,
+         b'0', NULL, NULL, :ts, :now)
+    `, {
+      replacements: {
+        id: preexistingRoundId,
+        runId: id,
+        roundNo: ROUND_1.round,
+        dedupKey: ROUND_1.dedupKey,
+        ts: ROUND_1.ts,
+        now: new Date(),
+      },
+    });
+
+    // 重试完整 record：必须复用已存在 round_id，messages 落到其下
+    await store.appendRound(id, ROUND_1);
+
+    const [rounds] = await db.sequelize.query(
+      "SELECT * FROM agent_rounds WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(rounds.length, 1, "不产生第二个 agent_rounds 行");
+    assert.equal(rounds[0].id, preexistingRoundId, "复用已存在的 round_id");
+
+    const [messages] = await db.sequelize.query(
+      "SELECT * FROM messages WHERE request_id = :id ORDER BY sequence_no ASC",
+      { replacements: { id } },
+    );
+    assert.equal(messages.length, 1, "拆行落到已存在 round 下且行数正确");
+    assert.equal(messages[0].round_id, preexistingRoundId);
+    assert.equal(messages[0].content, "inspect files");
+
+    const [toolCalls] = await db.sequelize.query(
+      "SELECT * FROM chat_tool_calls WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(toolCalls.length, 1);
+    assert.equal(toolCalls[0].round_id, preexistingRoundId);
+
+    // load() 重组与输入等价
+    const loaded = await store.load(id);
+    assert.equal(loaded.length, 1);
+    assert.deepEqual(loaded[0].messages, ROUND_1.messages);
+
+    // 再次重试同一 record：仍幂等
+    await store.appendRound(id, ROUND_1);
+    const [again] = await db.sequelize.query(
+      "SELECT COUNT(*) AS n FROM messages WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(again[0].n, 1);
   });
 
   test("reasoning/folded/foldedPayload 往返", async () => {
