@@ -9,7 +9,6 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 |---|---|---|
 | `model-config-provider.js` | ModelConfigProvider | `ai_models` + `providers` 表（经 lib/db.js） |
 | `transcript-store.js` | TranscriptStore | `agent_rounds`/`messages`/`chat_tool_calls` 三层拆行（issue #1134，sequelize 参数化 raw query） |
-| `message-converter.js` | OpenAI ↔ canonical 双向转换 | 纯函数，无 DB 依赖 |
 | `provider-adapter.js` | erix Provider (`chatStream`/`chat`) | `LLMClient.callStream`/`call`，纯桥接 |
 
 ## 与 erix-agent 0.3.5 的行为变化（touwaka 侧知悉项）
