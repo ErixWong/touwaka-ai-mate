@@ -52,12 +52,13 @@ function createFakeProvider(responses) {
 }
 
 function createRecordingStore() {
+  // erix 0.12.0（#78 capability 分级）：snapshot 新名为 saveRunSnapshot，
+  // checkpoint 旧名为兼容回退；这里实现全量面供调用观测。
   const calls = {
     appendRound: [],
     load: [],
-    saveCheckpoint: [],
-    appendCheckpoint: [],
-    loadLatestCheckpoint: [],
+    saveRunSnapshot: [],
+    loadLatestRunSnapshot: [],
     saveRunState: [],
     loadRunState: [],
     markRunState: [],
@@ -71,9 +72,8 @@ function createRecordingStore() {
     store: {
       appendRound: record("appendRound", async () => {}),
       load: record("load", async () => []),
-      saveCheckpoint: record("saveCheckpoint", async () => {}),
-      appendCheckpoint: record("appendCheckpoint", async () => {}),
-      loadLatestCheckpoint: record("loadLatestCheckpoint", async () => undefined),
+      saveRunSnapshot: record("saveRunSnapshot", async () => {}),
+      loadLatestRunSnapshot: record("loadLatestRunSnapshot", async () => undefined),
       saveRunState: record("saveRunState", async () => {}),
       loadRunState: record("loadRunState", async () => undefined),
       markRunState: record("markRunState", async () => {}),
@@ -168,11 +168,11 @@ test("builds an erix loop with structured tool execution and canonical results",
   assert.equal(events.at(-1).stopReason, "end_turn");
 
   assert.ok(store.calls.appendRound.length > 0);
-  assert.ok(store.calls.saveCheckpoint.length > 0);
+  assert.ok(store.calls.saveRunSnapshot.length > 0);
   assert.ok(store.calls.markRunState.length > 0);
   for (const args of [
     ...store.calls.appendRound,
-    ...store.calls.saveCheckpoint,
+    ...store.calls.saveRunSnapshot,
     ...store.calls.markRunState,
   ]) {
     assert.equal(args[0], "run-bridge-1");
