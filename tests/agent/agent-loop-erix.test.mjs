@@ -197,6 +197,12 @@ function createScriptedExpertService({
         if (script.content) options.onDelta(script.content);
         if (script.toolCalls) options.onToolCall(script.toolCalls);
       },
+      // erix 0.12 forceFinalIfNeeded（max_rounds_cap 等无终稿场景）走非流式
+      // provider.chat → llmClient.call；生产 LLMClient 始终有 call，fake 补同形实现
+      async call(_modelConfig, _messages) {
+        const script = scripts.at(-1) || {};
+        return { content: script.content ?? '任务完成 forced final' };
+      },
     },
     toolManager: {
       formatToolDisplay(toolId) {

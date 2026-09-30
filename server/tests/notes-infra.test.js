@@ -196,12 +196,14 @@ describe('DbNoteRecordStore', () => {
 });
 
 describe('ErixNotesStoreAdapter', () => {
-  it('implements exactly the erix 5-method port and nothing amphibious', async () => {
+  it('implements exactly the erix 0.12.0 port and nothing amphibious', async () => {
     const { store } = makeStore();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
     const adapter = new ErixNotesStoreAdapter({ store, scopeRef });
 
-    for (const method of ['write', 'read', 'list', 'complete', 'janitor']) {
+    // erix 0.12.0 assertNotesStore 要求 write/read/list/complete/revoke/purge；
+    // janitor 为 0.10 兼容保留（0.12.0 已用 purge 取代）
+    for (const method of ['write', 'read', 'list', 'complete', 'revoke', 'purge', 'janitor']) {
       expect(typeof adapter[method], method).to.equal('function');
     }
     expect(typeof adapter.take).to.equal('undefined');
@@ -235,6 +237,19 @@ describe('ErixNotesStoreAdapter', () => {
     expect(rowOf(db, scopeRef, 'k1')).to.equal(null);
     // read 返回 missing（物理删除，无 revoked 墓碑可读）
     expect(await adapter.read({ scope: 'run', scopeRef, key: 'k1' })).to.equal(undefined);
+  });
+
+  it('revoke physically deletes via CAS (note_forget single revoke path, erix 0.12.0)', async () => {
+    const { db, store } = makeStore();
+    const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
+    const adapter = new ErixNotesStoreAdapter({ store, scopeRef });
+
+    expect((await adapter.revoke({ scope: 'run', scopeRef, key: 'missing' })).status).to.equal('missing');
+
+    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+    expect((await adapter.revoke({ scope: 'run', scopeRef, key: 'k1' }))).to.deep.equal({ status: 'found', revoked: 1 });
+    expect(await store.read(scopeRef, 'k1')).to.equal(undefined);
+    expect(rowOf(db, scopeRef, 'k1')).to.equal(null);
   });
 
   it('is a defensive no-op for complete/janitor (no lifecycle side effects)', async () => {
