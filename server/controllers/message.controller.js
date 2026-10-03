@@ -14,6 +14,18 @@
 import logger from '../../lib/logger.js';
 import { Op } from 'sequelize';
 
+// 工具结果摘要阈值（字符数），与 chat-service.saveToolMessage 保持一致
+const TOOL_RESULT_SUMMARY_THRESHOLD = 5000;
+
+// 与 chat-service.buildToolResultSummary 同构的摘要文本（虚拟行 id 无法被
+// recall detail 解析——正身经 chat_tool_calls 存储，此处仅保持前端展示形状）
+function buildToolResultSummaryText(messageId, toolName, resultLength, isSuccess) {
+  const status = isSuccess ? '成功' : '失败';
+  return `工具: ${toolName}
+结果: ${resultLength} 字符 | ${status}
+→ 调用 recall({ mode: 'messages', action: 'detail', message_id: "${messageId}" }) 获取完整结果`;
+}
+
 class MessageController {
   constructor(db) {
     this.db = db;
@@ -126,18 +138,25 @@ class MessageController {
     const offset = (page - 1) * size;
     const displayOrder = this.normalizeMessageSort(queryRequest.sort);
     const pageWindow = pagination.window === 'absolute' ? 'absolute' : 'latest';
-    const queryOrder = pageWindow === 'latest' ? this.reverseSortOrder(displayOrder) : displayOrder;
 
-    const { count, rows } = await this.Message.findAndCountAll({
-      where: this.buildMessageWhere(filter, userId),
+    // issue #1134 D3-i：erix 路径停写 role=tool 行，工具输出正身唯一存
+    // chat_tool_calls.result_json。列表查询按页作用域内 distinct request_id 聚合
+    // chat_tool_calls，合成与 saveToolMessage 现有 role=tool 行逐字段同形状的
+    // 虚拟行（存量 role=tool 行原样保留，二者归并排序；count 计入合成行）。
+    const where = this.buildMessageWhere(filter, userId);
+    const matchedRows = await this.Message.findAll({
+      where,
       attributes: this.getMessageListAttributes(),
-      order: queryOrder,
-      limit: size,
-      offset,
+      order: displayOrder,
       raw: true,
     });
-
-    const sortedRows = [...rows].sort((a, b) => {
+    const mergedRows = await this.mergeToolCallRows(matchedRows, {
+      userId,
+      expertId: filter.expert_id ?? fallbackExpertId ?? null,
+      includeToolRows: !filter.role || filter.role === 'tool',
+    });
+    // 归并后按展示顺序全量排序（合成行的 created_at/id 参与比较）
+    const compareRows = (a, b) => {
       for (const [field, direction] of displayOrder) {
         const aValue = field === 'created_at' ? new Date(a[field]).getTime() : String(a[field] || '');
         const bValue = field === 'created_at' ? new Date(b[field]).getTime() : String(b[field] || '');
@@ -145,10 +164,20 @@ class MessageController {
         if (aValue > bValue) return direction === 'ASC' ? 1 : -1;
       }
       return 0;
-    });
+    };
+    mergedRows.sort(compareRows);
+
+    const count = mergedRows.length;
+    // 内存分页：latest 窗口取末尾页（与原 DESC + offset 语义一致），absolute 从头切片
+    const end = count - offset;
+    const pageRows = pageWindow === 'latest'
+      ? (end <= 0 ? [] : mergedRows.slice(Math.max(0, end - size), end))
+      : mergedRows.slice(offset, offset + size);
+
+    const sortedRows = [...pageRows].sort(compareRows);
 
     const pages = Math.ceil(count / size);
-    const latestRow = rows.reduce((latest, row) => {
+    const latestRow = pageRows.reduce((latest, row) => {
       if (!latest) return row;
       const latestTime = new Date(latest.created_at).getTime();
       const rowTime = new Date(row.created_at).getTime();
@@ -176,6 +205,73 @@ class MessageController {
         },
       },
     };
+  }
+
+  /**
+   * issue #1134 D3-i：聚合 chat_tool_calls 合成等价 role=tool 虚拟行。
+   * 字段形状对齐 saveToolMessage 落库行（content 摘要阈值 5000、tool_calls JSON
+   * 键集一致）；chat_tool_calls 没有的字段如实缺：topic_id=null、context=null、
+   * latency_ms=null、arguments 取 input_json。
+   */
+  async mergeToolCallRows(messageRows, { userId, expertId, includeToolRows }) {
+    if (!includeToolRows) return messageRows;
+    const requestIds = [...new Set(
+      messageRows.map((row) => row.request_id).filter(Boolean),
+    )];
+    if (requestIds.length === 0) return messageRows;
+
+    // agent_rounds/chat_tool_calls 模型未挂进 init-models（models/ 禁手改），走 raw query
+    const [toolCalls] = await this.db.sequelize.query(`
+      SELECT tool_use_id, request_id, round_id, name, input_json, result_json, is_error, created_at
+      FROM chat_tool_calls
+      WHERE request_id IN (:requestIds)
+      ORDER BY created_at ASC, tool_use_id ASC
+    `, { replacements: { requestIds } });
+    if (toolCalls.length === 0) return messageRows;
+
+    const synthesized = toolCalls.map((call) => {
+      const result = this.safeParseJSON(call.result_json) ?? '';
+      const resultText = typeof result === 'string' ? result : JSON.stringify(result);
+      const resultLength = resultText.length;
+      const hasImage = resultText.includes('data:image/');
+      const virtualId = `toolcall_${call.tool_use_id}`;
+
+      let content = resultText;
+      if (resultLength > TOOL_RESULT_SUMMARY_THRESHOLD) {
+        content = buildToolResultSummaryText(virtualId, call.name, resultLength, !call.is_error);
+      }
+
+      return {
+        id: virtualId,
+        request_id: call.request_id,
+        expert_id: expertId,
+        user_id: userId,
+        topic_id: null,
+        role: 'tool',
+        content,
+        reasoning_content: null,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        inner_voice: null,
+        tool_calls: JSON.stringify({
+          tool_call_id: call.tool_use_id,
+          name: call.name,
+          arguments: this.safeParseJSON(call.input_json) ?? null,
+          success: !call.is_error,
+          duration: call.duration_ms ?? 0,
+          timestamp: new Date(call.created_at).toISOString(),
+          context: null,
+          result_length: resultLength,
+          has_image: hasImage,
+          ...(resultLength > TOOL_RESULT_SUMMARY_THRESHOLD ? { result: resultText } : {}),
+        }),
+        error_info: null,
+        created_at: call.created_at,
+        latency_ms: null,
+      };
+    });
+
+    return [...messageRows, ...synthesized];
   }
 
   /**

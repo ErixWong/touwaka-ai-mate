@@ -1,9 +1,18 @@
+/**
+ * touwaka TranscriptStore v2 拆行行为测试（真实 MariaDB）
+ *
+ * issue #1134 T2：跨轮 tool_use/tool_result 配对 UPSERT、requestContext 归属、
+ * multimodal/reasoning 列映射、createErixStore（loop-bridge）最小方法面。
+ *
+ * 凭据：~/.config/mcp/creds/touwaka-test-db.json（600，不入库）；缺失则 skip。
+ */
+
 import { test, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { homedir } from "os";
 
 // logs/ 目录当前是 root 属主，避免 logger 写文件的权限错误掩盖数据库测试结果。
 import logger from "../../lib/logger.js";
@@ -13,10 +22,9 @@ for (const method of ["info", "warn", "error", "debug"]) {
 
 import Database from "../../lib/db.js";
 import { createTouwakaTranscriptStore } from "../../lib/llm-kit-adapters/transcript-store.js";
+import { createErixStore } from "../../lib/llm-kit-adapters/loop-bridge.js";
 
 const CREDS_PATH = join(homedir(), ".config/mcp/creds/touwaka-test-db.json");
-const TABLE_NAME = "llm_kit_transcripts_meta_test";
-const MODEL_NAME = `llm_kit_transcript_${TABLE_NAME}`;
 
 function loadCreds() {
   try {
@@ -28,7 +36,8 @@ function loadCreds() {
 
 const creds = loadCreds();
 let db = null;
-let Transcript = null;
+let ns = null;
+let UserId = null;
 
 if (creds) {
   db = new Database({
@@ -38,26 +47,40 @@ if (creds) {
     host: creds.host,
     port: creds.port,
   });
-
   await db.connect();
-  await db.sequelize.query(`
-    CREATE TABLE IF NOT EXISTS llm_kit_run_state (
-      run_id VARCHAR(128) NOT NULL,
-      state TEXT NULL,
-      checkpoint JSON NULL,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (run_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  const setupStore = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
-  Transcript = db.sequelize.models[MODEL_NAME];
-  await setupStore.sync({ force: true });
+  ns = randomUUID().slice(0, 8);
+  const [user] = await db.sequelize.query("SELECT id FROM users LIMIT 1");
+  UserId = user?.[0]?.id ?? "u_meta";
+}
+
+const requestContext = {
+  topic_id: null,
+  user_id: UserId ?? "u_meta",
+  expert_id: null, // experts 表 FK：测试库 experts 可能为空，归属映射由 contract 测试覆盖
+};
+
+async function cleanup() {
+  if (!db) return;
+  // agent_rounds/chat_tool_calls 未挂进 init-models（models/ 禁手改），走 raw query
+  const [rounds] = await db.sequelize.query(
+    "SELECT id FROM agent_rounds WHERE request_id LIKE :pattern",
+    { replacements: { pattern: `run-${ns}-%` } },
+  );
+  const roundIds = rounds.map((row) => row.id);
+  if (roundIds.length > 0) {
+    await db.sequelize.query("DELETE FROM messages WHERE round_id IN (:roundIds)", { replacements: { roundIds } });
+    await db.sequelize.query("DELETE FROM chat_tool_calls WHERE round_id IN (:roundIds)", { replacements: { roundIds } });
+  }
+  await db.sequelize.query("DELETE FROM agent_rounds WHERE request_id LIKE :pattern", { replacements: { pattern: `run-${ns}-%` } });
+}
+
+function runId(label) {
+  return `run-${ns}-${label}`;
 }
 
 after(async () => {
   if (!db) return;
-
-  await Transcript.drop();
+  await cleanup();
   if (typeof db.close === "function") {
     await db.close();
   } else if (db.sequelize) {
@@ -66,232 +89,255 @@ after(async () => {
 });
 
 if (!creds) {
-  test("touwaka TranscriptStore v2 元数据（真实 MariaDB）", {
+  test("touwaka TranscriptStore v2 拆行行为（真实 MariaDB）", {
     skip: `缺少凭据 ${CREDS_PATH}`,
   }, () => {});
 } else {
-  beforeEach(async () => {
-    await Transcript.destroy({ truncate: true });
-  });
+  beforeEach(cleanup);
 
-  test("appendRound 写入并由 loadWithMeta 读回元数据", async () => {
-    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
-    const meta = {
-      topicId: "topic-meta",
-      userId: "user-meta",
-      expertId: "expert-meta",
-      modelName: "model-meta",
-      providerName: "provider-meta",
-      usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0.1 },
-      latencyMs: 123,
-      errorInfo: { retryable: true },
-      isDeleted: false,
-    };
-
-    await store.appendRound("run-meta", {
+  test("tool_use 轮 N / tool_result 轮 N+1 落同一行并更新 is_error", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("pairing");
+    // 模拟乱序容忍的常规形态：round 1 assistant 发 tool_use，round 2 user 消息带 tool_result
+    await store.appendRound(id, {
       round: 1,
-      ts: "2026-08-29T10:00:00.000Z",
-      messages: [{ role: "assistant", content: [{ type: "text", text: "ok" }] }],
-    }, meta);
-
-    const loaded = await store.loadWithMeta("run-meta");
-    assert.deepEqual(loaded[0].meta, meta);
-  });
-
-  test("appendRound 按 run_id/round 幂等并保留首条", async () => {
-    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
-    const runId = "run-idempotent";
-    const first = {
-      round: 1,
-      ts: "2026-08-29T10:00:00.000Z",
-      messages: [{ role: "assistant", content: [{ type: "text", text: "first" }] }],
-    };
-    const second = {
-      round: 1,
-      ts: "2026-08-29T10:00:01.000Z",
-      messages: [{ role: "assistant", content: [{ type: "text", text: "second" }] }],
-    };
-
-    await store.appendRound(runId, first, {
-      topicId: "topic-first",
+      ts: "2026-08-29T00:00:00.000Z",
+      messages: [
+        { role: "user", content: [{ type: "text", text: "go" }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "tc-1", name: "bash", input: { cmd: "ls" } }] },
+      ],
     });
-    await assert.doesNotReject(() => store.appendRound(runId, second, {
-      topicId: "topic-second",
-    }));
-
-    const loaded = await store.loadWithMeta(runId);
-    assert.equal(loaded.length, 1);
-    assert.equal(loaded[0].ts, first.ts);
-    assert.deepEqual(loaded[0].messages, first.messages);
-    assert.equal(loaded[0].meta.topicId, "topic-first");
-  });
-
-  test("appendRound 持久化并还原 judge record 快照", async () => {
-    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
-    const record = {
+    await store.appendRound(id, {
       round: 2,
-      ts: "2026-08-29T10:00:01.000Z",
-      folded: true,
-      messages: [{ role: "assistant", content: [{ type: "text", text: "done" }] }],
-      foldedPayload: [{ role: "user", content: "folded" }],
-      judge: {
-        done: true,
-        confidence: 0.98,
-        reason: "完成目标",
-        evidence: ["工具返回成功", "结果已确认"],
-        direction: "wrapup",
-        directionReason: "无需继续调用工具",
-      },
-      summary: "已完成任务",
-      l0facts: ["用户要求已满足"],
-      wrapup: { status: "completed", reason: "judge_done" },
-      response: "任务已完成",
-      textPreview: "任务已完成",
-      toolUses: [{ name: "finish", success: true }],
-      roundKey: "round-2",
-      dedupKey: "dedup-round-2",
-      meta: {
-        topicId: "topic-judge",
-        userId: "user-judge",
-        expertId: "expert-judge",
-        modelName: "model-judge",
-        providerName: "provider-judge",
-        usage: { prompt_tokens: 20, completion_tokens: 8, cost: 0.2 },
-        latencyMs: 456,
-        errorInfo: { retryable: false },
-        isDeleted: false,
-      },
-    };
-
-    await store.appendRound("run-judge", record);
-
-    const [rawRow] = await db.sequelize.query(`
-      SELECT
-        record_json,
-        JSON_TYPE(record_json) AS record_json_type,
-        JSON_EXTRACT(record_json, '$.judge') AS judge_json
-      FROM ${TABLE_NAME}
-      WHERE run_id = ? AND round = ?
-    `, {
-      replacements: ["run-judge", record.round],
+      ts: "2026-08-29T00:00:10.000Z",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "tc-1", content: "boom", is_error: true }],
+        },
+        { role: "assistant", content: [{ type: "text", text: "fixing" }] },
+      ],
     });
-    assert.equal(rawRow.length, 1);
-    const rawRecordJson = rawRow[0].record_json;
-    const parsedRecordJson = typeof rawRecordJson === "string"
-      ? JSON.parse(rawRecordJson)
-      : rawRecordJson;
-    assert.equal(rawRow[0].record_json_type, "OBJECT");
-    assert.equal(
-      typeof parsedRecordJson,
-      "object",
-      "record_json must be stored as a JSON object, not a JSON-encoded string",
+
+    const [rows] = await db.sequelize.query(
+      "SELECT * FROM chat_tool_calls WHERE request_id = :id",
+      { replacements: { id } },
     );
-    assert.notEqual(parsedRecordJson, null);
-    assert.deepEqual(parsedRecordJson.judge, record.judge);
-    const judgeFromJsonPath = typeof rawRow[0].judge_json === "string"
-      ? JSON.parse(rawRow[0].judge_json)
-      : rawRow[0].judge_json;
-    assert.deepEqual(judgeFromJsonPath, record.judge);
+    assert.equal(rows.length, 1, "同一 tool_use_id 只有一行（全生命周期）");
+    assert.equal(rows[0].name, "bash");
+    assert.equal(JSON.parse(rows[0].input_json).cmd, "ls");
+    assert.equal(JSON.parse(rows[0].result_json), "boom");
+    assert.equal(Boolean(rows[0].is_error), true);
 
-    const [loaded] = await store.load("run-judge");
-    const [loadedWithMeta] = await store.loadWithMeta("run-judge");
-    for (const value of [loaded, loadedWithMeta]) {
-      assert.deepEqual(value.judge, record.judge);
-      assert.deepEqual(value.summary, record.summary);
-      assert.deepEqual(value.l0facts, record.l0facts);
-      assert.deepEqual(value.wrapup, record.wrapup);
-      assert.deepEqual(value.response, record.response);
-      assert.deepEqual(value.textPreview, record.textPreview);
-      assert.deepEqual(value.toolUses, record.toolUses);
-      assert.equal(value.roundKey, record.roundKey);
-      assert.equal(value.dedupKey, record.dedupKey);
-    }
-    assert.equal(Object.hasOwn(loaded, "meta"), false);
-    assert.deepEqual(loadedWithMeta.meta, record.meta);
-    assert.deepEqual(loaded.messages, record.messages);
-    assert.deepEqual(loaded.foldedPayload, record.foldedPayload);
-    assert.deepEqual(loadedWithMeta.messages, record.messages);
-    assert.deepEqual(loadedWithMeta.foldedPayload, record.foldedPayload);
-  });
+    // round_id 保持 tool_use 发生轮
+    const [rounds] = await db.sequelize.query(
+      "SELECT * FROM agent_rounds WHERE request_id = :id ORDER BY round_no ASC",
+      { replacements: { id } },
+    );
+    assert.equal(rows[0].round_id, rounds[0].id);
 
-  test("load 保持纯净，不返回 meta", async () => {
-    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
-    await store.appendRound("run-clean", {
-      round: 1,
-      ts: "2026-08-29T10:01:00.000Z",
-      messages: [{ role: "user", content: [{ type: "text", text: "clean" }] }],
-    }, {
-      topicId: "topic-clean",
-      userId: "user-clean",
-      isDeleted: true,
-    });
-
-    const [loaded] = await store.load("run-clean");
-    assert.deepEqual(loaded, {
-      round: 1,
-      ts: "2026-08-29T10:01:00.000Z",
-      folded: false,
-      messages: [{ role: "user", content: [{ type: "text", text: "clean" }] }],
-    });
-    assert.equal(Object.hasOwn(loaded, "meta"), false);
-  });
-
-  test("findByTopic 过滤、按 run_id/round 排序并支持 limit", async () => {
-    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
-    const record = (round, text) => ({
-      round,
-      ts: `2026-08-29T10:0${round}:00.000Z`,
-      messages: [{ role: "assistant", content: [{ type: "text", text }] }],
-    });
-
-    await store.appendRound("run-b", record(1, "b"), {
-      topicId: "topic-target",
-      userId: "user-target",
-    });
-    await store.appendRound("run-a", record(3, "a3"), {
-      topicId: "topic-target",
-      userId: "user-target",
-    });
-    await store.appendRound("run-a", record(1, "a1"), {
-      topicId: "topic-target",
-      userId: "user-target",
-    });
-    await store.appendRound("run-z", record(1, "other"), {
-      topicId: "topic-other",
-      userId: "user-other",
-    });
-
-    const found = await store.findByTopic("topic-target");
-    assert.deepEqual(found.map((item) => item.messages[0].content[0].text), ["a1", "a3", "b"]);
-    assert.deepEqual(found.map((item) => item.meta.topicId), [
-      "topic-target",
-      "topic-target",
-      "topic-target",
+    // load 重组：round 1 还原 assistant tool_use；tool_result 属 round 1（tool_use 轮）
+    const loaded = await store.load(id);
+    assert.deepEqual(loaded[0].messages, [
+      { role: "user", content: [{ type: "text", text: "go" }] },
+      { role: "assistant", content: [{ type: "tool_use", id: "tc-1", name: "bash", input: { cmd: "ls" } }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "tc-1", content: "boom", is_error: true }] },
     ]);
-
-    const limited = await store.findByTopic("topic-target", { limit: 2 });
-    assert.deepEqual(limited.map((item) => item.messages[0].content[0].text), ["a1", "a3"]);
+    assert.deepEqual(loaded[1].messages, [
+      { role: "assistant", content: [{ type: "text", text: "fixing" }] },
+    ]);
   });
 
-  test("checkpoint 保存、追加覆盖并可读回，run state 写入不抛错", async () => {
-    const store = createTouwakaTranscriptStore({ db, tableName: TABLE_NAME });
-    const runId = `run-checkpoint-${randomUUID()}`;
-    const checkpoint = {
+  test("乱序容忍：tool_result 先于 tool_use 到达也能配对", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("reorder");
+    await store.appendRound(id, {
+      round: 1,
+      ts: "2026-08-29T00:00:00.000Z",
+      messages: [
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "tc-9", content: "early result" }] },
+      ],
+    });
+    await store.appendRound(id, {
       round: 2,
-      messages: [{ role: "assistant", content: "first" }],
-    };
-    const replacement = {
-      round: 3,
-      messages: [{ role: "assistant", content: "replacement" }],
-    };
+      ts: "2026-08-29T00:00:10.000Z",
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "tc-9", name: "note_read", input: {} }] },
+      ],
+    });
 
-    assert.equal(await store.loadLatestCheckpoint(runId), undefined);
-    await store.markRunState(runId, "running");
-    await store.saveCheckpoint(runId, checkpoint);
-    assert.deepEqual(await store.loadLatestCheckpoint(runId), checkpoint);
+    const [rows] = await db.sequelize.query(
+      "SELECT * FROM chat_tool_calls WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(JSON.parse(rows[0].result_json), "early result");
+    assert.equal(rows[0].name, "note_read");
 
-    await store.appendCheckpoint(runId, replacement);
-    assert.deepEqual(await store.loadLatestCheckpoint(runId), replacement);
-    assert.equal(await store.loadLatestCheckpoint(`run-missing-${randomUUID()}`), undefined);
+    const loaded = await store.load(id);
+    // 乱序场景的归属取舍：整行（tool_use + tool_result 生命周期）挂先到达轮
+    // （round 1），load 在该轮重组出完整配对；后到的 tool_use 不再挪窝
+    assert.deepEqual(loaded[0].messages, [
+      { role: "assistant", content: [{ type: "tool_use", id: "tc-9", name: "note_read", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "tc-9", content: "early result" }] },
+    ]);
+    assert.deepEqual(loaded[1].messages, []);
+  });
+
+  test("多 tool_use 同行配对：assistant 消息 content 尾追加全部 tool_use 块", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("multi");
+    await store.appendRound(id, {
+      round: 1,
+      ts: "2026-08-29T00:00:00.000Z",
+      messages: [
+        { role: "user", content: [{ type: "text", text: "double" }] },
+        { role: "assistant", content: [
+          { type: "text", text: "calling two" },
+          { type: "tool_use", id: "m1", name: "a", input: { n: 1 } },
+          { type: "tool_use", id: "m2", name: "b", input: { n: 2 } },
+        ] },
+        { role: "user", content: [
+          { type: "tool_result", tool_use_id: "m1", content: "r1" },
+          { type: "tool_result", tool_use_id: "m2", content: "r2" },
+        ] },
+      ],
+    });
+
+    const loaded = await store.load(id);
+    assert.deepEqual(loaded[0].messages, [
+      { role: "user", content: [{ type: "text", text: "double" }] },
+      { role: "assistant", content: [
+        { type: "text", text: "calling two" },
+        { type: "tool_use", id: "m1", name: "a", input: { n: 1 } },
+        { type: "tool_use", id: "m2", name: "b", input: { n: 2 } },
+      ] },
+      { role: "user", content: [
+        { type: "tool_result", tool_use_id: "m1", content: "r1" },
+        { type: "tool_result", tool_use_id: "m2", content: "r2" },
+      ] },
+    ]);
+  });
+
+  test("reasoning/multimodal 列映射与还原（D2-i 兼容形态）", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("blocks");
+    await store.appendRound(id, {
+      round: 1,
+      ts: "2026-08-29T00:00:00.000Z",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "look:" },
+            { type: "reasoning", text: "hmm" },
+            { type: "image", image_url: { url: "https://example.com/a.png" } },
+          ],
+        },
+      ],
+    });
+
+    const [rounds] = await db.sequelize.query(
+      "SELECT * FROM agent_rounds WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    const [rows] = await db.sequelize.query(
+      "SELECT * FROM messages WHERE round_id = :roundId",
+      { replacements: { roundId: rounds[0].id } },
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].reasoning_content, "hmm");
+    const content = JSON.parse(rows[0].content);
+    assert.equal(content.type, "multimodal");
+    assert.deepEqual(content.content[0], { type: "text", text: "look:" });
+    assert.deepEqual(content.content[1], { type: "image", image_url: { url: "https://example.com/a.png" } });
+
+    const loaded = await store.load(id);
+    assert.deepEqual(loaded[0].messages, [
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "look:" },
+          { type: "image", image_url: { url: "https://example.com/a.png" } },
+          { type: "reasoning", text: "hmm" },
+        ],
+      },
+    ]);
+  });
+
+  test("reasoning-only assistant 行 content 落空串（NOT NULL）且可往返", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("reasoning-only");
+    // 真机缺陷 2 形态：只带 reasoning 块（无文本/多模态）→ content 计算为 null，
+    // 原实现直接插行触发 "Column 'content' cannot be null" → appendRound 抛
+    // persistence_failed，整个 run 终止。
+    await store.appendRound(id, {
+      round: 1,
+      ts: "2026-08-29T00:00:00.000Z",
+      messages: [
+        { role: "assistant", content: [{ type: "reasoning", text: "只思考不出话" }] },
+      ],
+    });
+    // 同消息还有 tool_use 的形态（思考后调工具）
+    await store.appendRound(id, {
+      round: 2,
+      ts: "2026-08-29T00:00:10.000Z",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "边想边调工具" },
+            { type: "tool_use", id: "ro-1", name: "bash", input: { cmd: "ls" } },
+          ],
+        },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "ro-1", content: "ok" }] },
+      ],
+    });
+
+    const [rounds] = await db.sequelize.query(
+      "SELECT id FROM agent_rounds WHERE request_id = :id ORDER BY round_no ASC",
+      { replacements: { id } },
+    );
+    const [rows] = await db.sequelize.query(
+      "SELECT * FROM messages WHERE round_id = :roundId",
+      { replacements: { roundId: rounds[0].id } },
+    );
+    assert.equal(rows.length, 1, "reasoning-only 消息仍插 1 行");
+    assert.equal(rows[0].content, "", "content 落空串满足 NOT NULL");
+    assert.equal(rows[0].reasoning_content, "只思考不出话");
+
+    const loaded = await store.load(id);
+    assert.deepEqual(loaded[0].messages, [
+      { role: "assistant", content: [{ type: "reasoning", text: "只思考不出话" }] },
+    ]);
+    assert.deepEqual(loaded[1].messages, [
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "边想边调工具" },
+          { type: "tool_use", id: "ro-1", name: "bash", input: { cmd: "ls" } },
+        ],
+      },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "ro-1", content: "ok" }] },
+    ]);
+  });
+
+  test("requestContext 缺失时 user_id 落 NULL 以外的不报错路径（erix 直调）", async () => {
+    // createErixStore 不传 requestContext：messages.user_id 为 NULL 会触发
+    // NOT NULL 约束——erix 运行时调用点（agent-loop）必定注入；这里验证的是
+    // 无工具轮（无 messages 拆行）时缺 requestContext 也能正常工作。
+    const store = createErixStore({ db });
+    assert.deepEqual(Object.keys(store).sort(), ["appendRound", "load"]);
+    const id = runId("noctx");
+    await store.appendRound(id, {
+      round: 1,
+      ts: "2026-08-29T00:00:00.000Z",
+      messages: [{ role: "assistant", content: [{ type: "tool_use", id: "x1", name: "noop", input: {} }] }],
+    });
+    const loaded = await store.load(id);
+    assert.equal(loaded.length, 1);
+    assert.deepEqual(loaded[0].messages, [
+      { role: "assistant", content: [{ type: "tool_use", id: "x1", name: "noop", input: {} }] },
+    ]);
   });
 }

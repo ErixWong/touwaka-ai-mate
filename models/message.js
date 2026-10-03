@@ -110,9 +110,19 @@ export default class message extends Model {
       defaultValue: false
     },
     created_at: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATE(3),
       allowNull: true,
-      defaultValue: Sequelize.Sequelize.fn('current_timestamp')
+      defaultValue: "current_timestamp(3)"
+    },
+    round_id: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      comment: "关联 agent_rounds.id（存量行为 NULL 合法）"
+    },
+    sequence_no: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "round 内消息序号"
     }
   }, {
     sequelize,
@@ -168,6 +178,13 @@ export default class message extends Model {
         using: "BTREE",
         fields: [
           { name: "request_id" },
+        ]
+      },
+      {
+        name: "idx_messages_round",
+        using: "BTREE",
+        fields: [
+          { name: "round_id" },
         ]
       },
     ]

@@ -3979,54 +3979,6 @@ const MIGRATIONS = [
     }
   },
 
-  // ==================== erix-agent TranscriptStore transcripts ====================
-  {
-    name: 'llm_kit_transcripts table create',
-    check: async (conn) => await hasTable(conn, 'llm_kit_transcripts'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE IF NOT EXISTS llm_kit_transcripts (
-          run_id VARCHAR(128) NOT NULL,
-          round INT NOT NULL,
-          ts VARCHAR(32) NOT NULL,
-          folded TINYINT(1) NOT NULL DEFAULT 0,
-          messages JSON NOT NULL,
-          folded_payload JSON NULL,
-          record_json JSON NULL,
-          topic_id VARCHAR(64) NULL,
-          user_id VARCHAR(64) NULL,
-          expert_id VARCHAR(64) NULL,
-          model_name VARCHAR(128) NULL,
-          provider_name VARCHAR(128) NULL,
-          \`usage\` JSON NULL,
-          latency_ms INT NULL,
-          error_info JSON NULL,
-          is_deleted TINYINT(1) NOT NULL DEFAULT 0,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (run_id, round),
-          KEY idx_llm_kit_transcripts_topic_id (topic_id),
-          KEY idx_llm_kit_transcripts_user_id (user_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `);
-      console.log('  ✓ Created llm_kit_transcripts table');
-    }
-  },
-
-  // ==================== erix-agent TranscriptStore record snapshot ====================
-  {
-    name: 'llm_kit_transcripts.record_json column add',
-    check: async (conn) => {
-      if (!await hasTable(conn, 'llm_kit_transcripts')) return true;
-      return await hasColumn(conn, 'llm_kit_transcripts', 'record_json');
-    },
-    migrate: async (conn) => {
-      await conn.execute(`
-        ALTER TABLE llm_kit_transcripts
-        ADD COLUMN record_json JSON NULL AFTER folded_payload
-      `);
-      console.log('  ✓ Added record_json column to llm_kit_transcripts table');
-    }
-  },
   {
     name: 'messages.created_at 时间精度提升到毫秒',
     check: async (conn) => {
@@ -4071,6 +4023,118 @@ const MIGRATIONS = [
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
       console.log('  ✓ Created note_record table');
+    }
+  },
+
+  // ==================== Agent 持久化三层物化（issue #1134 T1） ====================
+  // run(chat_requests) → round(agent_rounds) → message(messages) + tool_call(chat_tool_calls)
+  // 时间字段一律应用侧写入（禁止 DEFAULT CURRENT_TIMESTAMP）；布尔一律 BIT(1)
+  {
+    name: 'create agent_rounds table',
+    check: async (conn) => await hasTable(conn, 'agent_rounds'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS agent_rounds (
+          id VARCHAR(32) NOT NULL,
+          request_id VARCHAR(64) NOT NULL COMMENT 'erix runId，即 chat_requests.request_id',
+          round_no INT NOT NULL COMMENT '轮次序号',
+          dedup_key VARCHAR(255) NOT NULL COMMENT 'erix RoundRecord.dedupKey，幂等键',
+          stop_reason VARCHAR(64) NULL,
+          \`usage\` JSON NULL,
+          latency_ms INT NULL,
+          folded BIT(1) NOT NULL DEFAULT b'0' COMMENT '是否已折叠（compaction）',
+          folded_range JSON NULL COMMENT '折叠范围',
+          record_json JSON NULL COMMENT 'RoundRecord 其余字段（load() 重组往返保真）',
+          ts VARCHAR(32) NOT NULL COMMENT 'erix record.ts ISO 字符串原样存',
+          created_at DATETIME NOT NULL COMMENT '应用侧写入',
+          PRIMARY KEY (id),
+          UNIQUE KEY uk_agent_rounds_dedup_key (dedup_key),
+          KEY idx_agent_rounds_request (request_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('  ✓ Created agent_rounds table');
+    }
+  },
+  {
+    name: 'create chat_tool_calls table',
+    check: async (conn) => await hasTable(conn, 'chat_tool_calls'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS chat_tool_calls (
+          tool_use_id VARCHAR(128) NOT NULL COMMENT 'provider 生成的 call id',
+          request_id VARCHAR(64) NOT NULL,
+          round_id VARCHAR(32) NOT NULL COMMENT 'agent_rounds.id',
+          name VARCHAR(255) NOT NULL,
+          input_json JSON NULL,
+          result_json JSON NULL COMMENT '工具输出正身唯一存储',
+          is_error BIT(1) NOT NULL DEFAULT b'0',
+          duration_ms INT NULL,
+          created_at DATETIME NOT NULL COMMENT '应用侧写入',
+          PRIMARY KEY (tool_use_id),
+          KEY idx_chat_tool_calls_request (request_id),
+          KEY idx_chat_tool_calls_name (name),
+          KEY idx_chat_tool_calls_is_error (is_error)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('  ✓ Created chat_tool_calls table');
+    }
+  },
+  {
+    name: 'messages.round_id column add',
+    check: async (conn) => await hasColumn(conn, 'messages', 'round_id'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD COLUMN round_id VARCHAR(32) NULL COMMENT '关联 agent_rounds.id（存量行为 NULL 合法）'
+      `);
+      console.log('  ✓ Added messages.round_id column');
+    }
+  },
+  {
+    name: 'messages.sequence_no column add',
+    check: async (conn) => await hasColumn(conn, 'messages', 'sequence_no'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD COLUMN sequence_no INT NULL COMMENT 'round 内消息序号'
+      `);
+      console.log('  ✓ Added messages.sequence_no column');
+    }
+  },
+  {
+    name: 'messages.round_id add index',
+    check: async (conn) => await hasIndex(conn, 'messages', 'idx_messages_round'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD INDEX idx_messages_round (round_id)
+      `);
+      console.log('  ✓ Added messages.idx_messages_round index');
+    }
+  },
+  {
+    // issue #1134 adaptor 幂等：messages 拆行按 (round_id, sequence_no) 逐行幂等，
+    // 重复 appendRound（persist 重试/dedup_key 撞车）不产生孤儿行。
+    // 存量行 round_id 为 NULL，唯一键对 NULL 不冲突，不受影响。
+    name: 'messages uk_messages_round_seq unique key',
+    check: async (conn) => await hasIndex(conn, 'messages', 'uk_messages_round_seq'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD UNIQUE KEY uk_messages_round_seq (round_id, sequence_no)
+      `);
+      console.log('  ✓ Added messages.uk_messages_round_seq unique key');
+    }
+  },
+  // issue #1134 T4：llm_kit_transcripts 直接退役（用户拍板：历史不搬运不归档）。
+  // adaptor 已重写为 agent_rounds/messages/chat_tool_calls 三层拆行，老建表步骤
+  // 已删；本步骤对存量库 DROP 该表，对全新库 check 为 false 自然跳过。
+  {
+    name: 'llm_kit_transcripts table drop（#1134 退役）',
+    check: async (conn) => !(await hasTable(conn, 'llm_kit_transcripts')),
+    migrate: async (conn) => {
+      await conn.execute('DROP TABLE IF EXISTS llm_kit_transcripts');
+      console.log('  ✓ Dropped llm_kit_transcripts table');
     }
   },
 

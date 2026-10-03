@@ -97,6 +97,9 @@ class InternalController {
         expert_id,
         role,
         content,
+        // models/ 再生成 defaultValue 可能漂移（字符串 current_timestamp(3) → Invalid Date）；
+        // 按平台约定时间字段统一由应用侧显式写入
+        created_at: new Date(),
         inner_voice: inner_voice ? (typeof inner_voice === 'string' ? inner_voice : JSON.stringify(inner_voice)) : null,
         tool_calls: tool_calls ? (typeof tool_calls === 'string' ? tool_calls : JSON.stringify(tool_calls)) : null,
       });
