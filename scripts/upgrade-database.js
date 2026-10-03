@@ -3945,40 +3945,6 @@ const MIGRATIONS = [
     }
   },
 
-  // ==================== erix-agent TranscriptStore run state ====================
-  {
-    name: 'llm_kit_run_state table create',
-    check: async (conn) => await hasTable(conn, 'llm_kit_run_state'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE IF NOT EXISTS llm_kit_run_state (
-          run_id VARCHAR(128) NOT NULL,
-          state TEXT NULL,
-          checkpoint JSON NULL,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (run_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `);
-      console.log('  ✓ Created llm_kit_run_state table');
-    }
-  },
-
-  // erix-agent 0.10.0：run state 允许存整段 JSON（stateVersion/deterministic 等），
-  // 存量库从 varchar(32) 无损加宽到 TEXT；生产最长存量值仅 9 字符，ALTER 安全。
-  {
-    name: 'llm_kit_run_state.state column widen to TEXT',
-    check: async (conn) => {
-      if (!await hasTable(conn, 'llm_kit_run_state')) return true;
-      return (await getColumnType(conn, 'llm_kit_run_state', 'state')) === 'text';
-    },
-    migrate: async (conn) => {
-      await conn.execute(
-        'ALTER TABLE llm_kit_run_state MODIFY state TEXT NULL'
-      );
-      console.log('  ✓ Widened llm_kit_run_state.state to TEXT');
-    }
-  },
-
   {
     name: 'messages.created_at 时间精度提升到毫秒',
     check: async (conn) => {
@@ -4135,6 +4101,20 @@ const MIGRATIONS = [
     migrate: async (conn) => {
       await conn.execute('DROP TABLE IF EXISTS llm_kit_transcripts');
       console.log('  ✓ Dropped llm_kit_transcripts table');
+    }
+  },
+  // issue #1134 T5：llm_kit_run_state 直接退役。erix-llm-kit#78 已将 run-state /
+  // run snapshot 降级为可选 capability（adaptor 缺方法只发
+  // persistence_capability_degraded 诊断，run 正常跑）；touwaka 的重试模型是
+  // 「失败即结案、新 request 重跑」，生命周期真相在 chat_requests.status，
+  // 该表无任何读写方，老建表/加宽步骤已删。本步骤对存量库 DROP 该表，
+  // 对全新库 check 为 false 自然跳过。
+  {
+    name: 'llm_kit_run_state table drop（#1134 退役）',
+    check: async (conn) => !(await hasTable(conn, 'llm_kit_run_state')),
+    migrate: async (conn) => {
+      await conn.execute('DROP TABLE IF EXISTS llm_kit_run_state');
+      console.log('  ✓ Dropped llm_kit_run_state table');
     }
   },
 
