@@ -265,6 +265,63 @@ if (!creds) {
     ]);
   });
 
+  test("reasoning-only assistant 行 content 落空串（NOT NULL）且可往返", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("reasoning-only");
+    // 真机缺陷 2 形态：只带 reasoning 块（无文本/多模态）→ content 计算为 null，
+    // 原实现直接插行触发 "Column 'content' cannot be null" → appendRound 抛
+    // persistence_failed，整个 run 终止。
+    await store.appendRound(id, {
+      round: 1,
+      ts: "2026-08-29T00:00:00.000Z",
+      messages: [
+        { role: "assistant", content: [{ type: "reasoning", text: "只思考不出话" }] },
+      ],
+    });
+    // 同消息还有 tool_use 的形态（思考后调工具）
+    await store.appendRound(id, {
+      round: 2,
+      ts: "2026-08-29T00:00:10.000Z",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "边想边调工具" },
+            { type: "tool_use", id: "ro-1", name: "bash", input: { cmd: "ls" } },
+          ],
+        },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "ro-1", content: "ok" }] },
+      ],
+    });
+
+    const [rounds] = await db.sequelize.query(
+      "SELECT id FROM agent_rounds WHERE request_id = :id ORDER BY round_no ASC",
+      { replacements: { id } },
+    );
+    const [rows] = await db.sequelize.query(
+      "SELECT * FROM messages WHERE round_id = :roundId",
+      { replacements: { roundId: rounds[0].id } },
+    );
+    assert.equal(rows.length, 1, "reasoning-only 消息仍插 1 行");
+    assert.equal(rows[0].content, "", "content 落空串满足 NOT NULL");
+    assert.equal(rows[0].reasoning_content, "只思考不出话");
+
+    const loaded = await store.load(id);
+    assert.deepEqual(loaded[0].messages, [
+      { role: "assistant", content: [{ type: "reasoning", text: "只思考不出话" }] },
+    ]);
+    assert.deepEqual(loaded[1].messages, [
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "边想边调工具" },
+          { type: "tool_use", id: "ro-1", name: "bash", input: { cmd: "ls" } },
+        ],
+      },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "ro-1", content: "ok" }] },
+    ]);
+  });
+
   test("requestContext 缺失时 user_id 落 NULL 以外的不报错路径（erix 直调）", async () => {
     // createErixStore 不传 requestContext：messages.user_id 为 NULL 会触发
     // NOT NULL 约束——erix 运行时调用点（agent-loop）必定注入；这里验证的是

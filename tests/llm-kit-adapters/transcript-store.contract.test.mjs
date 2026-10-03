@@ -369,6 +369,108 @@ if (!creds) {
     assert.deepEqual(loaded.map((record) => record.round), [0, 1, 2]);
   });
 
+  // 真机 e2e 缺陷 1：round 0 seed 的 messages 是完整初始上下文（系统技能提示 +
+  // 之前所有历史对话），照常拆行会让每跑一次 run 就多出一整套历史副本。
+  const seedRecord = (id, messages) => ({
+    round: 0,
+    roundKey: `${id}:round:0`,
+    dedupKey: `${id}:engine:round:0:seed`,
+    ts: "2026-08-29T00:00:00.000Z",
+    messages,
+    summary: "missing",
+    l0facts: [],
+  });
+
+  test("seed 轮不物化历史：messages/chat_tool_calls 零新增，record_json 保留 messages", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("seed-no-materialize");
+    const history = [
+      { role: "system", content: [{ type: "text", text: "系统技能提示" }] },
+      { role: "user", content: [{ type: "text", text: "5 天前的问题" }] },
+      { role: "assistant", content: [{ type: "text", text: "5 天前的回答" }, { type: "reasoning", text: "旧思考" }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "old-1", content: "旧工具结果" }] },
+      { role: "assistant", content: [{ type: "tool_use", id: "old-2", name: "bash", input: { cmd: "ls" } }] },
+    ];
+    // 计数在 user_id 之外再按 request_id 收窄：node --test 并行跑多个测试文件时，
+    // 兄弟文件会向同一 user_id 写行，仅按 user_id 计数会假失败；按 request_id 收窄后
+    // 断言仍完整覆盖“seed 把历史复制进 messages”缺陷（旧实现会以 request_id=runId
+    // 多插 history.length 行）。
+    const countRunMessages = async () => {
+      const [rows] = await db.sequelize.query(
+        "SELECT COUNT(*) AS n FROM messages WHERE user_id = :userId AND request_id = :id",
+        { replacements: { userId: requestContext.user_id, id } },
+      );
+      return rows[0].n;
+    };
+    assert.equal(await countRunMessages(), 0, "seed 写入前本 run 无 messages 行");
+
+    await store.appendRound(id, seedRecord(id, history));
+
+    const [rounds] = await db.sequelize.query(
+      "SELECT * FROM agent_rounds WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(rounds.length, 1, "seed 落 1 行 agent_rounds");
+    assert.equal(rounds[0].round_no, 0);
+    assert.equal(rounds[0].dedup_key, `${id}:engine:round:0:seed`);
+    assert.deepEqual(
+      JSON.parse(rounds[0].record_json).messages,
+      history,
+      "seed 的 messages 必须完整保留在 record_json（SUMMARY_FIELDS 例外）",
+    );
+
+    const [messageRows] = await db.sequelize.query(
+      "SELECT * FROM messages WHERE round_id = :roundId",
+      { replacements: { roundId: rounds[0].id } },
+    );
+    assert.equal(messageRows.length, 0, "seed 轮不拆 messages 行");
+    const [toolRows] = await db.sequelize.query(
+      "SELECT * FROM chat_tool_calls WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(toolRows.length, 0, "seed 轮不写 chat_tool_calls");
+    assert.equal(await countRunMessages(), 0, "messages 表本 run 零新增行");
+
+    // load() 还原 seed 轮：messages 与输入等价（原样返回，不合成 tool_use/tool_result）
+    const loaded = await store.load(id);
+    assert.equal(loaded.length, 1);
+    assert.equal(loaded[0].round, 0);
+    assert.deepEqual(loaded[0].messages, history);
+  });
+
+  test("同一 request 连续两次 run（不同 runId）：seed 不复制历史", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const countRunMessages = async (runIds) => {
+      const [rows] = await db.sequelize.query(
+        "SELECT COUNT(*) AS n FROM messages WHERE user_id = :userId AND request_id IN (:runIds)",
+        { replacements: { userId: requestContext.user_id, runIds } },
+      );
+      return rows[0].n;
+    };
+    // 与真机取证同形：system 技能提示 + 多轮历史对话
+    const history = [
+      { role: "system", content: [{ type: "text", text: "系统技能提示" }] },
+      ...Array.from({ length: 5 }, (_, index) => [
+        { role: "user", content: [{ type: "text", text: `历史问题 ${index}` }] },
+        { role: "assistant", content: [{ type: "text", text: `历史回答 ${index}` }] },
+      ]).flat(),
+    ];
+
+    const runIds = [runId("two-runs-a"), runId("two-runs-b")];
+    for (const id of runIds) {
+      await store.appendRound(id, seedRecord(id, history));
+      assert.equal(await countRunMessages(runIds), 0, `run ${id} 的 seed 未向 messages 表复制历史`);
+    }
+
+    // 防回归不能连真轮一起跳过：非 seed 轮照常拆行（旧实现此处会是 1 + 2×11 行）
+    await store.appendRound(runIds[1], ROUND_2);
+    assert.equal(await countRunMessages(runIds), 1, "非 seed 轮照常拆 messages 行");
+    const loaded = await store.load(runIds[1]);
+    assert.deepEqual(loaded.map((record) => record.round), [0, ROUND_2.round]);
+    assert.deepEqual(loaded[0].messages, history);
+    assert.deepEqual(loaded[1].messages, ROUND_2.messages);
+  });
+
   test("合成 dedupKey：缺省时按 ${runId}:round:${round} 幂等", async () => {
     const store = createTouwakaTranscriptStore({ db, requestContext });
     const id = runId("default-dedup");
