@@ -17,6 +17,7 @@
 | [skills/](./skills/) | 技能目录、包白名单、用户代码执行 |
 | [attachment/](./attachment/) | 通用附件服务专题 |
 | [contract-mgr/](./contract-mgr/) | 合同管理及其后续专题设计 |
+| [memory/](./memory/) | 记忆系统设计（topic 情节化计划 + 远期 lesson/pattern 地图） |
 
 ## 放置规则
 
@@ -31,4 +32,4 @@
 
 ---
 
-*最后更新: 2026-06-20*
+*最后更新: 2026-10-04*

@@ -50,5 +50,6 @@
 | `round_` | `agent_rounds.id`（一次 LLM 调用一行，issue #1134） | erix adaptor 写入侧（T2 落地，`round_` + `Utils.newID`） |
 | `tc_` | `chat_tool_calls` 关联实体 ID 预留（表主键为 provider call id `tool_use_id`，无前缀；`tc_` 预留给派生消息/聚合行的关联 ID，T2/T3 落地） | erix adaptor 写入侧（`tc_` + `Utils.newID`） |
 | `notes-v1:` | Notes scopeRef 命名空间（非表 ID，登记以避免前缀碰撞） | `lib/notes/notes-policy.js`（`buildNotesScopeRef`） |
+| `lsn_` | `memory_lesson.id`（记忆 lesson/pattern 行 ID，**设计中未落地**，见 `topics/memory/memory-model.md`） | 设计稿（实现时落 `lib/memory-lesson/`） |
 
 未加前缀的表 ID 默认使用 `Utils.newID(20)`（20 字符随机/时间混编）。
