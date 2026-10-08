@@ -6,12 +6,16 @@
  *
  * 凭据：~/.config/mcp/creds/touwaka-test-db.json（600，不入库）；缺失则 skip。
  * 运行：node --test tests/llm-kit-adapters/
+ *
+ * issue #1167（破坏性测试安全）：
+ *   - 建连接之前必须先过硬断言（tests/helpers/test-db-guard.mjs）：目标库不是测试库就直接终止，
+ *     避免凭据文件被换成生产库（touwaka_mate）时一次测试就把线上表重建掉。
+ *   - 不再使用 `sync({ force: true })` / `drop()`（那是 DROP TABLE + CREATE TABLE）：
+ *     改为「只建缺失表 + 只删本文件自己插入的固定 id 行 + 隔离前置断言」。
  */
 
 import { test, after } from "node:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import assert from "node:assert/strict";
 
 // logs/ 目录当前是 root 属主（容器残留），logger 写文件会 EACCES 掩盖真实错误。
 // 测试环境把 logger 降级为 console-only（在 db.connect() 之前补丁即可，logger 是模块级单例）。
@@ -21,39 +25,49 @@ for (const m of ["info", "warn", "error", "debug"]) {
   if (typeof logger[m] === "function") logger[m] = () => {};
 }
 
-import Database from "../../lib/db.js";
 import { createTouwakaModelConfigProvider } from "../../lib/llm-kit-adapters/model-config-provider.js";
+import { openTestDatabase, DEFAULT_CREDS_PATH } from "../helpers/test-db-guard.mjs";
 
 import { modelConfigProviderContract } from "erix-agent/contract-tests";
 
-const CREDS_PATH = join(homedir(), ".config/mcp/creds/touwaka-test-db.json");
+// 本文件独占的数据命名空间：只认这些固定 id，播种前与 teardown 都只清理它们。
+const PROVIDER_IDS = ["p-main", "p-fold", "p-off"];
+const MODEL_IDS = ["m-default", "m-fold", "m-old", "m-emb"];
 
-function loadCreds() {
-  try {
-    return JSON.parse(readFileSync(CREDS_PATH, "utf8"));
-  } catch {
-    return null;
+// 守卫 → 才建连接（openTestDatabase 内部先 assertTestDatabase，再 new Database / connect）
+const dbCtx = await openTestDatabase();
+const creds = dbCtx?.creds ?? null;
+const CREDS_PATH = dbCtx?.credsPath ?? DEFAULT_CREDS_PATH;
+const db = dbCtx?.db ?? null;
+
+if (dbCtx) {
+  // 只建缺失表：**不带 force**，绝不 DROP / 重建既有表（#1167）。
+  // 取舍：schema drift 不再被 force 静默刷新，若模型定义与库里旧表结构分叉，这里会以契约断言
+  // 失败的形式暴露出来（在测试库上，人工 DROP 一次即可），而不是被 DROP TABLE 悄悄抹平。
+  await db.models.provider.sync();
+  await db.models.ai_model.sync();
+
+  // 幂等前置清理：只删本文件自己用的固定 id（上次运行中途崩溃时可能残留）。
+  // 顺序：先子表 ai_model 再父表 providers，避免外键阻塞。
+  await db.models.ai_model.destroy({ where: { id: MODEL_IDS } });
+  await db.models.provider.destroy({ where: { id: PROVIDER_IDS } });
+
+  // 隔离前置断言：defaultModel 解析走全表扫描
+  //（lib/llm-kit-adapters/model-config-provider.js resolveDefault: findOne order created_at DESC），
+  // 表里混进别人的行就会假阳性/假阴性。这里 **fail loudly**，而不是 DROP 掉别人的数据。
+  const isolationTargets = [
+    ["providers", db.models.provider, PROVIDER_IDS],
+    ["ai_models", db.models.ai_model, MODEL_IDS],
+  ];
+  for (const [label, model, ids] of isolationTargets) {
+    const foreign = await model.count({ where: { id: { [db.Op.notIn]: ids } } });
+    assert.equal(
+      foreign,
+      0,
+      `[${label}] 表里存在 ${foreign} 行不属于本契约测试的数据；本测试不再用 DROP 强行清空，` +
+        "请先人工确认并清理测试库 llm_kit_test 中的该表（本文件只负责 id=" + ids.join(",") + "）",
+    );
   }
-}
-
-const creds = loadCreds();
-
-let db = null;
-
-if (creds) {
-  db = new Database({
-    database: creds.database,
-    user: creds.user,
-    password: creds.password,
-    host: creds.host,
-    port: creds.port,
-  });
-
-  await db.connect();
-
-  // 真实模型定义 sync 建表（force 重建，保证干净的契约环境）
-  await db.models.provider.sync({ force: true });
-  await db.models.ai_model.sync({ force: true });
 
   // 播种：两个 provider（不同 api_key），三个模型
   await db.models.provider.bulkCreate([
@@ -77,8 +91,9 @@ if (creds) {
 after(async () => {
   if (!db) return;
 
-  await db.models.ai_model.drop();
-  await db.models.provider.drop();
+  // 只删自己插入的行；**不再 drop()**（drop = DROP TABLE，和 sync({force}) 同级破坏性，#1167）
+  await db.models.ai_model.destroy({ where: { id: MODEL_IDS } });
+  await db.models.provider.destroy({ where: { id: PROVIDER_IDS } });
   if (typeof db.close === "function") {
     await db.close();
   } else if (db.sequelize) {
