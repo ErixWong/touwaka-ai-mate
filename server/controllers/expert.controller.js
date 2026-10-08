@@ -22,6 +22,26 @@
 import logger from '../../lib/logger.js';
 import Utils from '../../lib/utils.js';
 import { getSystemSettingService } from '../services/system-setting.service.js';
+import {
+  MAX_TOOL_ROUNDS_MIN,
+  MAX_TOOL_ROUNDS_MAX,
+  isValidMaxToolRounds,
+} from '../../lib/agent/max-tool-rounds.js';
+
+/**
+ * max_tool_rounds 写入侧硬校验（issue #1166）
+ *
+ * - `undefined`：本次未提供该字段，不改（调用方自行判断，这里不出现）
+ * - `null`：清空 → 回退「继承系统默认」（既有语义，**不当 0、也不当 1**）
+ * - 其余：必须是 1–50 的整数，越界 / 非整数 / 非数字类型一律拒绝（**不静默夹取**，
+ *   夹取会把前端填错的 5000 默默变成 50，用户看不到自己写错了）
+ *
+ * @returns {string|null} 错误文案（中文，同本控制器既有文案风格）；合法时返回 null
+ */
+const validateMaxToolRounds = (value) => {
+  if (value === null || isValidMaxToolRounds(value)) return null;
+  return `max_tool_rounds 必须是 ${MAX_TOOL_ROUNDS_MIN}-${MAX_TOOL_ROUNDS_MAX} 之间的整数，留空（null）表示使用系统默认`;
+};
 
 const safeParseJson = (value) => {
   if (!value) return null;
@@ -156,6 +176,8 @@ class ExpertController {
         // LLM 参数配置
         temperature, reflective_temperature, top_p,
         frequency_penalty, presence_penalty,
+        // 工具调用配置（issue #1166：创建路径以前不接这个字段，前端传了也被默默丢掉）
+        max_tool_rounds,
         // P2-1: Psyche 配置
         psyche_config,
         // 头像
@@ -165,6 +187,15 @@ class ExpertController {
       if (!name) {
         ctx.error('专家名称不能为空', 400);
         return;
+      }
+
+      // 工具调用配置硬校验（issue #1166）：null = 继承系统默认，其余必须 1-50 整数
+      if (max_tool_rounds !== undefined) {
+        const maxToolRoundsError = validateMaxToolRounds(max_tool_rounds);
+        if (maxToolRoundsError) {
+          ctx.error(maxToolRoundsError, 400);
+          return;
+        }
       }
 
       // 获取系统默认配置
@@ -196,6 +227,9 @@ class ExpertController {
         top_p: top_p ?? llmDefaults.top_p,
         frequency_penalty: frequency_penalty ?? llmDefaults.frequency_penalty,
         presence_penalty: presence_penalty ?? llmDefaults.presence_penalty,
+        // 工具调用配置：null 列值就是「使用系统默认」（见 models/expert.js 列注释），
+        // 没有“创建时从系统默认取数”的 llmDefaults 入口，故保持写入 null 的既有行为
+        max_tool_rounds: max_tool_rounds ?? null,
         // P2-1: Psyche 配置（JSON 字符串存储）
         psyche_config: typeof psyche_config === 'object' ? JSON.stringify(psyche_config) : (psyche_config || null),
         // 头像
@@ -217,6 +251,8 @@ class ExpertController {
         top_p: expertData.top_p,
         frequency_penalty: expertData.frequency_penalty,
         presence_penalty: expertData.presence_penalty,
+        // 工具调用配置
+        max_tool_rounds: expertData.max_tool_rounds,
         // P2-1: Psyche 配置
         psyche_config: psyche_config || null,
         // 头像
@@ -256,6 +292,16 @@ class ExpertController {
       if (!existing) {
         ctx.error('专家不存在', 404);
         return;
+      }
+
+      // 工具调用配置硬校验（issue #1166）：越界 / 非整数直接拒绝，不静默夹取；
+      // undefined 不改、null 清空（回到继承系统默认），下方 updates 构建保持原样。
+      if (max_tool_rounds !== undefined) {
+        const maxToolRoundsError = validateMaxToolRounds(max_tool_rounds);
+        if (maxToolRoundsError) {
+          ctx.error(maxToolRoundsError, 400);
+          return;
+        }
       }
 
       // 构建更新对象（字符串字段直接存储）
