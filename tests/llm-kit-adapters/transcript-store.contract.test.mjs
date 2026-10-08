@@ -124,9 +124,12 @@ if (!creds) {
 } else {
   beforeEach(cleanup);
 
-  test("store 方法面恰为必需能力 {appendRound, load}（#78 capability 分级）", () => {
+  test("store 方法面 = 必需能力 + 成对快路径探针（#78 分级 + #1150）", () => {
     const store = createTouwakaTranscriptStore({ db, requestContext });
-    assert.deepEqual(Object.keys(store).sort(), ["appendRound", "load"]);
+    // issue #1150：erix-agent 0.17.0 的两条可选探针已实现（成对），
+    // run snapshot / run-state 等其余可选 capability 仍有意不实现。
+    assert.deepEqual(Object.keys(store).sort(),
+      ["appendRound", "load", "loadByDedupKey", "loadMaxRound"]);
     for (const optional of [
       "saveRunState", "loadRunState", "markRunState",
       "saveRunSnapshot", "loadLatestRunSnapshot",

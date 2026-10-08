@@ -69,6 +69,52 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 3. 本列上线前写入的历史行 `meta_json` 为 NULL：其 synthetic 分类回退上游文本前缀启发式
    （与 #1146 行为一致），不回填。
 
+## 与 erix-agent 0.17.0 的行为变化（touwaka 侧知悉项，issue #1150）
+
+0.17.0 是纯增量（无 API 删除、无调用点变更、无强制 store 改动），但其中
+上游 #157 的 **`appendUserTurn` 成对可选快路径探针** 是本项目主动采纳的：
+
+**能力档位变化**：本目录的 store 原档位是「必需面 `{appendRound, load}` +
+两条探针都不实现」，现在是「必需面 + **两条探针都实现**」。
+
+| 方法 | 语义 | 走的路径 |
+|---|---|---|
+| `loadByDedupKey(key, dedupKey)` | 命中返回**完整**存储记录（与 `load()` 对应轮逐字段一致），未命中 `null` | SQL 按 `request_id` 限定并用 `dedup_key` / `record_json.roundKey` 的 OR 取候选；按 `round_no, id` 顺序完整装配候选，再用上游 `??` 判据过滤，不设 `LIMIT` |
+| `loadMaxRound(key)` | 等价于对 `load()` 结果取 `Math.max(0, …safe-integer round…)`；**空会话返回 `null`** | `idx_agent_rounds_request` 上的 `MAX(round_no)` |
+
+引擎行为与后果：
+
+- **成对语义**：两者都是函数才走快路径；**只实现一条 == 都没实现**（全量 `load` 路径原样运行）。
+  `lib/llm-kit-adapters/loop-bridge.js` 的 `createErixStore` 已**两条一起透传**，所以生产接线可达。
+- 快路径上：先算 `dedupKey` → `loadByDedupKey` 命中即返回（`loadMaxRound` 与 `load` 都不再调）；
+  未命中才 `loadMaxRound` 派生 `round` → `appendRound`。**全程不调 `store.load`** →
+  直接消掉原先在接收消息事务内的全量 `load()`（此前每预写一轮用户输入都要把整会话重读重组）。
+- `written` 语义与返回形状不变，命中仍返回既有 `record`；违约不静默降级，引擎抛 `TypeError`。
+- **零 DDL**：不加列 / 不加索引 / 不动约束（roundKey 自 #1146 起只在 `record_json` 里，
+  宁可用 JSON 函数扫本会话行也不加列）。现有会话最大 18 round，所以今日收益主要是
+  契约合规 + 移除事务内全量读，而不是吞吐数字。
+- **SQL OR 仅用于候选，不是命中判据**：探针对每条候选复用 `assembleRoundRecord()`，按
+  `round_no ASC, id ASC`（与 `load()` 相同）排序装配，再严格使用上游判据
+  `(record?.dedupKey ?? record?.roundKey) === dedupKey` 并返回第一条命中。若同一条记录的
+  `dedupKey=A`、`roundKey=B`，查询 `B` 会 miss、查询 `A` 才会命中；JSON `null` 也由 JS 的
+  nullish 语义处理，不依赖 SQL `NULL` 的不同语义。上游对该探针契约仍在
+  [erix-agent issue #171](https://github.com/ErixWong/erix-agent/issues/171) 裁决。
+- **当前宿主侧并没有 `appendUserTurn` 调用点**（仅作为引擎导出面存在），所以本次上线**不改变现网行为**；
+  探针能力是“已就绪 + 契约合规”，未来接预写用户轮时自动享快路径。
+
+两个附带的保真修正（均为支撑上面两条，零 DDL）：
+
+1. `appendRound` **容忍缺 `ts`** 的 record：`agent_rounds.ts` 是 NOT NULL，直接把 `undefined`
+   交给驱动会报 `Named replacement ":ts" has no entry` 而不是可读错误；现在与 `created_at`
+   一样退到 now。写入方（erix）永远带 ts，故现网行为不变。
+2. `load()` / 探针**不再发明写入方没给的字段**：`dedupKey`/`ts`/`folded` 本来不存在于传入 record
+   时，列仍会补齐（NOT NULL 与历史回填行为不变），但 `record_json` 里用内部键
+   `__hostSynthesizedColumns` 记录宿主合成字段。显式 `dedupKey: null` 同样按 nullish 语义标记；
+   列值可用补齐后的键，读回 record 则恢复原有的 `null` 或字段缺失。若写入方自带该同名键，
+   元数据会封存并在读回时恢复其原值，而非吞掉它。这样“拆行前 RoundRecord ≡ 读出记录”才真正
+   逐字段成立（上游契约对整 record 做 `deepStrictEqual`，多一个 `folded:false` 就挂）。
+   **历史行无此标记 → 回填行为逐字不变**；`loop-bridge.js` 消费 `folded` 已按 `undefined` 处理。
+
 ## 与 erix-agent 0.3.5 的行为变化（touwaka 侧知悉项）
 
 - checkpoint 执行后写失败由静默改为 fail-closed（抛出 `KitError` `checkpoint_failed`），该次请求会显式失败。由于 `request_id` 每请求新生成，且本项目没有复用 `runId` 的 resume 场景，无需按 tool id 做幂等保护。
@@ -89,6 +135,9 @@ npm run test:llm-kit   # 不要用目录形式 node --test tests/llm-kit-adapter
 
 契约与元数据测试共用同一组三层表（agent_rounds/messages/chat_tool_calls），
 以独立 runId 命名空间隔离，因此可以在 Node.js 测试默认并发下安全运行。
+
+0.17.0 快路径探针的回归（差异对等 / 零 load / 成对语义 / 类型违约 / 残缺 record 负控）在
+`tests/llm-kit-adapters/transcript-store-fastpath.test.mjs`。
 
 测试会在 `llm_kit_test` 库内建/删 `providers` 与 `ai_models` 两表（sequelize sync 真实模型定义），
 **不要**把凭据指向 touwaka_mate 生产库。
