@@ -8,12 +8,13 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 | 文件 | 接口 | 后端 |
 |---|---|---|
 | `model-config-provider.js` | ModelConfigProvider | `ai_models` + `providers` 表（经 lib/db.js） |
-| `transcript-store.js` | TranscriptStore | `agent_rounds`/`messages`/`chat_tool_calls` 三层拆行（issue #1134/#1146，sequelize 参数化 raw query） |
+| `transcript-store.js` | TranscriptStore | `agent_rounds`/`messages`/`chat_tool_calls` 三层拆行（issue #1134/#1146/#1147，sequelize 参数化 raw query） |
 | `provider-adapter.js` | erix Provider (`chatStream`/`chat`) | `LLMClient.callStream`/`call`，纯桥接 |
 
-## 与 erix-agent 0.16.0 的行为变化（touwaka 侧知悉项，issue #1146）
+## 与 erix-agent 0.16.0 的行为变化（touwaka 侧知悉项，issue #1146 / #1147）
 
-0.16.0 给宿主 store 新增了两条明文义务，本目录已合规，**零 DDL**：
+0.16.0 给宿主 store 新增了两条明文义务，本目录已合规（#1146 零 DDL；#1147 补了
+经 Eric 批准的一列 `messages.meta_json`）：
 
 1. **同轮保序**（契约 "Load order"）：`load()` 必须对同 `round` 的记录保持持久化追加顺序，
    引擎 `resume-manager` 直接按返回顺序重建状态、**不再二次排序**，且明文禁止依赖执行计划/
@@ -26,9 +27,21 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
    才用 `stop_reason`/`usage` 列合成，否则列合成会把完整的 `response.content` 覆盖掉。
    `stop_reason`/`usage` 两列**有意保留不删**（与 `record_json` 内容重复，仍供查询与排查用）。
 
+3. **message 级保真**（契约 "Store fidelity requirements" minimum-fields 表首行，issue #1147）：
+   `messages[].meta` 现随新列 `messages.meta_json`（`longtext NULL`，DDL 已由 Eric 批准，
+   批准范围仅该列）**原样 JSON 往返**——写侧 `messageRowFor` 有 meta 即 `JSON.stringify`、
+   无则 NULL；读侧 `parseMetaColumn` 解析后**整对象**挂回 `message.meta`，**不做键白名单**，
+   故宿主未知键同样保真。`meta.source` 是**引擎保留字段**（judge 方向提示轮 = `judge-control`），
+   宿主不得用它写自己的来源信息。迁移见 `scripts/upgrade-database.js` 步骤
+   `messages.meta_json column add`（幂等）；历史行留 NULL，读侧不回填、不报错、不挂空对象。
+   ⚠️ **`meta_json` 不是对外字段**：`server/controllers/message.controller.js` 的
+   `formatMessage` 显式剔除它，`lib/chat-service.js` 的未回复扫描也已由 `SELECT m.*` 改显式
+   字段列表，消息类接口的响应字段集合与加列前逐字一致。是否把 `meta` 暴露给前端做
+   synthetic 标注是后续独立需求，本 issue 不做。
+
 另：0.16.0 的 `projectTranscriptForDisplay` 新增 `key` / `meta.sourceInferred` 等**只读增量字段**，
-本项目当前不消费该投影（无调用点），无需改动；按上游要求不要把投影 `key` 当持久 ID 或
-`tool_use.id` 使用。
+本项目当前不消费该投影（store 侧无业务调用点，仅回归测试用于验保真）；按上游要求不要把
+投影 `key` 当持久 ID 或 `tool_use.id` 使用。
 
 ## TranscriptStore 保真声明（load() 往返等价面）
 
@@ -38,15 +51,23 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
   `folded`、`foldedRoundRange`、`foldedPayload`，以及其余未拆行的未知字段（走 `record_json`）。
 - 本次新增（#1146）：`roundKey`、`meta`、`response`（含 `response.content` 的 text/reasoning/tool_use
   块与 `usage`/`stopReason`）。
+- **已闭环（#1147）**：`messages[].meta`（含引擎保留键 `source` 与宿主未知键）随
+  `messages.meta_json` 列原样往返。回归见 `tests/llm-kit-adapters/transcript-store-message-meta.test.mjs`：
+  meta 往返含未知键与非对象 meta（数组/标量）、`projectTranscriptForDisplay` 对 judge 方向提示轮输出
+  `meta.synthetic=true` / `source="judge-control"`（#1146 里是 `false`）、评委 `judge-control`
+  排除规则重新生效、历史 NULL 行兼容、重复 `appendRound` 不把 meta 覆盖成 NULL。
 
-**已知偏离（需 Eric 决策，本 issue 不做）**：`messages[].meta.source` **仍未落库**——
-`messages` 表没有对应列，补列属红线 2.1（数据库字段禁擅改）。后果按上游契约：
-合成消息的分类回退到文本前缀启发式，注入的 judge 方向提示轮可能被当成真实用户消息，
-且 resume 后评委的 `judge-control` 排除规则失效（当前文本启发式识别不出其
-`【Judge 评审意见】` 前缀）。
+**#1146 的已知偏离（`messages[].meta.source` 未落库）已由 #1147 消除。**
 
-另一不可保真的约定局限：同一 assistant 消息内的块序按 `[text…, tool_use…, reasoning]`
-还原（拆行后块间相对位置无法记录），非该约定的块序不能保真。
+剩余不可保真点（有意取舍，均非白名单问题）：
+
+1. 同一 assistant 消息内的块序按 `[text…, tool_use…, reasoning]` 还原（拆行后块间相对
+   位置无法记录），非该约定的块序不能保真。
+2. **纯 tool_use / tool_result 消息**（无 text/reasoning/multimodal 内容）按 D2-i 不落
+   `messages` 行，其 `meta` 无处存放、随拆行丢失。现网该形态的 meta 只有引擎自己的
+   `judge-control`，且只出现在带文本的 user 提示轮上，实际不受影响。
+3. 本列上线前写入的历史行 `meta_json` 为 NULL：其 synthetic 分类回退上游文本前缀启发式
+   （与 #1146 行为一致），不回填。
 
 ## 与 erix-agent 0.3.5 的行为变化（touwaka 侧知悉项）
 

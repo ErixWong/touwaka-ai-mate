@@ -42,9 +42,16 @@ class MessageController {
     }
   }
 
+  /**
+   * issue #1147：messages.meta_json 是 erix store 的 message.meta 落库列（引擎保真用），
+   * 不是对外契约字段。这里显式剔除，保证即使上游查询放宽成 SELECT *（例如
+   * lib/chat-service.js 的未回复扫描形态）或有人给 findAll 补了列，响应字段集合也
+   * 与加列前逐字节一致。是否把 meta 暴露给前端做 synthetic 标注是后续独立需求。
+   */
   formatMessage(m) {
+    const { meta_json: _metaJson, ...publicFields } = m;
     return {
-      ...m,
+      ...publicFields,
       inner_voice: this.safeParseJSON(m.inner_voice),
       tool_calls: this.safeParseJSON(m.tool_calls),
       error_info: this.safeParseJSON(m.error_info),
