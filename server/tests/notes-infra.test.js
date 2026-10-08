@@ -13,6 +13,7 @@ import {
   PsycheNotesFacade,
   NOTES_TTL_SECONDS,
   buildNotesScopeRef,
+  canonicalizeNotesScopeRef,
 } from '../../lib/notes/index.js';
 import { createFakeDb } from './helpers/fake-db.js';
 
@@ -23,7 +24,7 @@ function makeStore({ clock } = {}) {
 }
 
 function rowOf(db, scopeRef, key) {
-  return db.rows.get(`${scopeRef}|${key}`) || null;
+  return db.rows.get(`${canonicalizeNotesScopeRef(scopeRef)}|${key}`) || null;
 }
 
 function sampleRecord({ key, scopeRef, content = 'hello', state = 'active', expires_at }) {
@@ -307,20 +308,25 @@ describe('ErixNotesStoreAdapter', () => {
     expect(conflict?.code).to.equal('notes_cas_conflict');
   });
 
-  it('binds the scopeRef: foreign-scope records are coerced to the bound scope', async () => {
-    const { store } = makeStore();
+  it('rejects foreign request scopeRef without writing', async () => {
+    const { db, store } = makeStore();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
     const otherScope = buildNotesScopeRef('user_2', 'expert_1');
     const adapter = new ErixNotesStoreAdapter({ store, scopeRef });
 
-    // 与 erix file store 语义一致：写入时强制绑定 scopeRef，不采纳记录自带值
-    await adapter.write({
-      scope: 'run', scopeRef: otherScope, key: 'k1',
-      record: sampleRecord({ key: 'k1', scopeRef: otherScope }),
-    });
+    let error;
+    try {
+      await adapter.write({
+        scope: 'run', scopeRef: otherScope, key: 'k1',
+        record: sampleRecord({ key: 'k1', scopeRef: otherScope }),
+      });
+    } catch (caught) {
+      error = caught;
+    }
 
-    const stored = await store.read(scopeRef, 'k1');
-    expect(stored.scopeRef).to.equal(scopeRef);
+    expect(error).to.be.instanceOf(TypeError);
+    expect(db.rows.size).to.equal(0);
+    expect(await store.read(scopeRef, 'k1')).to.equal(undefined);
     expect(await store.read(otherScope, 'k1')).to.equal(undefined);
   });
 });
