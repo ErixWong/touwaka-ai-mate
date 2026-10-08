@@ -41,8 +41,15 @@ services:
       - bash
       - -c
       - |
+        # 后端依赖：node_modules 缺失，或 package-lock.json 新于已装依赖时重装
+        # （与下方前端判定同源：只判存在性会让 lock 变更后静默沿用旧依赖——
+        #   实测 2026-10-08 erix-agent 升到 0.16.0，重启后容器仍跑卷里的 0.14.0，
+        #   而 lock(今日) 已比 node_modules/.package-lock.json(10-03) 新）
         if [ ! -d /app/node_modules ] || [ ! -f /app/node_modules/.package-lock.json ]; then
           echo 'Installing Node.js dependencies...'
+          cd /app && npm ci --only=production
+        elif [ /app/package-lock.json -nt /app/node_modules/.package-lock.json ] 2>/dev/null; then
+          echo 'package-lock.json is newer than installed deps; reinstalling...'
           cd /app && npm ci --only=production
         fi
 

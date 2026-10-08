@@ -22,15 +22,19 @@
 - 端口：宿主 **3017** → 容器 3000（`/api/health` 为健康检查端点）
 - 代码：`bind mount` 仓库根 → `/app`，依赖走命名卷 `node_modules` / `frontend_node_modules`
 - **改代码后生效方式**：`docker compose -f docker-compose.dev.yml restart app` 即可（源码是 bind mount，不需要重建镜像）
-- **改了依赖才需要动卷**：卷里 `node_modules/.package-lock.json` 缺失时启动脚本才会重装
+- **依赖自动刷新**：启动脚本会比较 `package-lock.json` 与卷内 `node_modules/.package-lock.json` 的 mtime，lock 较新则自动 `npm ci --only=production`（前后端各自判定，见 §3 第 3 条）
 - ⚠️ 本机 `NODE_ENV=production`：裸跑 `npm install` 会**剪掉 devDependencies**（`chai`/`mocha`/`concurrently`/`sequelize-auto`），导致测试报 `Cannot find package 'chai'`；装依赖固定用 `npm install --include=dev`
 
 ## 3. 前端构建自愈（为什么启动命令那么长）
 
-`docker-compose.dev.yml` 的启动命令不是随手写的，它修过两类真实故障，改动前务必读懂注释：
+`docker-compose.dev.yml` 的启动命令不是随手写的，它修过三类真实故障，改动前务必读懂注释：
 
-1. **依赖陈旧**：持久化卷里的旧 `node_modules` 会用旧工具链构建新源码，产物带 TDZ / MIME 等 bug → 用 `package-lock.json` 与 `node_modules/.package-lock.json` 的 mtime 比较触发重装。
+1. **前端依赖陈旧**：持久化卷里的旧 `node_modules` 会用旧工具链构建新源码，产物带 TDZ / MIME 等 bug → 用 `package-lock.json` 与 `node_modules/.package-lock.json` 的 mtime 比较触发重装。
 2. **构建产物陈旧**：只看 `frontend/dist` 是否存在会漏掉「git pull 新代码后仍加载旧 chunk」→ 用源码 mtime 与 `dist/index.html` 比较触发重建。
+3. **后端依赖静默沿用旧版**（2026-10-08 补）：后端判定原本**只判存在性**，卷里有 `node_modules` 就永不重装 → 改 `package.json` / lock 后容器**照旧跑旧依赖且不报错**。实证：`erix-agent` 升到 0.16.0 并重启后，容器内仍是 0.14.0（lock 已较 `node_modules/.package-lock.json` 新 5 天）→ 已按前端同源补上 mtime 判定。遇到「升级不生效」先跑：
+   ```bash
+   docker exec touwaka-mate sh -c 'grep -m1 version /app/node_modules/<包>/package.json'
+   ```
 
 另有一处 compose 插值坑已修：命令里引用容器内 shell 变量必须写 `$$VAR`，否则被 compose 提前插值成空串，会让整个前端构建分支变成死代码。
 
@@ -60,3 +64,4 @@ docker exec mariadb mariadb-dump -utouwaka -p"$DB_PASSWORD" touwaka_mate > backu
 ## 变更记录
 
 - 2026-10-08：原未跟踪的 `docker-compose.local.yml` 入库并改名 `docker-compose.dev.yml`；密钥改为 `${VAR:-默认}` 插值（行为不变）；新建本文件补齐 compose 矩阵与本机现状；修正 README 中错误示例文件名 `docker-compose-local.yml`。
+- 2026-10-08（同日第二次）：修复后端依赖判定只判存在性的缺陷（升 0.16.0 后容器仍跑卷内 0.14.0），补 mtime 判定与前端对齐。
