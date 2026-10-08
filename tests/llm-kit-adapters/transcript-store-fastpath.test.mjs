@@ -30,6 +30,7 @@ for (const method of ["info", "warn", "error", "debug"]) {
 
 import Database from "../../lib/db.js";
 import { createTouwakaTranscriptStore } from "../../lib/llm-kit-adapters/transcript-store.js";
+import { createErixStore } from "../../lib/llm-kit-adapters/loop-bridge.js";
 // appendUserTurn 是引擎侧入口（node_modules/erix-agent/src/store/append-user-turn.js）：
 // dedupKey 派生、快/慢路径选择、类型违约抛错全在引擎代码里，本文件不重写这些规则。
 import { appendUserTurn } from "erix-agent";
@@ -425,6 +426,56 @@ if (!creds) {
       { replacements: { id, dedupKey: first.dedupKey } },
     );
     assert.equal(rows[0].n, 1);
+  });
+
+  test("生产 createErixStore 包装层保留成对探针与单探针全量回退", async () => {
+    const store = createErixStore({ db, requestContext });
+    assert.equal(typeof store.loadByDedupKey, "function");
+    assert.equal(typeof store.loadMaxRound, "function");
+
+    const calls = { load: 0, loadByDedupKey: 0, loadMaxRound: 0 };
+    for (const method of Object.keys(calls)) {
+      const original = store[method];
+      store[method] = async (...args) => {
+        calls[method] += 1;
+        return original(...args);
+      };
+    }
+
+    const id = runId("production-wrapper");
+    const first = await appendUserTurn(store, {
+      key: id, text: "经过生产包装层", messageId: "m-production-wrapper",
+    });
+    assert.equal(first.written, true);
+    assert.equal(first.round, 0);
+    assert.deepEqual(calls, { load: 0, loadByDedupKey: 1, loadMaxRound: 1 });
+
+    const afterFirst = { ...calls };
+    const duplicate = await appendUserTurn(store, {
+      key: id, text: "经过生产包装层", messageId: "m-production-wrapper",
+    });
+    assert.equal(duplicate.written, false);
+    assert.equal(duplicate.record.messages[0].content[0].text, "经过生产包装层");
+    assert.equal(calls.loadByDedupKey - afterFirst.loadByDedupKey, 1);
+    assert.equal(calls.loadMaxRound - afterFirst.loadMaxRound, 0);
+    assert.equal(calls.load - afterFirst.load, 0);
+
+    const onlyDedupProbe = {
+      ...store,
+      load: async (key) => {
+        calls.load += 1;
+        return store.load(key);
+      },
+      loadMaxRound: undefined,
+    };
+    const beforeFallback = { ...calls };
+    const fallback = await appendUserTurn(onlyDedupProbe, {
+      key: id, text: "单探针回退", messageId: "m-production-half-probe",
+    });
+    assert.equal(fallback.written, true);
+    assert.ok(calls.load > beforeFallback.load, "a lone probe must fall back to the full load");
+    assert.equal(calls.loadByDedupKey, beforeFallback.loadByDedupKey);
+    assert.equal(calls.loadMaxRound, beforeFallback.loadMaxRound);
   });
 
   // ── 验收标准 5-3：成对语义（只实现一条 == 都没实现）──

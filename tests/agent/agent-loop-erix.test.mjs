@@ -1,10 +1,73 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { after, test } from 'node:test';
+import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
+import Database from '../../lib/db.js';
 import { AgentLoop } from '../../lib/agent/agent-loop.js';
+import { buildErixRunOptions } from '../../lib/llm-kit-adapters/loop-bridge.js';
 import logger from '../../lib/logger.js';
 
 logger.logFile = '/tmp/touwaka-agent-loop-erix-test.log';
+
+const CREDS_PATH = join(homedir(), '.config/mcp/creds/touwaka-test-db.json');
+
+function loadCreds() {
+  try {
+    return JSON.parse(readFileSync(CREDS_PATH, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+const creds = loadCreds();
+let testDb = null;
+let testUserId = null;
+let testExpertId = null;
+
+if (creds) {
+  testDb = new Database({
+    database: creds.database,
+    user: creds.user,
+    password: creds.password,
+    host: creds.host,
+    port: creds.port,
+  });
+  await testDb.connect();
+  const [users] = await testDb.sequelize.query('SELECT id FROM users LIMIT 1');
+  const [experts] = await testDb.sequelize.query('SELECT id FROM experts LIMIT 1');
+  testUserId = users[0]?.id ?? 'test_user_agent_e2e';
+  testExpertId = experts[0]?.id ?? null;
+}
+
+async function cleanupRun(requestId) {
+  if (!testDb) return;
+  const [rounds] = await testDb.sequelize.query(
+    'SELECT id FROM agent_rounds WHERE request_id = :requestId',
+    { replacements: { requestId } },
+  );
+  const roundIds = rounds.map((row) => row.id);
+  if (roundIds.length > 0) {
+    await testDb.sequelize.query(
+      'DELETE FROM messages WHERE round_id IN (:roundIds)',
+      { replacements: { roundIds } },
+    );
+    await testDb.sequelize.query(
+      'DELETE FROM chat_tool_calls WHERE round_id IN (:roundIds)',
+      { replacements: { roundIds } },
+    );
+  }
+  await testDb.sequelize.query(
+    'DELETE FROM agent_rounds WHERE request_id = :requestId',
+    { replacements: { requestId } },
+  );
+}
+
+after(async () => {
+  if (testDb) await testDb.close();
+});
 
 function createLoop(overrides = {}) {
   return new AgentLoop({
@@ -25,6 +88,7 @@ function createInput(overrides = {}) {
   return {
     modelConfig: {
       model_name: 'test-model',
+      context_window_tokens: 32768,
       max_output_tokens: 2048,
     },
     thinkingConfig: {
@@ -74,11 +138,11 @@ async function withEnv(name, value, callback) {
   }
 }
 
-function createFakeExpertService({ noTool = false, result = null } = {}) {
+function createFakeExpertService({ noTool = false, result = null, toolCallId = 'call_1' } = {}) {
   let streamCalls = 0;
   const secondRoundMessages = [];
   const toolCall = {
-    id: 'call_1',
+    id: toolCallId,
     type: 'function',
     function: {
       name: 'echo',
@@ -166,6 +230,68 @@ function createFakeExpertService({ noTool = false, result = null } = {}) {
 
   return expertService;
 }
+
+test('runErix persists a real tool round in all transcript tables', {
+  skip: creds ? false : `缺少凭据 ${CREDS_PATH}`,
+}, async () => {
+  const requestId = `run-${randomUUID()}`;
+  const toolCallId = `tool-${randomUUID().slice(0, 8)}`;
+
+  try {
+    const input = createInput({
+      user_id: testUserId,
+      expert_id: testExpertId,
+      topic_id: null,
+      request_id: requestId,
+    });
+    const engineOptions = buildErixRunOptions({
+      provider: {},
+      executeTool: async () => 'unused',
+      modelConfig: input.modelConfig,
+    });
+    assert.deepEqual(engineOptions.modelMetadata, {
+      contextWindowTokens: 32768,
+      maxOutputTokens: 2048,
+    });
+
+    const result = await createLoop({ db: testDb }).runErix(
+      createFakeExpertService({ toolCallId }),
+      input,
+    );
+    assert.equal(result.llmCallsCount, 2);
+    assert.equal(result.fullContent, 'Need tool任务完成 Final answer');
+
+    const [rounds] = await testDb.sequelize.query(
+      'SELECT id, round_no FROM agent_rounds WHERE request_id = :requestId ORDER BY round_no ASC',
+      { replacements: { requestId } },
+    );
+    assert.equal(rounds.length, 3, 'the seed and both engine rounds must be persisted');
+    assert.deepEqual(rounds.map(({ round_no }) => round_no), [0, 1, 2]);
+
+    const [messages] = await testDb.sequelize.query(
+      `SELECT m.role, m.content
+       FROM messages AS m
+       JOIN agent_rounds AS r ON r.id = m.round_id
+       WHERE r.request_id = :requestId
+       ORDER BY r.round_no ASC, m.sequence_no ASC`,
+      { replacements: { requestId } },
+    );
+    assert.deepEqual(messages.map(({ role, content }) => ({ role, content })), [
+      { role: 'assistant', content: 'Need tool' },
+      { role: 'assistant', content: '任务完成 Final answer' },
+    ]);
+
+    const [toolCalls] = await testDb.sequelize.query(
+      'SELECT tool_use_id, name FROM chat_tool_calls WHERE request_id = :requestId',
+      { replacements: { requestId } },
+    );
+    assert.equal(toolCalls.length, 1, 'the executed tool call must be persisted');
+    assert.equal(toolCalls[0].tool_use_id, toolCallId);
+    assert.equal(toolCalls[0].name, 'echo');
+  } finally {
+    await cleanupRun(requestId);
+  }
+});
 
 function createScriptedExpertService({
   scripts,
