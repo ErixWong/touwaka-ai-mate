@@ -106,14 +106,18 @@ async function assertMaxRoundMatchesLoad(store, key) {
     assert.ok(typeof probed === "number" && Number.isSafeInteger(probed),
       `loadMaxRound 必须返回安全整数或 null/undefined，实际 ${typeof probed} ${probed}`);
   }
-  assert.equal(probed === null || probed === undefined ? 0 : Math.max(0, probed),
-    maxRoundFromLoad(loaded),
-    `loadMaxRound(${key})=${probed} 与 load() 派生的 max round 不一致`);
+  if (loaded.length === 0) {
+    assert.ok(probed === null || probed === undefined,
+      `空存储的 loadMaxRound(${key}) 必须返回 null/undefined，实际 ${probed}`);
+  } else {
+    assert.equal(probed, maxRoundFromLoad(loaded),
+      `loadMaxRound(${key})=${probed} 与 load() 派生的 max round 不一致`);
+  }
 }
 
 /**
- * 探针一致性：会话里**每一轮**都要能被自己的 dedupKey（有 roundKey 时还要能被
- * roundKey）取回，且整条对象与 load() 的那条 deepStrictEqual。
+ * 探针一致性：会话里**每一轮**都要能被 `(dedupKey ?? roundKey)` 取回，且整条对象
+ * 与 load() 的那条 deepStrictEqual；dedupKey 存在时，冲突的 roundKey 必须 miss。
  * 探针返回残缺 record（少 messages / 少 response / 少未知字段）时这里必挂。
  */
 async function assertProbesMatchLoad(store, key) {
@@ -130,8 +134,8 @@ async function assertProbesMatchLoad(store, key) {
     assert.deepStrictEqual(Object.keys(byDedupKey ?? {}).sort(), Object.keys(record).sort(),
       `loadByDedupKey(${probeKey}) 字段集合与 load() 不一致`);
     if (typeof record.roundKey === "string" && record.roundKey !== probeKey) {
-      assert.deepStrictEqual(await store.loadByDedupKey(key, record.roundKey), record,
-        `roundKey 兜底谓词取不回同一份记录：${record.roundKey}`);
+      assert.equal(await store.loadByDedupKey(key, record.roundKey), null,
+        `dedupKey 已定义时，不能仅因 roundKey=${record.roundKey} 命中该记录`);
     }
   }
   return loaded;
@@ -291,6 +295,29 @@ if (!creds) {
     assert.equal(await store.loadByDedupKey(a, "shared:input:m-pre"), null);
   });
 
+  test("探针严格遵循 dedupKey ?? roundKey：冲突时只命中 dedupKey", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("predicate-precedence");
+    const dedupKey = `${id}:A`;
+    const roundKey = `${id}:B`;
+    await store.appendRound(id, {
+      round: 1,
+      dedupKey,
+      roundKey,
+      ts: "2026-10-01T00:01:00.000Z",
+      messages: [{ role: "user", content: [{ type: "text", text: "冲突键" }] }],
+    });
+
+    assert.equal(await store.loadByDedupKey(id, roundKey), null,
+      "dedupKey 已定义时，roundKey 不得额外命中");
+    const loadedByDedupKey = await store.loadByDedupKey(id, dedupKey);
+    const [loadedByFullPath] = await store.load(id);
+    assert.deepStrictEqual(loadedByDedupKey, loadedByFullPath,
+      "dedupKey 命中必须返回完整 load() 记录");
+    assert.equal(loadedByDedupKey.dedupKey, dedupKey);
+    assert.equal(loadedByDedupKey.roundKey, roundKey);
+  });
+
   // ── loadMaxRound 与 load() 等价（含历史脏 round_no）──
 
   test("loadMaxRound ≡ load() 派生的 max round；空会话返回 null", async () => {
@@ -317,20 +344,32 @@ if (!creds) {
     await assertMaxRoundMatchesLoad(store, id);
     assert.equal(await store.loadMaxRound(id), 99, "脏 round_no 必须与 load() 同结论");
 
-    // 负数 round（另一会话）：load() 侧 Math.max(0, -5) = 0，探针返回 -5 或 0 都等价
+  });
+
+  test("loadMaxRound 把非空负 round_no 夹到 0", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
     const negative = runId("max-round-negative");
-    await db.sequelize.query(`
-      INSERT INTO agent_rounds
-        (id, request_id, round_no, dedup_key, stop_reason, \`usage\`, latency_ms,
-         folded, folded_range, record_json, ts, created_at)
-      VALUES (:id, :runId, -5, :dedupKey, NULL, NULL, NULL, b'0', NULL, NULL, :ts, :now)
-    `, {
-      replacements: {
-        id: `round_neg_${ns}`, runId: negative, dedupKey: `${negative}:engine:round:-5`,
-        ts: "2026-10-01T00:00:00.000Z", now: new Date(),
-      },
-    });
-    await assertMaxRoundMatchesLoad(store, negative);
+    try {
+      await db.sequelize.query(`
+        INSERT INTO agent_rounds
+          (id, request_id, round_no, dedup_key, stop_reason, \`usage\`, latency_ms,
+           folded, folded_range, record_json, ts, created_at)
+        VALUES (:id, :runId, -5, :dedupKey, NULL, NULL, NULL, b'0', NULL, NULL, :ts, :now)
+      `, {
+        replacements: {
+          id: `round_neg_${ns}`, runId: negative, dedupKey: `${negative}:engine:round:-5`,
+          ts: "2026-10-01T00:00:00.000Z", now: new Date(),
+        },
+      });
+      assert.equal(await store.loadMaxRound(negative), 0,
+        "非空存储的负最大轮必须由探针自身夹到 0");
+      await assertMaxRoundMatchesLoad(store, negative);
+    } finally {
+      await db.sequelize.query(
+        "DELETE FROM agent_rounds WHERE request_id = :runId",
+        { replacements: { runId: negative } },
+      );
+    }
   });
 
   // ── 验收标准 5-2 与 6：真实引擎调用，命中路径零 load ──
@@ -481,6 +520,12 @@ if (!creds) {
     const store = createTouwakaTranscriptStore({ db, requestContext });
     const id = runId("negative-controls");
     await seedBroadSession(store, id);
+    await store.appendRound(id, {
+      round: 3,
+      roundKey: `${id}:round:3`,
+      ts: "2026-10-01T00:03:00.000Z",
+      messages: [{ role: "user", content: [{ type: "text", text: "仅 roundKey" }] }],
+    });
 
     // 正向基线（先证明断言在当前实现上是通过的，否则下面的 rejects 没有意义）
     await assertProbesMatchLoad(store, id);
@@ -529,8 +574,7 @@ if (!creds) {
       assert.AssertionError, "messages[].meta 丢失必须被抓到");
 
     // (d) 只保留 dedup_key 主谓词（丢掉 record_json.roundKey 兜底支路）→ 必挂。
-    // seedBroadSession 里引擎轮的 roundKey(`<id>:round:N`) 与 dedupKey(`<id>:engine:round:N`)
-    // 刻意不同名，故只按 dedup_key 匹配的实现取不到 roundKey 那一支。
+    // 此处额外写入一条没有 dedupKey、只有 roundKey 的记录，验证 ?? 的实际兜底分支。
     const dedupKeyOnlyPredicate = {
       ...store,
       loadByDedupKey: async (key, dedupKey) => {
@@ -586,7 +630,7 @@ if (!creds) {
     );
     assert.equal(rows[0].dedup_key, `${id}:round:4`);
     assert.ok(rows[0].ts && !Number.isNaN(new Date(rows[0].ts).getTime()), "ts 列必须仍写入有效值");
-    assert.equal(JSON.parse(rows[0].record_json).__hostSynthesizedColumns.includes("ts"), true);
+    assert.equal(JSON.parse(rows[0].record_json).__hostSynthesizedColumns.fields.includes("ts"), true);
 
     // 历史行（无该内部标记）行为不变：仍然回填 folded=false / dedupKey / ts
     const legacy = runId("legacy-no-marker");
@@ -607,5 +651,30 @@ if (!creds) {
     assert.equal(legacyLoaded.dedupKey, `${legacy}:round:1`);
     assert.equal(legacyLoaded.textPreview, "legacy");
     assert.equal(legacyLoaded.__hostSynthesizedColumns, undefined, "内部标记键不得外泄到 load() 输出");
+  });
+
+  test("appendRound 保留 null dedupKey 与写入方的同名合法字段", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("host-key-roundtrip");
+    const record = {
+      round: 1,
+      dedupKey: null,
+      ts: "2026-10-01T00:01:00.000Z",
+      __hostSynthesizedColumns: "host-owned",
+      messages: [{ role: "user", content: [{ type: "text", text: "null dedupKey" }] }],
+    };
+    await store.appendRound(id, record);
+
+    const [loaded] = await store.load(id);
+    assert.deepStrictEqual(loaded, record,
+      "列值可补齐，但读回不得发明 dedupKey 或吞掉调用方同名字段");
+    assert.equal(loaded.dedupKey, null);
+    assert.equal(loaded.__hostSynthesizedColumns, "host-owned");
+    const [rows] = await db.sequelize.query(
+      "SELECT dedup_key FROM agent_rounds WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(await store.loadByDedupKey(id, rows[0].dedup_key), null,
+      "宿主补进列的 dedup_key 不能替代 record 的 nullish ?? 判据");
   });
 }

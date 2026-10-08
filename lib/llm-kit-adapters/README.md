@@ -79,7 +79,7 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 
 | 方法 | 语义 | 走的路径 |
 |---|---|---|
-| `loadByDedupKey(key, dedupKey)` | 命中返回**完整**存储记录（与 `load()` 对应轮逐字段一致），未命中 `null` | `request_id = key AND (dedup_key = :k OR JSON_UNQUOTE(JSON_EXTRACT(record_json,'$.roundKey')) = :k)`；主谓词命中唯一键 `uk_agent_rounds_dedup_key`，roundKey 兑底支路扇本会话 round 行 |
+| `loadByDedupKey(key, dedupKey)` | 命中返回**完整**存储记录（与 `load()` 对应轮逐字段一致），未命中 `null` | SQL 按 `request_id` 限定并用 `dedup_key` / `record_json.roundKey` 的 OR 取候选；按 `round_no, id` 顺序完整装配候选，再用上游 `??` 判据过滤，不设 `LIMIT` |
 | `loadMaxRound(key)` | 等价于对 `load()` 结果取 `Math.max(0, …safe-integer round…)`；**空会话返回 `null`** | `idx_agent_rounds_request` 上的 `MAX(round_no)` |
 
 引擎行为与后果：
@@ -93,10 +93,12 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 - **零 DDL**：不加列 / 不加索引 / 不动约束（roundKey 自 #1146 起只在 `record_json` 里，
   宁可用 JSON 函数扫本会话行也不加列）。现有会话最大 18 round，所以今日收益主要是
   契约合规 + 移除事务内全量读，而不是吞吐数字。
-- **谓词取 OR（并集）而非严格的 `??`**：上游文档正文写 `(record.dedupKey ?? record.roundKey) === dedupKey`，
-  但其 §2 sketch 与官方契约套件都用 `OR`（套件里那条“只有 roundKey”的记录必须能被 roundKey 取回）。
-  本实现用 OR，是 `??` 的**超集**；实际安全，因为 appendUserTurn 的键命名空间
-  `<key>:input:<…>` 与引擎轮的 `<runId>:engine:round:<n>` / roundKey `<runId>:round:<n>` 永不碰撞。
+- **SQL OR 仅用于候选，不是命中判据**：探针对每条候选复用 `assembleRoundRecord()`，按
+  `round_no ASC, id ASC`（与 `load()` 相同）排序装配，再严格使用上游判据
+  `(record?.dedupKey ?? record?.roundKey) === dedupKey` 并返回第一条命中。若同一条记录的
+  `dedupKey=A`、`roundKey=B`，查询 `B` 会 miss、查询 `A` 才会命中；JSON `null` 也由 JS 的
+  nullish 语义处理，不依赖 SQL `NULL` 的不同语义。上游对该探针契约仍在
+  [erix-agent issue #171](https://github.com/ErixWong/erix-agent/issues/171) 裁决。
 - **当前宿主侧并没有 `appendUserTurn` 调用点**（仅作为引擎导出面存在），所以本次上线**不改变现网行为**；
   探针能力是“已就绪 + 契约合规”，未来接预写用户轮时自动享快路径。
 
@@ -107,9 +109,10 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
    一样退到 now。写入方（erix）永远带 ts，故现网行为不变。
 2. `load()` / 探针**不再发明写入方没给的字段**：`dedupKey`/`ts`/`folded` 本来不存在于传入 record
    时，列仍会补齐（NOT NULL 与历史回填行为不变），但 `record_json` 里用内部键
-   `__hostSynthesizedColumns` 记下“这些列值是宿主补的”，
-   读侧据此不回填并剔除该内部键——这样“拆行前 RoundRecord ≡ 读出记录”才真正逐字段成立
-   （上游契约对整 record 做 `deepStrictEqual`，多一个 `folded:false` 就挂）。
+   `__hostSynthesizedColumns` 记录宿主合成字段。显式 `dedupKey: null` 同样按 nullish 语义标记；
+   列值可用补齐后的键，读回 record 则恢复原有的 `null` 或字段缺失。若写入方自带该同名键，
+   元数据会封存并在读回时恢复其原值，而非吞掉它。这样“拆行前 RoundRecord ≡ 读出记录”才真正
+   逐字段成立（上游契约对整 record 做 `deepStrictEqual`，多一个 `folded:false` 就挂）。
    **历史行无此标记 → 回填行为逐字不变**；`loop-bridge.js` 消费 `folded` 已按 `undefined` 处理。
 
 ## 与 erix-agent 0.3.5 的行为变化（touwaka 侧知悉项）
