@@ -3,6 +3,10 @@ import test from "node:test";
 
 import { runToolLoop } from "erix-agent";
 import {
+  createErixEventHandler,
+  createErixPersistenceErrorHandlers,
+} from "../../lib/agent/agent-loop.js";
+import {
   TOUWAKA_COMPLETION_SIGNALS,
   buildErixRunOptions,
   createErixToolExecutor,
@@ -81,9 +85,227 @@ function createRecordingStore() {
   };
 }
 
+function createRecordingLogger({ throwInfo = false } = {}) {
+  const entries = [];
+  const record = (level) => (message, fields) => {
+    if (level === "info" && throwInfo) throw new Error("logger info failed");
+    entries.push({ level, message, fields });
+  };
+  return {
+    entries,
+    logger: {
+      debug: record("debug"),
+      info: record("info"),
+      warn: record("warn"),
+      error: record("error"),
+    },
+  };
+}
+
 async function runWith(options) {
   return runToolLoop(options);
 }
+
+test("unrecognized erix events are warned by type without logging their payload", () => {
+  const { entries, logger } = createRecordingLogger();
+  const onEvent = createErixEventHandler({
+    request_id: "request-unknown",
+    logger,
+  });
+
+  onEvent({
+    type: "future_event",
+    payload: "sensitive event body",
+    nested: { secret: "must not be logged" },
+  });
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].level, "warn");
+  assert.equal(entries[0].fields.event, "erix.unhandled_event");
+  assert.equal(entries[0].fields.type, "future_event");
+  assert.equal(entries[0].fields.request_id, "request-unknown");
+  assert.doesNotMatch(JSON.stringify(entries), /sensitive event body|must not be logged/);
+});
+
+test("persistence capability degradation is warned without calling it a failure", () => {
+  const { entries, logger } = createRecordingLogger();
+  const onEvent = createErixEventHandler({
+    request_id: "request-capability",
+    logger,
+  });
+
+  onEvent({
+    type: "persistence_capability_degraded",
+    runId: "run-capability",
+    method: "saveRunSnapshot",
+    payload: "not for logging",
+  });
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].level, "warn");
+  assert.equal(entries[0].fields.runId, "run-capability");
+  assert.equal(entries[0].fields.method, "saveRunSnapshot");
+  assert.doesNotMatch(JSON.stringify(entries), /失败|failure|not for logging/i);
+});
+
+test("tool output aggregation logs archived at info and terminated at error", () => {
+  const { entries, logger } = createRecordingLogger();
+  const onEvent = createErixEventHandler({
+    request_id: "request-aggregate",
+    logger,
+  });
+
+  onEvent({
+    type: "tool_output_aggregate",
+    action: "archived",
+    originalText: "sensitive archived body",
+  });
+  onEvent({
+    type: "tool_output_aggregate",
+    action: "terminated",
+    originalText: "sensitive terminated body",
+  });
+
+  assert.deepEqual(entries.map(({ level }) => level), ["info", "error"]);
+  assert.equal(entries[0].fields.action, "archived");
+  assert.equal(entries[1].fields.action, "terminated");
+  assert.match(entries[1].message, /原文已丢失/);
+  assert.doesNotMatch(JSON.stringify(entries), /sensitive .* body/);
+});
+
+test("erix event handler exceptions are logged and never escape", () => {
+  const { entries, logger } = createRecordingLogger({ throwInfo: true });
+  const onEvent = createErixEventHandler({
+    request_id: "request-handler-error",
+    logger,
+    onKnownEvent: () => logger.info("force handler failure"),
+  });
+
+  assert.doesNotThrow(() => onEvent({ type: "round_start" }));
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].level, "error");
+  assert.equal(entries[0].fields.event, "erix.callback_error");
+  assert.equal(entries[0].fields.callback, "onEvent");
+  assert.equal(entries[0].fields.type, "round_start");
+  assert.equal(entries[0].fields.error_message, "logger info failed");
+});
+
+test("final guard, compaction, tool events, and replay decisions use safe summaries", () => {
+  const { entries, logger } = createRecordingLogger();
+  const onEvent = createErixEventHandler({
+    request_id: "request-summary",
+    logger,
+  });
+
+  onEvent({ type: "forced_final", reason: "round_limit" });
+  onEvent({ type: "final_guard", action: "error", content: "private answer" });
+  onEvent({ type: "final_guard", action: "degraded", content: "private answer" });
+  onEvent({ type: "final_guard", action: "accept", content: "private answer" });
+  onEvent({ type: "final_guard", action: "skip", content: "private answer" });
+  onEvent({ type: "final_guard", action: "revise", content: "private answer" });
+  onEvent({
+    type: "compaction",
+    foldedRounds: 2,
+    tokensBefore: 1200,
+    tokensAfter: 600,
+    content: "private transcript",
+  });
+  onEvent({ type: "tool_use", input: { secret: "private tool args" } });
+  onEvent({ type: "tool_result", result: "private tool result" });
+  onEvent({ type: "tool_result", result: "another private tool result" });
+  onEvent({ type: "tool_replay_decision_required", runId: "run-replay" });
+
+  assert.deepEqual(entries.map(({ level }) => level), [
+    "warn",
+    "error",
+    "warn",
+    "info",
+    "info",
+    "info",
+    "info",
+    "debug",
+    "debug",
+    "debug",
+    "warn",
+  ]);
+  assert.equal(entries[0].fields.reason, "round_limit");
+  assert.deepEqual(entries.slice(1, 6).map(({ fields }) => fields.action), [
+    "error",
+    "degraded",
+    "accept",
+    "skip",
+    "revise",
+  ]);
+  assert.equal(entries[6].fields.foldedRounds, 2);
+  assert.equal(entries[7].fields.count, 1);
+  assert.equal(entries[8].fields.count, 1);
+  assert.equal(entries[9].fields.count, 2);
+  assert.match(entries[10].message, /待宿主决策/);
+  assert.match(entries[10].message, /未接 resume\/replayPolicy/);
+  assert.doesNotMatch(JSON.stringify(entries), /private answer|private transcript|private tool/);
+});
+
+test("diagnostics.error and persistence callback pass through with structured failure fields", () => {
+  const { entries, logger } = createRecordingLogger();
+  const handlers = createErixPersistenceErrorHandlers({
+    request_id: "request-persistence",
+    logger,
+  });
+  const options = buildErixRunOptions({
+    provider: {},
+    executeTool: async () => "unused",
+    diagnostics: handlers.diagnostics,
+    onPersistenceError: handlers.onPersistenceError,
+  });
+
+  assert.strictEqual(options.diagnostics, handlers.diagnostics);
+  assert.strictEqual(options.onPersistenceError, handlers.onPersistenceError);
+
+  options.diagnostics.error({
+    port: "transcriptStore",
+    phase: "append",
+    operation: "appendRound",
+    runId: "run-diagnostics",
+    fatal: true,
+    sideEffect: false,
+    ts: "2026-10-09T00:00:00.000Z",
+    error: Object.assign(new Error("diagnostic write failed"), { code: "STORE_WRITE" }),
+  });
+  options.onPersistenceError(Object.assign(
+    new Error("callback write failed"),
+    {
+      code: "STORE_CALLBACK",
+      port: "transcriptStore",
+      phase: "flush",
+      operation: "appendRound",
+      runId: "run-callback",
+      fatal: false,
+      sideEffect: true,
+    },
+  ));
+
+  assert.equal(entries.length, 2);
+  for (const entry of entries) {
+    assert.equal(entry.level, "error");
+    assert.equal(entry.fields.event, "erix.persistence_error");
+    assert.equal(entry.fields.request_id, "request-persistence");
+    assert.equal(entry.fields.port, "transcriptStore");
+    assert.equal(entry.fields.operation, "appendRound");
+    assert.equal(entry.fields.error_code.startsWith("STORE_"), true);
+  }
+  assert.equal(entries[0].fields.source, "diagnostics.error");
+  assert.equal(entries[0].fields.phase, "append");
+  assert.equal(entries[0].fields.runId, "run-diagnostics");
+  assert.equal(entries[0].fields.fatal, true);
+  assert.equal(entries[0].fields.sideEffect, false);
+  assert.equal(entries[0].fields.error_message, "diagnostic write failed");
+  assert.equal(entries[1].fields.source, "onPersistenceError");
+  assert.equal(entries[1].fields.phase, "flush");
+  assert.equal(entries[1].fields.runId, "run-callback");
+  assert.equal(entries[1].fields.fatal, false);
+  assert.equal(entries[1].fields.sideEffect, true);
+  assert.equal(entries[1].fields.error_message, "callback write failed");
+});
 
 test("builds an erix loop with structured tool execution and canonical results", async () => {
   const provider = createFakeProvider([
