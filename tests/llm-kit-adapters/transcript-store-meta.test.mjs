@@ -148,6 +148,66 @@ if (!creds) {
     ]);
   });
 
+  test("tool_result 的实测耗时落库并保真（含失败调用）", async () => {
+    const store = createErixStore({ db, requestContext });
+    const id = runId("duration");
+    const measureDelay = async (delayMs) => {
+      const startedAt = Date.now();
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return Date.now() - startedAt;
+    };
+    const successDuration = await measureDelay(15);
+    const errorDuration = await measureDelay(30);
+    const record = {
+      round: 1,
+      ts: "2026-08-29T00:00:00.000Z",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "duration-01", name: "ok", input: {} },
+            { type: "tool_use", id: "duration-02", name: "fail", input: {} },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "duration-01",
+              content: "ok",
+              duration: successDuration,
+            },
+            {
+              type: "tool_result",
+              tool_use_id: "duration-02",
+              content: "failed",
+              is_error: true,
+              duration: errorDuration,
+            },
+          ],
+        },
+      ],
+    };
+
+    assert.ok(Number.isSafeInteger(successDuration) && successDuration > 0);
+    assert.ok(Number.isSafeInteger(errorDuration) && errorDuration > 0);
+    await store.appendRound(id, record);
+
+    const [rows] = await db.sequelize.query(
+      "SELECT tool_use_id, duration_ms, is_error FROM chat_tool_calls WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(rows.length, 2);
+    const rowsById = new Map(rows.map((row) => [row.tool_use_id, row]));
+    assert.equal(rowsById.get("duration-01").duration_ms, successDuration);
+    assert.equal(Number.isSafeInteger(rowsById.get("duration-01").duration_ms), true);
+    assert.equal(rowsById.get("duration-02").duration_ms, errorDuration);
+    assert.equal(Number.isSafeInteger(rowsById.get("duration-02").duration_ms), true);
+    assert.equal(Boolean(rowsById.get("duration-02").is_error), true);
+    assert.deepEqual((await store.load(id))[0], record);
+  });
+
   test("乱序容忍：tool_result 先于 tool_use 到达也能配对", async () => {
     const store = createTouwakaTranscriptStore({ db, requestContext });
     const id = runId("reorder");

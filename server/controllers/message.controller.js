@@ -229,7 +229,7 @@ class MessageController {
 
     // agent_rounds/chat_tool_calls 模型未挂进 init-models（models/ 禁手改），走 raw query
     const [toolCalls] = await this.db.sequelize.query(`
-      SELECT tool_use_id, request_id, round_id, name, input_json, result_json, is_error, created_at
+      SELECT tool_use_id, request_id, round_id, name, input_json, result_json, is_error, duration_ms, created_at
       FROM chat_tool_calls
       WHERE request_id IN (:requestIds)
       ORDER BY created_at ASC, tool_use_id ASC
@@ -265,7 +265,7 @@ class MessageController {
           name: call.name,
           arguments: this.safeParseJSON(call.input_json) ?? null,
           success: !call.is_error,
-          duration: call.duration_ms ?? 0,
+          duration: call.duration_ms ?? null,
           timestamp: new Date(call.created_at).toISOString(),
           context: null,
           result_length: resultLength,

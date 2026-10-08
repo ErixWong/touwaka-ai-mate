@@ -210,7 +210,7 @@ console.log('\n场景 4（D3-i）：chat_tool_calls 合成行与存量行归并�
       created_at: '2026-08-01T00:00:02.000Z',
     },
   ];
-  const { controller } = createController(rows, toolCalls);
+  const { controller, calls } = createController(rows, toolCalls);
   const ctx = createCtx({
     filter: { expert_id: 'expert-1' },
     sort: [{ field: 'created_at', order: 'asc' }, { field: 'id', order: 'asc' }],
@@ -230,7 +230,8 @@ console.log('\n场景 4（D3-i）：chat_tool_calls 合成行与存量行归并�
   assert(toolCallsField.name === 'echo', 'tool_calls.name 一致');
   assert(JSON.stringify(toolCallsField.arguments) === JSON.stringify({ text: 'hi' }), 'tool_calls.arguments 还原 input_json');
   assert(toolCallsField.success === true, 'tool_calls.success 取反 is_error');
-  assert(toolCallsField.duration === 0, 'duration_ms 缺失时 duration 缺省 0（与 saveToolMessage 一致）');
+  assert(toolCallsField.duration === null, 'duration_ms 缺失时保留 NULL，不伪造耗时');
+  assert(calls.toolCalls[0].sql.includes('duration_ms'), '聚合查询读取 duration_ms');
   assert(toolCallsField.context === null, 'chat_tool_calls 无 context 字段，如实缺 null');
   assert(toolCallsField.result_length === 8, 'result_length 为结果字符数');
   assert(toolCallsField.has_image === false, 'has_image 由结果内容探测');

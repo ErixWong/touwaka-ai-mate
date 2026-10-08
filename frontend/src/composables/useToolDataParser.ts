@@ -7,7 +7,7 @@ export interface ToolCallData {
   tool_name?: string
   content?: string
   success?: boolean
-  duration?: number
+  duration?: number | null
   timestamp?: string
   arguments?: Record<string, unknown>
   result?: unknown
