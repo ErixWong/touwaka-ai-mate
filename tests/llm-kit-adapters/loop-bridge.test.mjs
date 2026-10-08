@@ -261,6 +261,46 @@ test("failed tool execution becomes an error tool_result without breaking the lo
   assert.equal(toolResult.content, "tool exploded");
 });
 
+test("measured duration is included in failed tool_result and persisted RoundRecord", async () => {
+  const provider = createFakeProvider([
+    toolResponse(),
+    textResponse("任务完成"),
+  ]);
+  const { store, calls } = createRecordingStore();
+  const result = await runWith(buildErixRunOptions({
+    provider: provider.provider,
+    executeTool: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return { success: false, data: "tool failed", error: "tool failed" };
+    },
+    store,
+    initialUserMessage: "start",
+    stream: true,
+    runId: "run-tool-duration",
+  }));
+
+  const toolResult = result.messages
+    .flatMap((message) => message.content ?? [])
+    .find((block) => block.type === "tool_result");
+  assert.equal(toolResult.is_error, true);
+  assert.equal(Number.isSafeInteger(toolResult.duration), true);
+  assert.ok(toolResult.duration > 0);
+
+  const savedRecord = calls.appendRound
+    .map(([, record]) => record)
+    .find((record) => record.messages?.some((message) => (
+      message.content?.some((block) => (
+        block.type === "tool_result" && block.tool_use_id === toolResult.tool_use_id
+      ))
+    )));
+  assert.ok(savedRecord, "tool result reaches appendRound");
+  assert.equal(Object.hasOwn(savedRecord, "duration"), false, "duration is not added to RoundRecord");
+  const savedToolResult = savedRecord.messages
+    .flatMap((message) => message.content ?? [])
+    .find((block) => block.type === "tool_result");
+  assert.equal(savedToolResult.duration, toolResult.duration);
+});
+
 test("supports the positional executor and forwards the result hook", async () => {
   const calls = [];
   const hookCalls = [];
