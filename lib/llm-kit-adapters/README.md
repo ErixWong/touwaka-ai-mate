@@ -122,6 +122,20 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 - 流式 `onDelta` 时机不变。本项目显式传入 `retry.attempts >= 1`，仍在尝试成功后批量 flush；仅 `CHAT_STREAM_RECOVERY_MAX_ATTEMPTS=0` 时才会启用 0.3.5 的实时透传路径。
 - 其余 0.3.5 变化（file store `runId` 哈希、`ERIX_*` env 校验、`providerOptions` 保护、内置 provider 的 SSE 解析）本项目不适用。
 
+## 流式重试与持久化诊断（issue #1155）
+
+`CHAT_STREAM_RECOVERY_MAX_ATTEMPTS` 传给 erix 的 `retry.attempts`，表示**额外重试次数**，
+不是总尝试次数：`attempts = 2` 表示总共最多尝试 `3` 次。erix 用这一组选项同时控制
+provider 调用与 transcript persistence 写入重试。Agent 流式路径直接调用 `runToolLoop`，
+不经过 `lib/chat/base-llm.js` 中 `callWithRetry` 专用的 `retryWithBackoff`；
+因此这里说明上游重试语义，不改变默认值或环境变量名。
+
+`runErix` 同时接入上游独立的 `diagnostics.error` 与 `onPersistenceError`。持久化错误以
+结构化 error 日志记录 `request_id`、port、phase、operation、runId、fatal、sideEffect
+及错误 message/code；其他 erix 事件按类型记录安全摘要，不记录 `tool_use` /
+`tool_result` 正文。`persistence_capability_degraded` 是可选 store 能力未实现的预期降级，
+只记 warn，不视为持久化失败。
+
 ## 测试
 
 契约测试消费已发布的 `erix-agent` 包，通过
