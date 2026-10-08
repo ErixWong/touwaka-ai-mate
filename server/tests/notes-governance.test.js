@@ -21,6 +21,7 @@ import { getExpertChildScopedTools } from '../../lib/agent/expert-child-scoped-t
 import {
   DbNoteRecordStore,
   buildNotesScopeRef,
+  canonicalizeNotesScopeRef,
 } from '../../lib/notes/index.js';
 import { createFakeDb } from './helpers/fake-db.js';
 
@@ -145,9 +146,10 @@ describe('notes governance', () => {
   it('6. note_read does not touch or renew TTL', async () => {
     const { manager, db, store } = makeManager();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
+    const storageScopeRef = canonicalizeNotesScopeRef(scopeRef);
 
     await manager.executeTool('note_take', { key: 'k1', content: 'ttl check' }, MINIMAL_CONTEXT);
-    const before = db.rows.get(`${scopeRef}|k1`).expires_at;
+    const before = db.rows.get(`${storageScopeRef}|k1`).expires_at;
     expect(before).to.be.a('number').greaterThan(Date.now());
 
     await new Promise(resolve => setTimeout(resolve, 5));
@@ -155,7 +157,7 @@ describe('notes governance', () => {
     expect(read.success).to.equal(true);
     expect(read.data.value).to.equal('ttl check');
 
-    const after = db.rows.get(`${scopeRef}|k1`).expires_at;
+    const after = db.rows.get(`${storageScopeRef}|k1`).expires_at;
     // 不滑动续期：expires_at 只减不增（read 不 touch）
     expect(after).to.equal(before);
   });

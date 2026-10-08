@@ -21,6 +21,10 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import Utils from '../lib/utils.js';
 import { SYSTEM_USER_USERNAME } from '../lib/system-account.js';
+import {
+  hasCanonicalNotesScopeRefs,
+  migrateNotesScopeRefs,
+} from '../lib/notes/notes-scope-ref-migration.js';
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
@@ -3991,6 +3995,28 @@ const MIGRATIONS = [
       console.log('  ✓ Created note_record table');
     }
   },
+  {
+    name: 'canonicalize note_record scope_ref values',
+    stopOnError: true,
+    check: async (conn) => (
+      await hasTable(conn, 'note_record')
+      && await hasCanonicalNotesScopeRefs(conn)
+    ),
+    migrate: async (conn, { dryRun = false } = {}) => {
+      let logInfo;
+      if (dryRun) {
+        logInfo = (message) => console.info(`[${new Date().toISOString()}] [INFO] ${message}`);
+      } else {
+        const { default: logger } = await import('../lib/logger.js');
+        logInfo = logger.info.bind(logger);
+      }
+      const result = await migrateNotesScopeRefs(conn, {
+        dryRun,
+        logInfo,
+      });
+      console.log(`  ✓ Notes scopeRef migration ${dryRun ? 'previewed' : 'applied'}: ${result.mappings.length} mapping(s)`);
+    },
+  },
 
   // ==================== Agent 持久化三层物化（issue #1134 T1） ====================
   // run(chat_requests) → round(agent_rounds) → message(messages) + tool_call(chat_tool_calls)
@@ -4170,6 +4196,7 @@ async function upgrade() {
       } catch (error) {
         console.error(`  ❌ Failed: ${migration.name} - ${error.message}`);
         results.failed.push({ name: migration.name, error: error.message });
+        if (migration.stopOnError) throw error;
       }
     }
 
@@ -4244,6 +4271,20 @@ async function needsUpgrade() {
   }
 }
 
+async function previewNotesScopeRefMigration() {
+  let connection;
+  try {
+    connection = await mysql.createConnection(DB_CONFIG);
+    const migration = MIGRATIONS.find(
+      ({ name }) => name === 'canonicalize note_record scope_ref values',
+    );
+    if (!migration) throw new Error('Notes scopeRef migration is not registered');
+    await migration.migrate(connection, { dryRun: true });
+  } finally {
+    if (connection) await connection.end();
+  }
+}
+
 // 检查必需的环境变量
 if (!DB_CONFIG.user || !DB_CONFIG.password || !DB_CONFIG.database) {
   console.error('Error: DB_USER, DB_PASSWORD, DB_NAME environment variables are required');
@@ -4257,7 +4298,10 @@ const isMainModule = process.argv[1] &&
   path.resolve(process.argv[1]) === __filename;
 
 if (isMainModule) {
-  upgrade().catch(err => {
+  const run = process.argv.includes('--dry-run-notes-scope-refs')
+    ? previewNotesScopeRefMigration
+    : upgrade;
+  run().catch(err => {
     console.error(err);
     process.exit(1);
   });
