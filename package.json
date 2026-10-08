@@ -11,6 +11,7 @@
     "dev": "concurrently \"npm run api\" \"cd frontend && npm run dev\"",
     "dev:frontend": "cd frontend && npm run dev",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:llm-kit": "node --test tests/llm-kit-adapters/*.test.mjs tests/agent/agent-loop-erix.test.mjs",
     "lint": "node scripts/check-buildPaginatedResponse.js",
     "postinstall": "node scripts/install-git-hooks.js",
     "postversion": "node scripts/sync-version.js && git add frontend/package.json && git commit --amend --no-edit"
@@ -37,7 +38,7 @@
     "docx": "^9.6.1",
     "dotenv": "^16.6.1",
     "echarts": "^5.5.0",
-    "erix-agent": "^0.14.0",
+    "erix-agent": "^0.16.0",
     "exceljs": "^4.4.0",
     "hyperformula": "^2.7.0",
     "jsonwebtoken": "^9.0.3",

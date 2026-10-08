@@ -174,7 +174,10 @@ if (!creds) {
     assert.equal(snapshot.textPreview, "");
     assert.equal(snapshot.toolUses, 1);
     assert.equal(snapshot.messages, undefined, "messages 不进 record_json");
-    assert.equal(snapshot.response, undefined, "response 拆 stop_reason/usage 列");
+    // issue #1146：response/roundKey/meta 已移出白名单，随 record_json 原样往返
+    // （stop_reason/usage 两列仍在、与 record_json 重复，供查询用）
+    assert.deepEqual(snapshot.response, ROUND_1.response);
+    assert.equal(snapshot.roundKey, ROUND_1.roundKey);
 
     // ROUND_1：user(text) 一行；纯 tool_use assistant 与 tool_result user 消息不插行
     const [messages] = await db.sequelize.query(
@@ -479,10 +482,122 @@ if (!creds) {
     await store.appendRound(id, seed);
 
     const [rounds] = await db.sequelize.query(
-      "SELECT * FROM agent_rounds WHERE request_id = :id",
+      "SELECT * FROM agent_rounds WHERE request_id = :id", 
       { replacements: { id } },
     );
     assert.equal(rounds.length, 1);
     assert.equal(rounds[0].dedup_key, `${id}:round:0`);
+  });
+
+  // ── issue #1146：erix-agent 0.16.0 新增两条 store 义务（本地等价断言）──
+  // 复刻上游 0.16.0 test/contract/transcript-store.js 的“同轮追加序”与“字段保真”
+  // 两个用例（上游文件不导出 fixture，按本仓三层拆行 schema 重写）。
+  // 上游注释明确：这两条对不合规 store 故意失败，那是迁移信号，不是可以削弱的测试。
+
+  test("同 round 记录保持持久化追加顺序（0.16.0 Load order）", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("same-round-order");
+    // 与上游同形：引擎轮先落，appendUserTurn 有意复用同一 max round 预写的用户行后落
+    const engineKey = `${id}:engine:round:2`;
+    const inputKey = `${id}:input:m1`;
+
+    await store.appendRound(id, {
+      round: 2,
+      dedupKey: engineKey,
+      ts: "2026-08-29T00:02:00.000Z",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "engine round" }] }],
+    });
+    await store.appendRound(id, {
+      round: 2,
+      dedupKey: inputKey,
+      ts: "2026-08-29T00:02:30.000Z",
+      messages: [{ role: "user", content: [{ type: "text", text: "pre-written user row" }] }],
+    });
+
+    const loaded = await store.load(id);
+    assert.deepEqual(loaded.map((record) => record.dedupKey), [engineKey, inputKey]);
+    assert.deepEqual(
+      loaded.flatMap((record) => record.messages ?? [])
+        .map((message) => message.content?.[0]?.text),
+      ["engine round", "pre-written user row"],
+    );
+
+    // 反向取证：两行确实同 round（否则上面断言只是 round_no 在起作用，走不到二级键）
+    assert.deepEqual(loaded.map((record) => record.round), [2, 2]);
+  });
+
+  test("roundKey/meta/response 完整往返（0.16.0 Store fidelity，不再白名单重建）", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("field-fidelity");
+    const record = {
+      round: 3,
+      roundKey: `${id}:round:3`,
+      dedupKey: `${id}:engine:round:3`,
+      ts: "2026-08-29T00:03:00.000Z",
+      meta: { hostMetadata: { retained: true }, unknownNested: { deep: [1, 2, 3] } },
+      messages: [{ role: "assistant", content: [{ type: "text", text: "fidelity" }] }],
+      response: {
+        content: [
+          { type: "text", text: "fidelity" },
+          { type: "reasoning", text: "deep thought" },
+          { type: "tool_use", id: "fid-1", name: "inspect", input: { path: "." } },
+        ],
+        stopReason: "tool_use",
+        usage: { prompt_tokens: 42, completion_tokens: 7 },
+      },
+    };
+
+    await store.appendRound(id, record);
+
+    const [loaded] = await store.load(id);
+    // 这三项此前被 SUMMARY_FIELDS 剥掉（roundKey/meta 两头不落，response 被列合成覆盖），
+    // 移出白名单后必须与写入值逐字等价。
+    assert.equal(loaded.roundKey, record.roundKey);
+    assert.deepEqual(loaded.meta, record.meta);
+    assert.deepEqual(loaded.response, record.response);
+    // response.content 单独钉住：列合成只会重建 stopReason/usage，内容丢失时
+    // 上面的 deepEqual 会挂，这里额外指明是哪一类字段回归了。
+    assert.deepEqual(loaded.response?.content, record.response.content);
+
+    // 旧行为不回归：两列仍写（供查询），且与 record_json 内容一致
+    const [rows] = await db.sequelize.query(
+      "SELECT stop_reason, `usage`, record_json FROM agent_rounds WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(rows[0].stop_reason, "tool_use");
+    assert.deepEqual(JSON.parse(rows[0].usage), record.response.usage);
+    assert.deepEqual(JSON.parse(rows[0].record_json).response, record.response);
+  });
+
+  test("历史行兼容：record_json 缺 response 时仍用 stop_reason/usage 列合成", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("legacy-response");
+    // 升级前写入的行形状：旧白名单把 response 从 record_json 剔掉了，只剩两列
+    await db.sequelize.query(`
+      INSERT INTO agent_rounds
+        (id, request_id, round_no, dedup_key, stop_reason, \`usage\`, latency_ms,
+         folded, folded_range, record_json, ts, created_at)
+      VALUES
+        (:id, :runId, :roundNo, :dedupKey, :stopReason, :usage, NULL,
+         b'0', NULL, :recordJson, :ts, :now)
+    `, {
+      replacements: {
+        id: `round_legacy_${ns}`,
+        runId: id,
+        roundNo: 4,
+        dedupKey: `${id}:engine:round:4`,
+        stopReason: "end_turn",
+        usage: JSON.stringify({ prompt_tokens: 3, completion_tokens: 1 }),
+        recordJson: JSON.stringify({ textPreview: "legacy" }),
+        ts: "2026-08-29T00:04:00.000Z",
+        now: new Date(),
+      },
+    });
+
+    const [loaded] = await store.load(id);
+    assert.equal(loaded.round, 4);
+    assert.equal(loaded.textPreview, "legacy");
+    assert.equal(loaded.response?.stopReason, "end_turn");
+    assert.deepEqual(loaded.response?.usage, { prompt_tokens: 3, completion_tokens: 1 });
   });
 }
