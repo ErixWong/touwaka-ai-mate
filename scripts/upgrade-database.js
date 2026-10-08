@@ -4167,80 +4167,137 @@ const MIGRATIONS = [
 /**
  * 升级主函数
  */
-async function upgrade() {
-  let connection;
+function parseUpgradeOptions(args = []) {
+  const dryRun = args.includes('--dry-run');
+  const stepFlagIndex = args.indexOf('--step');
+  let step;
+
+  if (stepFlagIndex !== -1) {
+    if (args.indexOf('--step', stepFlagIndex + 1) !== -1) {
+      throw new Error('--step may only be provided once');
+    }
+    step = args[stepFlagIndex + 1];
+    if (!step || step.startsWith('--')) {
+      throw new Error('--step requires a non-empty value');
+    }
+  }
+
+  return { dryRun, step };
+}
+
+async function runMigrationSteps(
+  connection,
+  { dryRun = false, step, migrations = MIGRATIONS } = {},
+) {
   const results = {
     applied: [],
+    pending: [],
     skipped: [],
-    failed: []
+    failed: [],
   };
+
+  for (const migration of migrations) {
+    if (step && !migration.name.toLowerCase().includes(step.toLowerCase())) {
+      console.log(`  ⏭️  Skipped: ${migration.name} (does not match --step)`);
+      results.skipped.push(migration.name);
+      continue;
+    }
+
+    try {
+      const needsMigration = !(await migration.check(connection));
+
+      if (!needsMigration) {
+        console.log(`  ⏭️  Skipped: ${migration.name} (already exists)`);
+        results.skipped.push(migration.name);
+        continue;
+      }
+
+      if (dryRun) {
+        console.log(`  🔎 Pending (dry-run; not applied): ${migration.name}`);
+        results.pending.push(migration.name);
+        continue;
+      }
+
+      console.log(`⏳ Applying: ${migration.name}...`);
+      await migration.migrate(connection);
+      console.log(`  ✅ Applied: ${migration.name}`);
+      results.applied.push(migration.name);
+    } catch (error) {
+      console.error(`  ❌ Failed: ${migration.name} - ${error.message}`);
+      results.failed.push({ name: migration.name, error: error.message });
+      if (migration.stopOnError) throw error;
+    }
+  }
+
+  console.log('\n' + '='.repeat(50));
+  console.log(dryRun
+    ? '📊 Upgrade Summary (dry-run; no migrations applied):'
+    : '📊 Upgrade Summary:');
+  if (dryRun) {
+    console.log(`  🔎 Pending (would apply; not applied): ${results.pending.length}`);
+    console.log('  ✅ Actually applied: 0');
+  } else {
+    console.log(`  ✅ Applied: ${results.applied.length}`);
+  }
+  console.log(`  ⏭️  Skipped: ${results.skipped.length}`);
+  console.log(`  ❌ Failed:  ${results.failed.length}`);
+
+  const listedMigrations = dryRun ? results.pending : results.applied;
+  if (listedMigrations.length > 0) {
+    console.log(dryRun
+      ? '\nPending migrations (would apply; not applied):'
+      : '\nApplied migrations:');
+    listedMigrations.forEach(name => console.log(`  - ${name}`));
+  }
+
+  if (results.failed.length > 0) {
+    console.log('\nFailed migrations:');
+    results.failed.forEach(({ name, error }) => console.log(`  - ${name}: ${error}`));
+  }
+
+  return results;
+}
+
+async function upgrade(args = process.argv.slice(2)) {
+  let connection;
+  const { dryRun, step } = parseUpgradeOptions(args);
 
   try {
     connection = await mysql.createConnection(DB_CONFIG);
     console.log('Connected to database:', DB_CONFIG.database);
     console.log('\n🔍 Checking database schema...\n');
 
-    for (const migration of MIGRATIONS) {
+    const results = await runMigrationSteps(connection, { dryRun, step });
+
+    if (!dryRun && !step) {
+      // 创建图片存储目录
+      const imagesDir = path.resolve(KB_IMAGES_ROOT);
       try {
-        const needsMigration = !(await migration.check(connection));
-        
-        if (needsMigration) {
-          console.log(`⏳ Applying: ${migration.name}...`);
-          await migration.migrate(connection);
-          console.log(`  ✅ Applied: ${migration.name}`);
-          results.applied.push(migration.name);
-        } else {
-          console.log(`  ⏭️  Skipped: ${migration.name} (already exists)`);
-          results.skipped.push(migration.name);
+        await fs.mkdir(imagesDir, { recursive: true });
+        console.log(`\n📁 KB images directory: ${imagesDir}`);
+      } catch (err) {
+        if (err.code !== 'EEXIST') {
+          console.error(`  ⚠️  Could not create KB images directory: ${err.message}`);
         }
-      } catch (error) {
-        console.error(`  ❌ Failed: ${migration.name} - ${error.message}`);
-        results.failed.push({ name: migration.name, error: error.message });
-        if (migration.stopOnError) throw error;
+      }
+
+      // 创建工作空间目录
+      const workspaceDir = path.resolve(WORKSPACE_ROOT);
+      try {
+        await fs.mkdir(workspaceDir, { recursive: true });
+        console.log(`📁 Workspace directory: ${workspaceDir}`);
+      } catch (err) {
+        if (err.code !== 'EEXIST') {
+          console.error(`  ⚠️  Could not create workspace directory: ${err.message}`);
+        }
       }
     }
 
-    // 创建图片存储目录
-    const imagesDir = path.resolve(KB_IMAGES_ROOT);
-    try {
-      await fs.mkdir(imagesDir, { recursive: true });
-      console.log(`\n📁 KB images directory: ${imagesDir}`);
-    } catch (err) {
-      if (err.code !== 'EEXIST') {
-        console.error(`  ⚠️  Could not create KB images directory: ${err.message}`);
-      }
-    }
+    console.log(dryRun
+      ? '\n✅ Database dry-run completed; no migrations were applied.\n'
+      : '\n✅ Database upgrade completed!\n');
 
-    // 创建工作空间目录
-    const workspaceDir = path.resolve(WORKSPACE_ROOT);
-    try {
-      await fs.mkdir(workspaceDir, { recursive: true });
-      console.log(`📁 Workspace directory: ${workspaceDir}`);
-    } catch (err) {
-      if (err.code !== 'EEXIST') {
-        console.error(`  ⚠️  Could not create workspace directory: ${err.message}`);
-      }
-    }
-
-    // 打印摘要
-    console.log('\n' + '='.repeat(50));
-    console.log('📊 Upgrade Summary:');
-    console.log(`  ✅ Applied: ${results.applied.length}`);
-    console.log(`  ⏭️  Skipped: ${results.skipped.length}`);
-    console.log(`  ❌ Failed:  ${results.failed.length}`);
-    
-    if (results.applied.length > 0) {
-      console.log('\nApplied migrations:');
-      results.applied.forEach(name => console.log(`  - ${name}`));
-    }
-    
-    if (results.failed.length > 0) {
-      console.log('\nFailed migrations:');
-      results.failed.forEach(({ name, error }) => console.log(`  - ${name}: ${error}`));
-    }
-
-    console.log('\n✅ Database upgrade completed!\n');
-
+    return results;
   } catch (error) {
     console.error('❌ Upgrade failed:', error.message);
     throw error;
@@ -4285,12 +4342,6 @@ async function previewNotesScopeRefMigration() {
   }
 }
 
-// 检查必需的环境变量
-if (!DB_CONFIG.user || !DB_CONFIG.password || !DB_CONFIG.database) {
-  console.error('Error: DB_USER, DB_PASSWORD, DB_NAME environment variables are required');
-  process.exit(1);
-}
-
 // 如果直接运行此脚本，执行升级
 // 使用 import.meta.url 检测是否为主模块
 const __filename = fileURLToPath(import.meta.url);
@@ -4298,6 +4349,11 @@ const isMainModule = process.argv[1] &&
   path.resolve(process.argv[1]) === __filename;
 
 if (isMainModule) {
+  if (!DB_CONFIG.user || !DB_CONFIG.password || !DB_CONFIG.database) {
+    console.error('Error: DB_USER, DB_PASSWORD, DB_NAME environment variables are required');
+    process.exit(1);
+  }
+
   const run = process.argv.includes('--dry-run-notes-scope-refs')
     ? previewNotesScopeRefMigration
     : upgrade;
@@ -4307,4 +4363,10 @@ if (isMainModule) {
   });
 }
 
-export { upgrade, needsUpgrade, MIGRATIONS };
+export {
+  upgrade,
+  needsUpgrade,
+  MIGRATIONS,
+  parseUpgradeOptions,
+  runMigrationSteps,
+};
