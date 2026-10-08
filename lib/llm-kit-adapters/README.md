@@ -79,7 +79,7 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 
 | 方法 | 语义 | 走的路径 |
 |---|---|---|
-| `loadByDedupKey(key, dedupKey)` | 命中返回**完整**存储记录（与 `load()` 对应轮逐字段一致），未命中 `null` | SQL 按 `request_id` 限定并用 `dedup_key` / `record_json.roundKey` 的 OR 取候选；按 `round_no, id` 顺序完整装配候选，再用上游 `??` 判据过滤，不设 `LIMIT` |
+| `loadByDedupKey(key, dedupKey)` | 命中返回**完整**存储记录（与 `load()` 对应轮逐字段一致），未命中 `null` | SQL 按 `request_id` 限定并用 `dedup_key` / `record_json.roundKey` 的 OR 取候选；按 `round_no DESC, id DESC` 取**最近 N 条候选**（资源上界，issue #1166；默认 `DEFAULT_DEDUP_CANDIDATE_LIMIT = 200`，环境变量 `LLM_KIT_DEDUP_CANDIDATE_LIMIT` 可覆盖），翻正后按 `round_no, id` 顺序完整装配，再用上游 `??` 判据过滤。**不能 `LIMIT 1`**（最新候选可能是必须 miss 的伪候选，会截掉真命中）；真命中落在窗口外时按“未命中”处理，判据本身不变 |
 | `loadMaxRound(key)` | 等价于对 `load()` 结果取 `Math.max(0, …safe-integer round…)`；**空会话返回 `null`** | `idx_agent_rounds_request` 上的 `MAX(round_no)` |
 
 引擎行为与后果：
