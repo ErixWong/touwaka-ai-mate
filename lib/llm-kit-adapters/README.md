@@ -127,6 +127,10 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 契约测试消费已发布的 `erix-agent` 包，通过
 `erix-agent/contract-tests` 导入接口兼容断言：
 
+`execute-tool.contract.test.mjs` 与 `engine-api.contract.test.mjs` 是**上游漂移护栏，
+不是宿主符合性护栏**；其中大部分断言验证引擎侧规范化/API 行为。宿主侧调用约定由
+`loop-bridge.test.mjs` 守，两个方向的错误各能触发 1 个失败。
+
 ```bash
 # 凭据：~/.config/mcp/creds/touwaka-test-db.json（600，不入库）
 #   { "host": "127.0.0.1", "port": 3306, "user": "eric", "password": "…", "database": "llm_kit_test" }

@@ -113,7 +113,7 @@ test("builds an erix loop with structured tool execution and canonical results",
     initialUserMessage: "say hi",
     stream: true,
     toolContext: { trace_id: "trace-1" },
-    modelConfig: { max_tokens: 32768, max_output_tokens: 4096 },
+    modelConfig: { context_window_tokens: 32768, max_output_tokens: 4096 },
     signals: ["done"],
     onEvent: (event) => events.push(event),
   });
