@@ -327,7 +327,9 @@ if (!creds) {
     // NOT NULL 约束——erix 运行时调用点（agent-loop）必定注入；这里验证的是
     // 无工具轮（无 messages 拆行）时缺 requestContext 也能正常工作。
     const store = createErixStore({ db });
-    assert.deepEqual(Object.keys(store).sort(), ["appendRound", "load"]);
+    // issue #1150：loop-bridge 透传 erix-agent 0.17.0 的两条成对可选快路径探针
+    assert.deepEqual(Object.keys(store).sort(),
+      ["appendRound", "load", "loadByDedupKey", "loadMaxRound"]);
     const id = runId("noctx");
     await store.appendRound(id, {
       round: 1,
