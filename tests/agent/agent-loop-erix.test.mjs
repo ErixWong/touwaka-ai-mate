@@ -1,41 +1,26 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 
-import Database from '../../lib/db.js';
+import { openTestDatabase, DEFAULT_CREDS_PATH } from '../helpers/test-db-guard.mjs';
 import { AgentLoop } from '../../lib/agent/agent-loop.js';
 import { buildErixRunOptions } from '../../lib/llm-kit-adapters/loop-bridge.js';
 import logger from '../../lib/logger.js';
 
 logger.logFile = '/tmp/touwaka-agent-loop-erix-test.log';
 
-const CREDS_PATH = join(homedir(), '.config/mcp/creds/touwaka-test-db.json');
-
-function loadCreds() {
-  try {
-    return JSON.parse(readFileSync(CREDS_PATH, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-const creds = loadCreds();
+// issue #1167：目标库必须是测试库。openTestDatabase() 内部先跑硬断言
+//（tests/helpers/test-db-guard.mjs），白名单（llm_kit_test）不命中就在**建连接之前**抛错终止，
+// 不会静默把破坏性测试打到生产库。凭据文件缺失时返回 null → 用例 skip（保持原行为）。
+const dbCtx = await openTestDatabase();
+const creds = dbCtx?.creds ?? null;
+const CREDS_PATH = dbCtx?.credsPath ?? DEFAULT_CREDS_PATH;
 let testDb = null;
 let testUserId = null;
 let testExpertId = null;
 
-if (creds) {
-  testDb = new Database({
-    database: creds.database,
-    user: creds.user,
-    password: creds.password,
-    host: creds.host,
-    port: creds.port,
-  });
-  await testDb.connect();
+if (dbCtx) {
+  testDb = dbCtx.db;
   const [users] = await testDb.sequelize.query('SELECT id FROM users LIMIT 1');
   const [experts] = await testDb.sequelize.query('SELECT id FROM experts LIMIT 1');
   testUserId = users[0]?.id ?? 'test_user_agent_e2e';

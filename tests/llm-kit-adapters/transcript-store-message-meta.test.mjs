@@ -17,9 +17,6 @@
 import { test, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "os";
 
 // logs/ 目录当前是 root 属主，避免 logger 写文件的权限错误掩盖数据库测试结果。
 import logger from "../../lib/logger.js";
@@ -27,34 +24,22 @@ for (const method of ["info", "warn", "error", "debug"]) {
   if (typeof logger[method] === "function") logger[method] = () => {};
 }
 
-import Database from "../../lib/db.js";
+import { openTestDatabase, DEFAULT_CREDS_PATH } from "../helpers/test-db-guard.mjs";
 import { createTouwakaTranscriptStore } from "../../lib/llm-kit-adapters/transcript-store.js";
 import { projectTranscriptForDisplay } from "erix-agent";
 
-const CREDS_PATH = join(homedir(), ".config/mcp/creds/touwaka-test-db.json");
-
-function loadCreds() {
-  try {
-    return JSON.parse(readFileSync(CREDS_PATH, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-const creds = loadCreds();
+// issue #1167：目标库必须是测试库。openTestDatabase() 内部先跑硬断言
+//（tests/helpers/test-db-guard.mjs），白名单（llm_kit_test）不命中就在**建连接之前**抛错终止，
+// 不会静默把破坏性测试打到生产库。凭据文件缺失时返回 null → 用例 skip（保持原行为）。
+const dbCtx = await openTestDatabase();
+const creds = dbCtx?.creds ?? null;
+const CREDS_PATH = dbCtx?.credsPath ?? DEFAULT_CREDS_PATH;
 let db = null;
 let ns = null;
 let UserId = null;
 
-if (creds) {
-  db = new Database({
-    database: creds.database,
-    user: creds.user,
-    password: creds.password,
-    host: creds.host,
-    port: creds.port,
-  });
-  await db.connect();
+if (dbCtx) {
+  db = dbCtx.db;
   ns = randomUUID().slice(0, 8);
   const [user] = await db.sequelize.query("SELECT id FROM users LIMIT 1");
   UserId = user?.[0]?.id ?? "u_msgmeta";
