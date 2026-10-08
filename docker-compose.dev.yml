@@ -1,0 +1,101 @@
+# 本机日常开发部署（原 docker-compose.local.yml，2026-10-08 入库并改名）
+# 定位：**本机线上容器 touwaka-mate 的运行定义**（`docker inspect touwaka-mate` 的
+#   com.docker.compose.project.config_files 即指向本文件），compose 项目名 `touwaka`。
+# 特点：复用宿主 mariadb 容器（外部网络 prod），跳过 compose 内置 db 服务；
+#   bind mount 源码 ./:/app，启动时按陈旧性判定自动补装依赖 / 重建前端。
+# 密钥：一律 `${VAR:-本地默认值}` 形态（对齐仓库既有约定与平台 §3.3）——默认值是
+#   本地占位串，生产/内网部署请用 .env 覆盖（.env 已 gitignore），勿写真实密钥入库。
+# 注意：改动本文件后，下次 `docker compose -f docker-compose.dev.yml up -d` 若判定
+#   配置有变会重建容器（触发依赖安装与前端构建判定），非必要时先 `restart app`。
+#
+# 数据库：touwaka_mate（已从 temp/backups/touwaka_mate-20260816-103154.sql.gz 恢复）
+services:
+  app:
+    image: nikolaik/python-nodejs:python3.12-nodejs22-bookworm
+    container_name: touwaka-mate
+    restart: unless-stopped
+    ports:
+      - "3017:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - API_PORT=3000
+      - API_BASE=http://localhost:3000
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_NAME=touwaka_mate
+      - DB_USER=touwaka
+      - DB_PASSWORD=${DB_PASSWORD:-touwaka_secret}
+      - JWT_SECRET=${JWT_SECRET:-local-dev-secret-0123456789abcdef0123456789abcdef}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-local-dev-refresh-secret-0123456789abcdef0123}
+      - DATA_BASE_PATH=/app/data
+      - LOG_LEVEL=info
+      - ENABLE_CLOCK_CORE=1
+      - ENABLE_APP_CLOCK=1
+    volumes:
+      - ./:/app
+      - node_modules:/app/node_modules
+      - frontend_node_modules:/app/frontend/node_modules
+    working_dir: /app
+    command:
+      - bash
+      - -c
+      - |
+        if [ ! -d /app/node_modules ] || [ ! -f /app/node_modules/.package-lock.json ]; then
+          echo 'Installing Node.js dependencies...'
+          cd /app && npm ci --only=production
+        fi
+
+        # 前端依赖：node_modules 缺失，或 package-lock.json 新于已装依赖时重装
+        # （不能只看 node_modules 是否存在：持久化 volume 里的旧依赖会导致
+        #   用旧工具链构建新源码，产物带 TDZ/MIME 等 bug——本机 vite 7.3.2 vs 生产旧版）
+        FRONTEND_NPM_CI=false
+        if [ ! -d /app/frontend/node_modules ]; then
+          FRONTEND_NPM_CI=true
+        elif [ /app/frontend/package-lock.json -nt /app/frontend/node_modules/.package-lock.json ] 2>/dev/null; then
+          FRONTEND_NPM_CI=true
+        fi
+
+        # 前端构建：dist 缺失，或源码较 dist 有更新时重建
+        # （不能只看 dist 是否存在：旧构建残留会导致 git pull 新代码后前端不更新，
+        #   部署后仍加载旧 chunk 报 TDZ/MIME 错；用源码 mtime 与 dist/index.html 对比触发重建）
+        FRONTEND_BUILD=false
+        if [ ! -d /app/frontend/dist ] || [ ! -f /app/frontend/dist/index.html ]; then
+          FRONTEND_BUILD=true
+        elif [ -n "$(find /app/frontend/src /app/frontend/index.html /app/apps -type f \( -name '*.vue' -o -name '*.ts' -o -name '*.js' -o -name '*.html' -o -name '*.css' \) -newer /app/frontend/dist/index.html 2>/dev/null | head -1)" ]; then
+          FRONTEND_BUILD=true
+        fi
+
+        if [ "$$FRONTEND_NPM_CI" = true ] || [ "$$FRONTEND_BUILD" = true ]; then
+          echo 'Setting up frontend (deps + build)...'
+          cd /app/frontend
+          if [ "$$FRONTEND_NPM_CI" = true ]; then
+            npm ci --include=dev
+          fi
+          NODE_OPTIONS="--max-old-space-size=4096" npx vite build
+        fi
+
+        cd /app
+        echo 'Starting application...'
+        node server/index.js
+    networks:
+      - touwaka-network
+      - prod
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+networks:
+  touwaka-network:
+    driver: bridge
+  prod:
+    external: true
+
+volumes:
+  node_modules:
+    driver: local
+  frontend_node_modules:
+    driver: local

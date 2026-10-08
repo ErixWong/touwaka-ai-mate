@@ -280,18 +280,27 @@ docker-compose exec -T db mariadb -u root -p touwaka_mate < backup.sql
 
 ### 使用自定义配置文件
 
-如果需要使用自定义的 docker-compose 配置文件（如 `docker-compose-local.yml`）：
+仓库内置四份 compose，**按环境分工**（详见 [`docs/development/deployment-guide.md`](docs/development/deployment-guide.md)）：
+
+| 文件 | 适用场景 |
+|---|---|
+| `docker-compose.yml` | 标准一体化（compose 自带数据库） |
+| `docker-compose.dev.yml` | 本机日常开发（复用宿主 mariadb、源码 bind mount、端口 3017） |
+| `docker-compose.nas.yml` | NAS 内网部署（密钥强制注入） |
+| `docker-compose.standalone.yml` | 自带外部 MariaDB/MySQL（1Panel 等） |
 
 ```bash
 # 使用 -f 参数指定配置文件
-docker-compose -f docker-compose-local.yml up -d
-docker-compose -f docker-compose-local.yml logs -f app
-docker-compose -f docker-compose-local.yml down
+docker-compose -f docker-compose.dev.yml up -d
+docker-compose -f docker-compose.dev.yml logs -f app
+docker-compose -f docker-compose.dev.yml down
 
 # 或设置环境变量简化命令
-export COMPOSE_FILE=docker-compose-local.yml
-docker-compose up -d  # 自动使用 docker-compose-local.yml
+export COMPOSE_FILE=docker-compose.dev.yml
+docker-compose up -d  # 自动使用 docker-compose.dev.yml
 ```
+
+> 密钥统一走环境变量：`dev` / 标准版为 `${VAR:-本地占位默认}`，`nas` / `standalone` 为 `${VAR:?}` 强制注入；真实密钥写 `.env`（已 gitignore），勿入库。
 
 ### 独立部署（使用自己的数据库）
 
