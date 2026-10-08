@@ -4117,6 +4117,24 @@ const MIGRATIONS = [
       console.log('  ✓ Dropped llm_kit_run_state table');
     }
   },
+  // issue #1147：erix-agent 0.16.0 "Store fidelity requirements" 要求 message 对象
+  // （含未知字段）完整往返，其中 messages[].meta.source 是引擎保留标记（judge 方向提示轮
+  // 靠它分类；丢失会让合成消息显示成真实用户发言，且 resume 后评委的 judge-control 排除
+  // 失效）。messages 表此前没有可放它的地方，本列即为该落点。
+  // DDL 已由 Eric 批准（2026-10-08，批准范围仅本列）。类型取 longtext，与同表既有 JSON
+  // 形态列（tool_calls / error_info / content 的多模态信封）一致；历史行留 NULL，
+  // 读侧不回填也不报错。
+  {
+    name: 'messages.meta_json column add',
+    check: async (conn) => await hasColumn(conn, 'messages', 'meta_json'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        ALTER TABLE messages
+        ADD COLUMN meta_json longtext NULL COMMENT 'canonical message.meta 原样 JSON（含引擎保留键 meta.source）；历史行为 NULL'
+      `);
+      console.log('  ✓ Added messages.meta_json column');
+    }
+  },
 
 ];
 

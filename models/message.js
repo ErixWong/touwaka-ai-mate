@@ -123,6 +123,11 @@ export default class message extends Model {
       type: DataTypes.INTEGER,
       allowNull: true,
       comment: "round 内消息序号"
+    },
+    meta_json: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "canonical message.meta 原样 JSON（含引擎保留键 meta.source）；历史行为 NULL"
     }
   }, {
     sequelize,

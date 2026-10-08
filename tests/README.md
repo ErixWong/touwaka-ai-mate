@@ -33,6 +33,7 @@
 | `llm-kit-adapters/loop-bridge.test.mjs` | loop-bridge `createErixStore` 方法面与注入行为 |
 | `llm-kit-adapters/transcript-store.contract.test.mjs` | TranscriptStore 三层拆行契约 + 0.16.0 同轮保序与 roundKey/meta/response 保真（issue #1134/#1146） |
 | `llm-kit-adapters/transcript-store-meta.test.mjs` | 跨轮 tool 配对、multimodal/reasoning 列映射等拆行行为 |
+| `llm-kit-adapters/transcript-store-message-meta.test.mjs` | `messages[].meta` 随 `meta_json` 列往返保真（含未知键与非对象 meta）、synthetic 投影翻绿、历史 NULL 行兼容（issue #1147） |
 | `agent/agent-loop-erix.test.mjs` | agent-loop 走 erix 主链路的行为测试 |
 
 运行方式（数据库凭据：`~/.config/mcp/creds/touwaka-test-db.json`，600，不入库；缺失时相关用例 skip）：
