@@ -24,6 +24,30 @@
 | `test-internal-llm-qwen-thinking.js` | 测试 InternalLLMService 对 Qwen thinking 开关的控制效果 |
 | `test-doc-embedding.js` | 测试文档平台向量化服务（5 种场景：正常、缺模型、无 chunk、revectorize、错误重试） |
 
+## erix 适配器 / agent 测试（`tests/llm-kit-adapters/`、`tests/agent/`）
+
+| 脚本 | 说明 |
+|------|------|
+| `llm-kit-adapters/model-config-provider.contract.test.mjs` | ModelConfigProvider × erix 契约（真实 MariaDB） |
+| `llm-kit-adapters/provider-adapter.test.mjs` | erix Provider 桥接 `LLMClient.callStream/call` 行为 |
+| `llm-kit-adapters/loop-bridge.test.mjs` | loop-bridge `createErixStore` 方法面与注入行为 |
+| `llm-kit-adapters/transcript-store.contract.test.mjs` | TranscriptStore 三层拆行契约 + 0.16.0 同轮保序与 roundKey/meta/response 保真（issue #1134/#1146） |
+| `llm-kit-adapters/transcript-store-meta.test.mjs` | 跨轮 tool 配对、multimodal/reasoning 列映射等拆行行为 |
+| `agent/agent-loop-erix.test.mjs` | agent-loop 走 erix 主链路的行为测试 |
+
+运行方式（数据库凭据：`~/.config/mcp/creds/touwaka-test-db.json`，600，不入库；缺失时相关用例 skip）：
+
+```bash
+npm run test:llm-kit
+# 等价于：node --test tests/llm-kit-adapters/*.test.mjs tests/agent/agent-loop-erix.test.mjs
+```
+
+坑：**不要**用目录形式跑 `node --test tests/llm-kit-adapters/`，会报
+`Cannot find module '…/tests/llm-kit-adapters'` + `MODULE_NOT_FOUND`（本仓 Node 版本下
+该路径被当作模块去解析，而不是展开成目录内的测试文件）；必须用 `*.test.mjs` 通配
+或直接 `npm run test:llm-kit`。
+这批测试共用 `llm_kit_test` 库的三层表，以随机 runId 命名空间隔离并可并发安全运行。
+
 ## MCP / 驻留进程测试
 
 | 脚本 | 说明 |
