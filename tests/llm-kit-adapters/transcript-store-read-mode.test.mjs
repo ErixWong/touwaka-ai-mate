@@ -486,4 +486,107 @@ if (!creds) {
       "legacy 语义一行都不许变（canonical 被动了也不许受影响）",
     );
   });
+
+  test("⑥ new 与 legacy 的 loadByDedupKey / loadMaxRound 必须读各自的表", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("canonical-only-guards");
+    const baselineKey = `${id}:baseline`;
+    const dedupKey = `${id}:canonical-only:${ns}`;
+    const canonicalId = `atr_readmode_${ns}`;
+
+    await store.appendRound(id, {
+      round: 4,
+      dedupKey: baselineKey,
+      ts: "2026-10-09T00:00:00.000Z",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "旧表基线轮" }] }],
+    });
+
+    const [legacyMaxRows] = await db.sequelize.query(
+      "SELECT MAX(round_no) AS max_round FROM agent_rounds WHERE request_id = :rid",
+      { replacements: { rid: id } },
+    );
+    const previousMax = Number(legacyMaxRows[0]?.max_round);
+    assert.ok(Number.isSafeInteger(previousMax), "基线轮必须存在于 legacy 表");
+    const roundNo = previousMax + 1;
+    const record = {
+      round: roundNo,
+      roundKey: `${id}:round:${roundNo}`,
+      dedupKey,
+      ts: "2026-10-09T00:00:01.000Z",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "仅存在于 canonical" }] }],
+      response: {
+        content: [{ type: "text", text: "仅存在于 canonical" }],
+        stopReason: "end_turn",
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      },
+      folded: false,
+      toolUses: 0,
+    };
+
+    try {
+      await db.sequelize.query(
+        `INSERT INTO \`${CANONICAL_TABLE}\`
+           (id, request_id, round_no, dedup_key, record_json, created_at, updated_at)
+         VALUES (:id, :rid, :roundNo, :dedupKey, :record, NOW(), NOW())`,
+        {
+          replacements: {
+            id: canonicalId,
+            rid: id,
+            roundNo,
+            dedupKey,
+            record: JSON.stringify(record),
+          },
+        },
+      );
+
+      const [[canonicalRows], [legacyRows]] = await Promise.all([
+        db.sequelize.query(
+          `SELECT COUNT(*) AS n FROM \`${CANONICAL_TABLE}\`
+            WHERE request_id = :rid AND dedup_key = :dedupKey`,
+          { replacements: { rid: id, dedupKey } },
+        ),
+        db.sequelize.query(
+          "SELECT COUNT(*) AS n FROM agent_rounds WHERE request_id = :rid AND dedup_key = :dedupKey",
+          { replacements: { rid: id, dedupKey } },
+        ),
+      ]);
+      assert.equal(Number(canonicalRows[0].n), 1, "唯一标记行必须确实存在于 canonical 表");
+      assert.equal(Number(legacyRows[0].n), 0, "唯一标记行不得存在于 agent_rounds");
+      assert.ok(roundNo > previousMax, "canonical-only 轮号必须高于 legacy 原有最大轮号");
+
+      const newHit = await underMode(
+        TRANSCRIPT_READ_MODE_NEW,
+        () => store.loadByDedupKey(id, dedupKey),
+      );
+      assert.deepEqual(newHit, record, "new 档的 loadByDedupKey 必须命中 canonical-only 行");
+      assert.equal(
+        await underMode(TRANSCRIPT_READ_MODE_NEW, () => store.loadMaxRound(id)),
+        roundNo,
+        "new 档的 loadMaxRound 必须包含 canonical-only 最大轮号",
+      );
+
+      assert.equal(
+        await underMode(TRANSCRIPT_READ_MODE_LEGACY, () => store.loadByDedupKey(id, dedupKey)),
+        null,
+        "legacy 档的 loadByDedupKey 不得看见 canonical-only 行",
+      );
+      assert.equal(
+        await underMode(TRANSCRIPT_READ_MODE_LEGACY, () => store.loadMaxRound(id)),
+        previousMax,
+        "legacy 档的 loadMaxRound 必须仍返回 agent_rounds 的旧最大轮号",
+      );
+    } finally {
+      await db.sequelize.query(
+        `DELETE FROM \`${CANONICAL_TABLE}\`
+          WHERE id = :id AND request_id = :rid AND dedup_key = :dedupKey`,
+        { replacements: { id: canonicalId, rid: id, dedupKey } },
+      );
+      const [remainingRows] = await db.sequelize.query(
+        `SELECT COUNT(*) AS n FROM \`${CANONICAL_TABLE}\`
+          WHERE id = :id AND request_id = :rid AND dedup_key = :dedupKey`,
+        { replacements: { id: canonicalId, rid: id, dedupKey } },
+      );
+      assert.equal(Number(remainingRows[0].n), 0, "只清除的 canonical-only 标记行必须没有残留");
+    }
+  });
 }
