@@ -160,6 +160,13 @@ before(async () => {
 after(async () => {
   if (db) {
     await dropNewTables();
+    // issue #1156 Stage B 起的护栏：appendRound 现在**必须**能写 agent_transcript_rounds
+    // （canonical 与展示面同事务），所以本文件收尾不能把表留在 DROP 状态——否则同一次
+    // `npm run test:llm-kit` 里任何跟本文件开着的文件（contract / fastpath / message-meta …）
+    // 都会撞上 Table doesn't exist。DROP 之后立即重建 = 把测试库停在**已迁移态**（与生产一致）；
+    // 本文件自己的用例仍然先 DROP 再跑建表步骤（上面 before / 中途用例都是），所以“空库能建”
+    // 的证明一字未少。
+    await applyNewSteps();
   }
   if (dbCtx && typeof db?.close === "function") {
     await db.close();

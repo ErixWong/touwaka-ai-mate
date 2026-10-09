@@ -74,6 +74,8 @@ async function cleanup() {
     await db.sequelize.query('DELETE FROM messages WHERE round_id IN (:roundIds)', { replacements: { roundIds } });
     await db.sequelize.query('DELETE FROM chat_tool_calls WHERE round_id IN (:roundIds)', { replacements: { roundIds } });
   }
+  // #1156 Stage B：canonical 与展示面同事务写入，清理也要一起清
+  await db.sequelize.query('DELETE FROM agent_transcript_rounds WHERE request_id LIKE :pattern', { replacements: { pattern: `run-${ns}-cap-%` } });
   await db.sequelize.query('DELETE FROM agent_rounds WHERE request_id LIKE :pattern', { replacements: { pattern: `run-${ns}-cap-%` } });
 }
 
@@ -263,6 +265,9 @@ if (!creds) {
           replacements.push(options?.replacements);
           return db.sequelize.query(sql, options);
         },
+        // #1156 Stage B：appendRound 现在走单事务，替身必须把 transaction 也转发到真
+        // sequelize（替身要建模完整接口），否则写路直接 TypeError。
+        transaction: (handler) => db.sequelize.transaction((tx) => handler(tx)),
       },
     };
     const store = createTouwakaTranscriptStore({ db: spyingDb, requestContext });

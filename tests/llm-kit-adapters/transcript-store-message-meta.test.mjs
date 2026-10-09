@@ -63,6 +63,8 @@ async function cleanup() {
     await db.sequelize.query("DELETE FROM messages WHERE round_id IN (:roundIds)", { replacements: { roundIds } });
     await db.sequelize.query("DELETE FROM chat_tool_calls WHERE round_id IN (:roundIds)", { replacements: { roundIds } });
   }
+  // #1156 Stage B：canonical 与展示面同事务写入，清理也要一起清
+  await db.sequelize.query("DELETE FROM agent_transcript_rounds WHERE request_id LIKE :pattern", { replacements: { pattern: `run-${ns}-%` } });
   await db.sequelize.query("DELETE FROM agent_rounds WHERE request_id LIKE :pattern", { replacements: { pattern: `run-${ns}-%` } });
 }
 
