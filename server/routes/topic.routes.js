@@ -29,10 +29,5 @@ export default (controller, messageController) => {
   // 删除话题（需要认证）
   router.delete('/:id', authenticate(), controller.delete.bind(controller));
 
-  // 获取话题下的消息列表（需要认证）
-  if (messageController) {
-    router.get('/:topicId/messages', authenticate(), messageController.listByTopic.bind(messageController));
-  }
-
   return router;
 };

@@ -24,12 +24,6 @@ export default (controller) => {
   // 按游标增量获取消息（需要认证）
   router.get('/expert/:expertId/since', authenticate(), controller.listSince.bind(controller));
 
-  // 获取消息列表（旧 API，按 topic，保留兼容）
-  router.get('/', authenticate(), controller.list.bind(controller));
-
-  // 获取单条消息详情（需要认证）
-  router.get('/:id', authenticate(), controller.get.bind(controller));
-
   // 删除指定 expert 与当前用户的所有消息（仅管理员）
   router.delete('/expert/:expertId', authenticate(), requireAdmin(), controller.clearByExpert.bind(controller));
 

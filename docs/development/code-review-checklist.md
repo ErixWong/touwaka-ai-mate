@@ -408,7 +408,7 @@ return await response.json()  // 错误！包含了 code/message 包装
 
 **请求参数规范**：
 - 使用 `page` 和 `size`（**不是** `page` 和 `pageSize`）
-- 示例：`GET /api/messages?expert_id=xxx&page=1&size=20`
+- 示例：`GET /api/messages/expert/xxx?page=1&size=20`
 - 复杂列表查询应优先提供 `POST /query` JSON body，把 `filter`、`sort`、`pagination` 放在请求体中。
 - 消息主链路使用 `POST /api/messages/query`：
   ```json
