@@ -462,3 +462,83 @@ test('消费点不误伤：合法值 3 在两条循环里都原样生效且无�
     assert.deepEqual(clampWarnings(warnings), [], '合法值不该触发夹取告警');
   });
 });
+
+// ==================== 种子侧边界（issue #1176）====================
+
+/**
+ * 两处「锚点清洗专家」种子写入的 max_tool_rounds 必须落在约定区间内。
+ *
+ * 历史上它们是硬编码的 60：越界值在 #1166 之前能直接落库，之后靠运行时
+ * `resolveEffectiveMaxToolRounds` 夹回 50 —— 功能没坏，但每次清洗都刷一条
+ * `[MaxToolRounds] 已夹取` 告警（dev 库里那一行就是这么来的）。Eric 拍板改成 50。
+ *
+ * 断言刻意不用 grep 断字符串：数值是从源码里**解析**出来的，标识符则解析出名字后
+ * 按**真实导入的常量值**判定 —— 把 60 改回来、或换成一个未知变量，都会红。
+ */
+const SEED_SITES = [
+  { file: 'scripts/setup-anchor-expert.mjs', label: '命令行建专家（POST /api/experts 的 body）' },
+  { file: 'apps/standard-mgr/server/service.js', label: 'standard-mgr 自动建锚点清洗专家（Expert.create）' },
+];
+
+test('两处种子的 max_tool_rounds 解析出来都落在 1–50（#1176：历史上是硬编码 60）', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const root = fileURLToPath(new URL('../..', import.meta.url));
+  // 常量本身走真实 import（脚本自己有主模块守卫，import 不会发起任何 HTTP 调用）
+  const { ANCHOR_EXPERT_MAX_TOOL_ROUNDS } = await import('../../scripts/setup-anchor-expert.mjs');
+  const knownValues = { ANCHOR_EXPERT_MAX_TOOL_ROUNDS };
+
+  for (const { file, label } of SEED_SITES) {
+    const source = readFileSync(root + file, 'utf8');
+    const matches = [...source.matchAll(
+      /\bmax_tool_rounds\s*:\s*(\$\{\s*([A-Za-z_$][\w$]*)\s*\}|[A-Za-z_$][\w$]*|-?\d+(?:\.\d+)?)/g,
+    )];
+    assert.ok(matches.length >= 1, `${file} 里找不到 max_tool_rounds 种子（${label}）—— 种子被删了？`);
+
+    for (const match of matches) {
+      const raw = match[1];
+      const identifier = match[2] ?? (/^[A-Za-z_$]/.test(raw) ? raw : null);
+      let value;
+      if (identifier) {
+        assert.ok(
+          Object.prototype.hasOwnProperty.call(knownValues, identifier),
+          `${file} 的 max_tool_rounds 引用了未知标识符 ${identifier}：` +
+            '请把它的真实值加进本用例的 knownValues，别把种子退回字面量',
+        );
+        value = knownValues[identifier];
+      } else {
+        value = Number(raw);
+      }
+
+      assert.ok(
+        Number.isInteger(value),
+        `${file} 的 max_tool_rounds=${raw} 解析出 ${value}，必须是整数`,
+      );
+      assert.ok(
+        value >= MAX_TOOL_ROUNDS_MIN && value <= MAX_TOOL_ROUNDS_MAX,
+        `${file} 的 max_tool_rounds=${raw} 解析出 ${value}，越出约定区间 `
+          + `${MAX_TOOL_ROUNDS_MIN}-${MAX_TOOL_ROUNDS_MAX}（写入侧会被 ctx.error 拒绝、`
+          + '运行时会被夹取并刷告警）',
+      );
+      // 与写入侧判据同源：能直接落库的值才配当种子
+      assert.ok(isValidMaxToolRounds(value), `${file} 的 max_tool_rounds=${value} 不是合法种子值`);
+    }
+  }
+});
+
+test('种子常量与运行时边界常量不互相漂移：ANCHOR_EXPERT_MAX_TOOL_ROUNDS 就是区间上界（#1176）', async () => {
+  const { ANCHOR_EXPERT_MAX_TOOL_ROUNDS } = await import('../../scripts/setup-anchor-expert.mjs');
+  assert.ok(
+    ANCHOR_EXPERT_MAX_TOOL_ROUNDS <= MAX_TOOL_ROUNDS_MAX,
+    `种子 ${ANCHOR_EXPERT_MAX_TOOL_ROUNDS} 超过 MAX_TOOL_ROUNDS_MAX=${MAX_TOOL_ROUNDS_MAX}`,
+  );
+  assert.ok(
+    ANCHOR_EXPERT_MAX_TOOL_ROUNDS >= MAX_TOOL_ROUNDS_MIN,
+    `种子 ${ANCHOR_EXPERT_MAX_TOOL_ROUNDS} 低于 MAX_TOOL_ROUNDS_MIN=${MAX_TOOL_ROUNDS_MIN}`,
+  );
+  assert.equal(
+    ANCHOR_EXPERT_MAX_TOOL_ROUNDS,
+    MAX_TOOL_ROUNDS_MAX,
+    '锚点清洗专家要的是"能给的最多轮数"，取区间上界；若有人调低上界，这条会提醒复核种子',
+  );
+});

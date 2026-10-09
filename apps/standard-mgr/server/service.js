@@ -23,7 +23,7 @@ import jwt from 'jsonwebtoken';
 import DocAccessService from '../../../lib/doc-access-service.js';
 import { getSystemUserSession } from '../../../lib/system-account.js';
 import { Op } from 'sequelize';
-import { DEFAULT_PROMPT } from '../../../scripts/setup-anchor-expert.mjs';
+import { DEFAULT_PROMPT, ANCHOR_EXPERT_MAX_TOOL_ROUNDS } from '../../../scripts/setup-anchor-expert.mjs';
 
 // R18-2: 清洗总超时 15→30 分钟（长标准 + 读写交替策略下 15 分钟偏紧）
 const CLEAN_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟
@@ -2439,7 +2439,10 @@ class StandardMgrService {
       introduction: '通读标准文档全文，识别对其他标准的引用并定位到目标章节，写入引用记录。',
       prompt_template: DEFAULT_PROMPT,
       is_active: true,
-      max_tool_rounds: 60,
+      // issue #1176：历史上这里硬编码 60，越出约定的 1–50（写入侧现已硬校验，
+      // 旧值靠运行时夹取兼容并刷告警）。现在与 scripts/setup-anchor-expert.mjs 共用
+      // 同一个种子常量，两处不会再各写一份。
+      max_tool_rounds: ANCHOR_EXPERT_MAX_TOOL_ROUNDS,
       expressive_model_id: modelExpert?.expressive_model_id || null,
       reflective_model_id: modelExpert?.reflective_model_id || null,
     });
