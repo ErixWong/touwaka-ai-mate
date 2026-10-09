@@ -122,12 +122,12 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 
 | 取值 | 真相源 | 说明 |
 |---|---|---|
-| `legacy`（**默认**） | `agent_rounds` + `messages` / `chat_tool_calls` 展示面拆行装配 | 现网读法，**一行语义都没改**（分支体就是 Stage B 之前的实现） |
-| `new` | canonical `agent_transcript_rounds.record_json`（整份 RoundRecord 原样，决策③′） | 不再从展示面重组；`loadByDedupKey` 的候选窗口与 `??` 判据（#1150 / #1166）逐条对齐 |
+| `new`（**默认**） | canonical `agent_transcript_rounds.record_json`（整份 RoundRecord 原样，决策③′） | 不再从展示面重组；`loadByDedupKey` 的候选窗口与 `??` 判据（#1150 / #1166）逐条对齐 |
+| `legacy` | `agent_rounds` + `messages` / `chat_tool_calls` 展示面拆行装配 | 旧读法，**一行语义都没改**（分支体就是 Stage B 之前的实现） |
 
-- **默认仍是 `legacy`，生产要不要切 `new` 由 Eric 拍**（一次 restart 切完）。代码不许自己翻默认值
-  ——`transcript-store-read-mode.test.mjs` ② 专门钉这一条。
-- 未知取值：**按 `legacy` 跑** + 一条结构化告警（`event: transcript_read_mode_unknown`），
+- 默认已切至 `new`（Eric 已批准）；要回退到 `legacy`，设置
+  `ERIX_TRANSCRIPT_READ_MODE=legacy` 并重启。
+- 未知取值：**回落到当前默认档（目前为 `new`）** + 一条结构化告警（`event: transcript_read_mode_unknown`），
   不静默、不抛错；同一取值只告一次。日志实现抛错也不许带倒读路径（与孤儿行告警同规则）。
 - 两模式等价由 `scripts/verify-transcript-read-parity.js` 自证（**只读**，支持 `--limit` /
   `--request-id` / `--report`）：逐会话在两个档下取三个读方法的输出做深比对，规范化剔除的键
@@ -135,7 +135,7 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
   两侧都调 store 现成读法，模式只经上面那个解析入口生效。
 - 展示面的既有损形状（纯 tool 消息上的 `message.meta`、块序非 `[text→tool_use→reasoning]`、
   显式 `is_error:false`、浮点 `duration`）在 `new` 档会**变得可见**（canonical 是无损的那一侧）：
-  这不是 Stage C 引入的回归，但切 `new` 前应当先用 parity 脚本在生产库跑一遍确认差异面。
+  这不是 Stage C 引入的回归；本次默认切换前已用生产全量语料验证两模式等价。
 - 顺带的语义修正（同一 Stage）：孤儿 `chat_tool_calls` 行（`round_id` 找不到宿主轮）从
   Stage B 的“挂到首轮”**改回丢弃**，结构化告警保留。基点 `26a5df7` 的 SQL 是
   `WHERE round_id IN (:roundIds)` = 本来就取不到 = 丢弃，attach 反而把 tool 行污染成首轮内容。

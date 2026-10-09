@@ -26,6 +26,9 @@ for (const method of ["info", "warn", "error", "debug"]) {
 import { openTestDatabase, DEFAULT_CREDS_PATH } from "../helpers/test-db-guard.mjs";
 import { createTouwakaTranscriptStore } from "../../lib/llm-kit-adapters/transcript-store.js";
 
+// This pre-canonical contract suite exercises the legacy display-row read path explicitly.
+process.env.ERIX_TRANSCRIPT_READ_MODE = "legacy";
+
 // 与 erix test/contract/transcript-store.js 相同形状（该文件不导出 fixture，本地复刻）
 const ROUND_1 = {
   round: 1,

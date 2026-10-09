@@ -32,6 +32,9 @@ import { createErixStore } from "../../lib/llm-kit-adapters/loop-bridge.js";
 // dedupKey 派生、快/慢路径选择、类型违约抛错全在引擎代码里，本文件不重写这些规则。
 import { appendUserTurn } from "erix-agent";
 
+// These assertions target the legacy display-row fast paths; pin the mode instead of relying on defaults.
+process.env.ERIX_TRANSCRIPT_READ_MODE = "legacy";
+
 // issue #1167：目标库必须是测试库。openTestDatabase() 内部先跑硬断言
 //（tests/helpers/test-db-guard.mjs），白名单（llm_kit_test）不命中就在**建连接之前**抛错终止，
 // 不会静默把破坏性测试打到生产库。凭据文件缺失时返回 null → 用例 skip（保持原行为）。
