@@ -147,6 +147,18 @@ async function cleanup() {
   }
 }
 
+/** 只在指定模式下跑一个动作（与 parity 脚本的 readUnder 同理，但这里要探的是自定义调用）。 */
+async function underMode(mode, fn) {
+  const previous = process.env[TRANSCRIPT_READ_MODE_ENV];
+  process.env[TRANSCRIPT_READ_MODE_ENV] = mode;
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env[TRANSCRIPT_READ_MODE_ENV];
+    else process.env[TRANSCRIPT_READ_MODE_ENV] = previous;
+  }
+}
+
 /**
  * 有代表性的语料（一个会话 7 行 / 6 轮，形状全部取"展示面拆行可无损往返"的那些）。
  * 覆盖点写死在 label 里，方便失败时定位是哪一类形状不等价：
@@ -348,7 +360,11 @@ if (!creds) {
     process.env[TRANSCRIPT_READ_MODE_ENV] = "NEW";
     assert.equal(resolveTranscriptReadMode(), "new", "取值按 trim + 小写归一（运维大小写手滑不该回退）");
 
-    // 行为级：不设环境变量时，store 的读输出必须与显式 legacy 一字不差
+    // 行为级：不设环境变量时，store 的读输出必须与显式 legacy 一字不差。
+    // 这里必须**真的把变量删掉**再读：上一行刚把 "NEW" 设进去，不删就会让这一段
+    // 在"默认已是 new"的情况下仍然绿（变异实测抓到的假绿，已铉死）。
+    delete process.env[TRANSCRIPT_READ_MODE_ENV];
+    assert.equal(resolveTranscriptReadMode(), "legacy", "进入行为级比对前必须确认当下就是默认态");
     const store = createTouwakaTranscriptStore({ db, requestContext });
     const id = runId("default-legacy");
     await seedCorpus(store, id);
@@ -396,6 +412,44 @@ if (!creds) {
     const loaded = await noisy.load(id);
     assert.equal(loaded.length, 1, "日志实现抛错 + 未知模式时 load() 仍必须按 legacy 正常返回");
     assert.equal(await noisy.loadMaxRound(id), 1, "loadMaxRound 同样不许被带倒");
+  });
+
+  test("⑤ 候选窗口语义（#1166）在 new 档同样成立：窗口外=未命中、窗口内=命中且内容相等", async () => {
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    const id = runId("window");
+    // 形状抄 #1166 那个文件：真命中是**最老**的一条（dedup_key = TRUE_KEY），
+    // 其后三行的 record_json.roundKey 都等于 TRUE_KEY，但自己的 dedupKey 已定义且不等
+    // → 按上游 `??` 判据是必须 miss 的伪候选。窗口收到 1 时只剩最新那条伪候选。
+    const trueKey = `${id}:true-key`;
+    await store.appendRound(id, {
+      round: 1, dedupKey: trueKey, roundKey: `${id}:round:1`, ts: "2026-11-01T00:00:01.000Z", folded: false,
+      messages: [{ role: "assistant", content: [{ type: "text", text: "真命中（最老那条）" }] }],
+    });
+    for (let i = 2; i <= 4; i += 1) {
+      await store.appendRound(id, {
+        round: i, dedupKey: `${id}:decoy:${i}`, roundKey: trueKey, ts: `2026-11-01T00:00:0${i}.000Z`, folded: false,
+        messages: [{ role: "assistant", content: [{ type: "text", text: `伪候选 ${i}` }] }],
+      });
+    }
+    const candidateEnv = "LLM_KIT_DEDUP_CANDIDATE_LIMIT";
+    const original = process.env[candidateEnv];
+    try {
+      process.env[candidateEnv] = "1";
+      const legacyMiss = await underMode(TRANSCRIPT_READ_MODE_LEGACY, () => store.loadByDedupKey(id, trueKey));
+      const newMiss = await underMode(TRANSCRIPT_READ_MODE_NEW, () => store.loadByDedupKey(id, trueKey));
+      assert.equal(legacyMiss, null, "legacy 档窗口外必须未命中（#1166 既有语义，不许放宽判据）");
+      assert.equal(newMiss, null, "new 档窗口外必须同样未命中（不许悄悄退化成全量扫）");
+
+      delete process.env[candidateEnv];
+      const legacyHit = await underMode(TRANSCRIPT_READ_MODE_LEGACY, () => store.loadByDedupKey(id, trueKey));
+      const newHit = await underMode(TRANSCRIPT_READ_MODE_NEW, () => store.loadByDedupKey(id, trueKey));
+      assert.equal(legacyHit?.dedupKey, trueKey, "窗口放回默认后 legacy 必须命中最老那条（不许 LIMIT 1 化）");
+      assert.equal(newHit?.dedupKey, trueKey, "窗口放回默认后 new 必须命中同一条");
+      assert.deepEqual(canonicalize(newHit), canonicalize(legacyHit), "命中内容两模式必须深相等");
+    } finally {
+      if (original === undefined) delete process.env[candidateEnv];
+      else process.env[candidateEnv] = original;
+    }
   });
 
   test("④ new 档真的读 canonical：改 canonical 一处，new 看得见、legacy 不受影响", async () => {
