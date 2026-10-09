@@ -9,8 +9,13 @@
  *   1) 从 models/*.js（sequelize-auto 反向生成，只读）解析真实字段集合：
  *      取 `super.init({ ... })` 第一个对象参数里 depth==1 的键；
  *   2) 扫描 server/controllers/**\/*.js 里**纯字符串字面量**的 `attributes: [...]`，
- *      把它归属到同一查询的模型（就近的 `this.Message.findAndCountAll(` 形式，
- *      或 include 块里更近的 `model: ...`）；
+ *      把它归属到同一查询的模型。认得三种形态：
+ *        a. include 块里更近的 `model: ...`；
+ *        b. 就近的调用对象 `this.Message.findAll({...})`（含 this.models.X / getModel 别名）；
+ *        c. `this.db.models.<蛇形表名>.findAll|findOne|findByPk|findAndCountAll|count({...})`，
+ *           含下标写法 `db.models['<表名>']` —— <表名> 就是 models/<表名>.js 的模型名；
+ *      归不到的（`helper(this.db, {...})`、`roleData.getXxx({...})` 关联 getter 等第三方上下文）
+ *      不判违规、只留痕，避免拿不准就发红。
  *   3) 出现模型里不存在的列即失败，失败信息含「文件:行 / 模型 / 列」。
  *
  * 自证有牙：除了扫真实源码，还用合成源码断言「塞一个假列必被抓住」（见文件末尾）。
@@ -176,6 +181,8 @@ function findDepth1Value(source, openIdx, closeIdx, key) {
  * 把 attributes 字面量归属到某个模型表达式。
  * - include 对象里有 `model:` → 用 include 的模型；
  * - 否则看包含它的调用：`this.Message.findAll({...})` → this.Message；
+ *   `this.db.models.user_profile.findAll({...})` → 额外带上 table='user_profile'（origin 'db-models'），
+ *   由调用方用 resolveModelAccessName 把蛇形表名映射到模型名；
  *   形如 `helper(this.db, {...})` / `data.getXxx({...})` 的第三方上下文 → 无法归属，跳过（不误报）。
  */
 function resolveContext(source, attIndex) {
@@ -190,9 +197,51 @@ function resolveContext(source, attIndex) {
   while (j >= 0 && /[\s[]/.test(source[j])) j -= 1;
   if (j >= 0 && source[j] === '(') {
     const before = source.slice(Math.max(0, j - 160), j);
+    const dbModels = DB_MODELS_CALL_RE.exec(before);
+    const table = dbModels ? (dbModels[1] || dbModels[3]) : null;
     const callee = /((?:this\.(?:models\.)?[\w$]+|[\w$]+))\.[A-Za-z_$][\w$]*\s*$/.exec(before);
+    if (table) return { expr: callee ? callee[1] : `db.models.${table}`, table, origin: 'db-models' };
     if (callee) return { expr: callee[1], origin: 'call' };
     return null;
+  }
+  return null;
+}
+
+/**
+ * `db.models.<name>.<findMethod>(` / `db.models['<name>'].<findMethod>(` 形态。
+ * 只认查询类方法名，且输入是「到调用左括号为止」的源码前缀（故正则末尾带 `$`），
+ * 免得把 `const M = db.models.foo;` 之类的取模型引用误当成查询上下文。
+ */
+const DB_MODELS_CALL_RE = /\.models\s*(?:\.\s*([\w$]+)|\[\s*(['"`])\s*([\w$-]+)\s*\2\s*\])\s*\.\s*(?:findAll|findOne|findByPk|findAndCountAll|count)\s*$/;
+
+/**
+ * `db.models` 上的访问名 → modelFields 的键（== models/<文件名>.js 的模型名）。
+ * 本仓 models/ 由 sequelize-auto 生成：class 名 == 文件名 == db.models 的访问名
+ * （见 models/init-models.js：`const user_profile = _user_profile.init(...)` 后原样挂进返回值），
+ * 所以 `db.models.user_profile` 里的蛇形表名通常**直接**就是 modelFields 的键，不需要手写映射表。
+ * 只补两个方向的书写差异归一化（先精确命中，命不中才按候选顺序降级）：
+ *   - `-` ↔ `_`：models/system-setting.js 这类带连字符的文件名，里面的 class 名却是 system_setting；
+ *   - camelCase → 蛇形：db.models.userProfile → user_profile。
+ * 候选名字必须是**真实存在的模型文件名**，否则返回 null（宁可不归属，也不误报）。
+ */
+function resolveModelAccessName(raw, modelFields) {
+  if (!raw) return null;
+  const name = raw.trim();
+  if (!name || !/^[\w$-]+$/.test(name)) return null;
+  const underscored = name.replace(/-/g, '_');
+  const hyphenated = name.replace(/_/g, '-');
+  const snake = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+  const camel = (s) => s.replace(/_+([a-z0-9])/g, (_m, c) => c.toUpperCase());
+  const candidates = [
+    name,
+    underscored,
+    hyphenated,
+    snake(underscored),
+    snake(hyphenated),
+    camel(underscored),
+  ];
+  for (const candidate of candidates) {
+    if (candidate && modelFields.has(candidate)) return candidate;
   }
   return null;
 }
@@ -238,7 +287,10 @@ export function scanControllerSource(source, relFile, modelFields) {
     const line = source.slice(0, att.index).split('\n').length;
 
     const context = resolveContext(source, att.index);
-    const modelName = context ? resolveModelName(context.expr, varMap) : null;
+    let modelName = context ? resolveModelName(context.expr, varMap) : null;
+    // varMap 只登记 `X = db.getModel('m')` 这类别名，认不出 `db.models.<蛇形表名>`：
+    // 这条路径上再用 models/ 的真实模型名（含 -/_ 与 camel 归一化）归属一次。
+    if (!modelName && context && context.table) modelName = resolveModelAccessName(context.table, modelFields);
 
     if (!modelName || !modelFields.has(modelName)) {
       // 归属不到的上下文（helper 调用、关联 getter、动态 attributes）不判违规、只留痕，
@@ -360,4 +412,65 @@ test('守卫不误报：include 块里 attributes 归属到 include 的模型', 
   const { violations, scanned } = scanControllerSource(src, 'x.js', modelFields);
   assert.deepEqual(violations, []);
   assert.equal(scanned, 2);
+});
+
+/**
+ * 盲区回归（#1188 收尾）：归属逻辑以前只认 `include: [{ model }]` 与 `this.X.findAll({...})`，
+ * `this.db.models.<蛇形表名>.findAll({...})` 会落进「无法归属」而静默放行
+ * （实测：往 topic.controller.js:306 的 attributes 里塞 bogus_column_zzz 守卫仍全绿）。
+ */
+test('守卫有牙：db.models.<蛇形表名>.findAll 形态的假列必须被抓住', () => {
+  const modelFields = new Map([
+    ['user_profile', new Set(['id', 'user_id', 'expert_id', 'last_active'])],
+  ]);
+  const src = `
+    export default class C {
+      constructor(ctx) { this.db = ctx.db; }
+      async list(ctx) {
+        const experts = await this.db.models.user_profile.findAll({
+          where: { user_id: ctx.state.session.id },
+          attributes: ['expert_id', 'bogus_column_zzz'],
+          raw: true,
+        });
+        return experts;
+      }
+    }
+  `;
+  const { violations, scanned, unresolved } = scanControllerSource(src, 'server/controllers/fake.controller.js', modelFields);
+  assert.deepEqual(unresolved, [], 'db.models.<蛇形表名> 形态不应再落进无法归属');
+  assert.equal(scanned, 1);
+  assert.deepEqual(
+    violations.map((v) => `${v.model}:${v.column}:${v.line}`),
+    ['user_profile:bogus_column_zzz:7'],
+  );
+});
+
+test('守卫：db.models["<表名>"] 下标与 -/_ 差异同样归属；关联 getter 仍不硬塞', () => {
+  const modelFields = new Map([
+    ['user_profile', new Set(['id', 'user_id', 'expert_id'])],
+    // models/system-setting.js 里 class 名是 system_setting，db.models 上的访问名带下划线
+    ['system-setting', new Set(['id', 'key'])],
+  ]);
+  const src = `
+    class C {
+      async a(db) {
+        return db.models['user_profile'].findOne({ where: { id: 1 }, attributes: ['expert_id', 'nope_a'], raw: true });
+      }
+      async b(db) {
+        return db.models.system_setting.count({ attributes: ['key', 'nope_b'] });
+      }
+      async c(roleData) {
+        return roleData.getPermission_id_permissions({ attributes: ['code', 'nope_c'] });
+      }
+    }
+  `;
+  const { violations, scanned, unresolved } = scanControllerSource(src, 'x.js', modelFields);
+  assert.equal(scanned, 2, '下标写法与 -/_ 差异两处应被校验');
+  assert.deepEqual(
+    violations.map((v) => `${v.model}:${v.column}`),
+    ['user_profile:nope_a', 'system-setting:nope_b'],
+  );
+  // 第三方上下文（关联 getter）依旧只能留痕，不能为了降「无法归属」计数把它归到某个模型上造成误报
+  assert.equal(unresolved.length, 1);
+  assert.match(unresolved[0], /getPermission|roleData|no-context/);
 });
