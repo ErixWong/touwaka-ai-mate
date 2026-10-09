@@ -10,8 +10,9 @@
  *      会留下「有轮无工具」的孤儿态（#1168 那类缺陷的根因证明）。
  *   ③ dedup_key 重复写：先到先得，不产生第二行、不覆盖原 record_json（与旧表
  *      INSERT IGNORE 语义逐字一致；改成 REPLACE / UPDATE 覆盖就会变红）。
- *   ④ load() 孤儿 tool 行：宿主轮次缺失的 tool 行仍被装配出来（兼容不变）**且**走项目
- *      logger 打结构化告警（不是 console.log）。
+ *   ④ load() 孤儿 tool 行：**不装配**（丢弃，与基点 26a5df7 的 `WHERE round_id IN (...)`
+ *      读语义零差异）**且**走项目 logger 打结构化告警（不是 console.log、也不静默）。
+ *      Stage B 曾实现成“挂到首轮”，那反而是相对基点的行为回归（#1156 Stage C 修正）。
  *
  * 依赖顺序（勿删）：`tests/llm-kit-adapters/transcript-rounds-ddl.test.mjs` 会在 before /
  * 用例中途 DROP 这两张新表，npm run test:llm-kit 用 `--test-concurrency=1` 串行跑文件、
@@ -297,7 +298,7 @@ if (!creds) {
     assert.equal(Number(roundRows[0].n), 1, "展示面同样先到先得（幂等复用 round_id）");
   });
 
-  test("④ 孤儿 tool 行：load() 仍读得出来，且打出结构化告警", async () => {
+  test("④ 孤儿 tool 行：load() **不装配**（丢弃，与基点读语义一致），但必打出结构化告警", async () => {
     const warnings = [];
     const store = createTouwakaTranscriptStore({
       db,
@@ -325,16 +326,27 @@ if (!creds) {
     );
 
     const afterLoad = await store.load(id);
-    // 兼容：轮数与宿主轮内容不变，load() 不抛错
+    // 与基点 26a5df7 零语义差异：轮数不变、首轮内容不变、load() 不抛错
     assert.equal(afterLoad.length, beforeLoad.length, "load() 轮数不变");
-    const blocks = afterLoad[0].messages
+    const blocks = afterLoad
+      .flatMap((record) => record.messages ?? [])
       .filter((message) => Array.isArray(message.content))
       .flatMap((message) => message.content)
       .filter((block) => block?.type === "tool_use");
+    // #1156 Stage C 语义修正：孤儿行必须被**丢弃**。Stage B 曾实现成“挂到首轮”，
+    // 那是相对基点（`WHERE round_id IN (:roundIds)` = 取不到 = 丢弃）的**行为回归**：
+    // tool 行会被当成首轮内容喂进 resume 上下文。改成 attach 就会变红。
     assert.ok(
-      blocks.some((block) => block.id === `tu-ghost-${ns}`),
-      "孤儿 tool 行必须仍能读出来（回落挂到首轮）",
+      !blocks.some((block) => block.id === `tu-ghost-${ns}`),
+      "孤儿 tool 行不得出现在 load() 输出里（丢弃，不得挂到首轮）",
     );
+    assert.deepEqual(
+      afterLoad.map((record) => JSON.parse(JSON.stringify(record))),
+      beforeLoad.map((record) => JSON.parse(JSON.stringify(record))),
+      "孤儿行不得改变任何一轮的内容（等价于基点的静默丢弃）",
+    );
+    // 丢弃 ≠ 静默：可观测性必须保留
+    assert.ok(blocks.length > 0, "用例本身得真有 tool_use 块，否则上面那条断言是空跑");
 
     assert.equal(warnings.length, 1, "必须且只打一条结构化告警（按孤儿 round_id 聚合）");
     assert.match(warnings[0].message, /孤儿/);
@@ -344,16 +356,26 @@ if (!creds) {
         request_id: warnings[0].meta?.request_id,
         orphan_round_id: warnings[0].meta?.orphan_round_id,
         orphan_tool_row_count: warnings[0].meta?.orphan_tool_row_count,
-        attached_to_round_no: warnings[0].meta?.attached_to_round_no,
+        sample_tool_use_ids: warnings[0].meta?.sample_tool_use_ids,
+        disposition: warnings[0].meta?.disposition,
       },
       {
         event: "transcript_orphan_tool_row",
         request_id: id,
         orphan_round_id: ghostRoundId,
         orphan_tool_row_count: 1,
-        attached_to_round_no: 4,
+        sample_tool_use_ids: [`tu-ghost-${ns}`],
+        disposition: "dropped",
       },
     );
+
+    // 日志实现抛错不得带倒 load()（告警一直被 try/catch 包住，这里钉住它）
+    const throwing = createTouwakaTranscriptStore({
+      db,
+      requestContext,
+      logger: { warn: () => { throw new Error("logs/ 不可写"); } },
+    });
+    assert.ok(Array.isArray(await throwing.load(id)), "logger.warn 抛错时 load() 仍必须正常返回");
 
     // 清掉这条孤儿行，避免影响后面的断言与别的文件
     await db.sequelize.query("DELETE FROM chat_tool_calls WHERE tool_use_id = :id", {
