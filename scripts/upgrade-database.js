@@ -4161,6 +4161,60 @@ const MIGRATIONS = [
       console.log('  ✓ Added messages.meta_json column');
     }
   },
+  // ==================== 消息面第一性重构 Stage A（issue #1156，仅 DDL） ====================
+  // 形状由 Eric 拍板（issue #1156 评论「Eric 已拍板」2026-10-09）：
+  //   决策①：唯一性只落在**身份**上 —— 唯一性 = dedup_key（领域身份），
+  //          (request_id, round_no) 只是属性，**必须留普通 KEY**。
+  //          若误建 UNIQUE(request_id, round_no)：同轮两条不同 dedupKey 是上游契约要求
+  //          （tests/llm-kit-adapters/transcript-store.contract.test.mjs 的 appendUserTurn 用例），
+  //          在写入侧 INSERT IGNORE 下会**静默丢用户行**。护栏断言见
+  //          tests/llm-kit-adapters/transcript-rounds-ddl.test.mjs。
+  //   决策③′：引擎面 DDL 瘦身 —— 判据是「只有 SQL 真按它筛/排/局部更新，派生列才允许存在」。
+  //          因此只有 record_json（唯一真相）+ 身份/索引标量列 + 时间列；
+  //          不建 messages_json / folded_payload_json / stop_reason / usage / latency_ms（展示面投影，留旧表），
+  //          也不建 folded（grep 实测全仓无 SQL 按它 WHERE/ORDER BY/GROUP BY/UPDATE SET，
+  //          仅在 INSERT/SELECT 列表里做往返，而往返已由 record_json 承担）。
+  // 时间列一律应用侧写入（不写 DEFAULT CURRENT_TIMESTAMP）；本阶段无布尔列，如后续新增一律 BIT(1)。
+  // 本阶段**只建表不接代码**：lib/llm-kit-adapters 与 lib/agent 一行未改，线上行为零变化。
+  {
+    name: 'create agent_transcript_rounds table (#1156 Stage A)',
+    check: async (conn) => await hasTable(conn, 'agent_transcript_rounds'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS agent_transcript_rounds (
+          id VARCHAR(32) NOT NULL COMMENT 'Utils.newID，前缀 atr_（AGENTS.md §3.4 / 决策①）',
+          request_id VARCHAR(64) NOT NULL COMMENT 'erix runId，即 chat_requests.request_id',
+          round_no INT NOT NULL COMMENT '轮次序号；同轮可有多行（引擎行 + appendUserTurn 预写行），是属性不是身份',
+          dedup_key VARCHAR(255) NOT NULL COMMENT 'erix RoundRecord.dedupKey，领域身份；唯一性只落在这一列（决策①）',
+          record_json JSON NOT NULL COMMENT '全量 RoundRecord 原样 = 引擎面唯一真相（决策③′）',
+          created_at DATETIME NOT NULL COMMENT '应用侧写入',
+          updated_at DATETIME NULL COMMENT '应用侧写入',
+          PRIMARY KEY (id),
+          UNIQUE KEY uk_atr_dedup_key (dedup_key),
+          KEY idx_atr_request_round (request_id, round_no)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='erix RoundRecord canonical（引擎面唯一真相，#1156）'
+      `);
+      console.log('  ✓ Created agent_transcript_rounds table');
+    }
+  },
+  // ⑥ checkpoint：run 级 snapshot 存档，revision 为**单 run 单调 CAS**（Eric 已批，纯技术项）。
+  // 主键仍是字符串 run_id；updated_at 应用侧写入。
+  {
+    name: 'create llm_kit_run_checkpoint table (#1156 Stage A)',
+    check: async (conn) => await hasTable(conn, 'llm_kit_run_checkpoint'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE IF NOT EXISTS llm_kit_run_checkpoint (
+          run_id VARCHAR(64) NOT NULL COMMENT 'erix runId，即 chat_requests.request_id',
+          snapshot_json JSON NOT NULL COMMENT 'run 级 snapshot 原样（整份覆盖写）',
+          revision BIGINT NOT NULL COMMENT '单 run 单调 CAS 版本号；并发写用 revision 条件更新',
+          updated_at DATETIME NOT NULL COMMENT '应用侧写入',
+          PRIMARY KEY (run_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='erix run snapshot 档（#1156）'
+      `);
+      console.log('  ✓ Created llm_kit_run_checkpoint table');
+    }
+  },
 
 ];
 
