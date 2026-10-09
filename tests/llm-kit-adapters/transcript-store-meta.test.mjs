@@ -56,6 +56,8 @@ async function cleanup() {
     await db.sequelize.query("DELETE FROM messages WHERE round_id IN (:roundIds)", { replacements: { roundIds } });
     await db.sequelize.query("DELETE FROM chat_tool_calls WHERE round_id IN (:roundIds)", { replacements: { roundIds } });
   }
+  // #1156 Stage B：appendRound 现在同事务多写一张 canonical，清理必须一起清，别在测试库里漏行
+  await db.sequelize.query("DELETE FROM agent_transcript_rounds WHERE request_id LIKE :pattern", { replacements: { pattern: `run-${ns}-%` } });
   await db.sequelize.query("DELETE FROM agent_rounds WHERE request_id LIKE :pattern", { replacements: { pattern: `run-${ns}-%` } });
 }
 

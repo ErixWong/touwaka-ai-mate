@@ -48,6 +48,11 @@ async function cleanupRun(requestId) {
     'DELETE FROM agent_rounds WHERE request_id = :requestId',
     { replacements: { requestId } },
   );
+  // #1156 Stage B：canonical 与展示面同事务写入，清理也要一起清
+  await testDb.sequelize.query(
+    'DELETE FROM agent_transcript_rounds WHERE request_id = :requestId',
+    { replacements: { requestId } },
+  );
 }
 
 after(async () => {
