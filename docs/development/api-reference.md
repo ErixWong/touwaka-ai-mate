@@ -28,7 +28,6 @@
 
 | 方法 | 端点 | 描述 | 认证 |
 |------|------|------|------|
-| GET | `/api/messages?topic_id=` | 消息列表 | ✅ |
 | GET | `/api/messages/expert/:expertId` | 按专家加载消息列表（兼容入口） | ✅ |
 | POST | `/api/messages/query` | JSON 查询消息列表（推荐：filter/sort/pagination body） | ✅ |
 | GET | `/api/messages/expert/:expertId/since` | 按 live cursor 增量获取新消息 | ✅ |

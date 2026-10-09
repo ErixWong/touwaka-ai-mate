@@ -106,10 +106,6 @@ export const messageApi = {
     })
   },
 
-  // 获取消息列表（旧 API，按 topic，保留兼容）
-  getMessages: (topic_id: string, params?: PaginationParams) =>
-    apiRequest<PaginatedResponse<Message>>(apiClient.get(`/topics/${topic_id}/messages`, { params })),
-
   // 发送消息给 Expert
   sendMessage: (data: {
     content: string;
@@ -120,10 +116,6 @@ export const messageApi = {
     working_path?: string;  // 当前工作目录路径（任务模式下的浏览路径或技能目录路径）
   }) =>
     apiRequest<{ request_id: string; topic_id: string }>(apiClient.post('/chat', data)),
-
-  // 删除消息
-  deleteMessage: (topic_id: string, message_id: string) =>
-    apiRequest<void>(apiClient.delete(`/topics/${topic_id}/messages/${message_id}`)),
 
   // 清空指定 expert 与当前用户的所有消息和话题（仅管理员）
   clearMessagesByExpert: (expert_id: string) =>

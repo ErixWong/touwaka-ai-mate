@@ -897,7 +897,7 @@ class ApiServer {
         logger.info('  GET  /api/users/:id');
         logger.info('  GET  /api/topics');
         logger.info('  POST /api/topics');
-        logger.info('  GET  /api/messages?topic_id=');
+        logger.info('  GET  /api/messages/expert/:expertId');
         logger.info('  GET  /api/experts');
         logger.info('  GET  /api/models');
         logger.info('  GET  /api/providers');
