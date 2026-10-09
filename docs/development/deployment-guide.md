@@ -16,6 +16,8 @@
 
 选哪份：本机改代码验证用 `dev`；内网常开服务用 `nas`；给外部用户/独立机器用 `standalone`；想一条命令起一整套（含库）用 `docker-compose.yml`。
 
+> ⚠️ 部署带 erix 消息面（`agent_transcript_rounds` / canonical 回填 / 读侧 `new`）的版本时，**照 [`erix-message-plane-upgrade.md`](./erix-message-plane-upgrade.md) 的四步走**（建表 → 回填 → 等价复核 → 重启，全幂等，含回滚与坑）。
+
 ## 2. 本机部署现状
 
 - 容器 `touwaka-mate`，compose 项目 `touwaka`，配置 `docker-compose.dev.yml`
