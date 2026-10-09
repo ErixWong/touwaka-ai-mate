@@ -78,3 +78,42 @@ node scripts/verify-transcript-read-parity.js --report temp/parity.json
 - [ ] Step 3 不一致 0、exit 0
 - [ ] Step 4 服务 health 200；跑一轮真实对话后 `agent_transcript_rounds` 有新增行且 `chat_tool_calls.duration_ms > 0`
 - [ ] 回退演练过一次（至少退读档那一级）
+
+## 6. 真环境（`nas` / `standalone`）部署复核清单
+
+> 本机这套是 **dev**（`deployment-guide.md` 表格：`docker-compose.dev.yml` = 「本机日常开发（本机正在用这份）」）。§1 的四步在本机已跑完并验证；**本节是真环境专用增量**，因为真环境有 dev 没有的两个条件：**有真实用户数据**、**读侧默认已经是 `new`**。
+
+### 6.0 ⚠️ 一个时序陷阱（先看这条，否则会短时"历史消息消失"）
+读侧默认已是 `new` ⇒ **新代码一起-boot 就读 `agent_transcript_rounds`**。若直接部署，而回填还没跑，**旧话题的历史轮会读不出来**（不是报错，是"少内容"，最容易误判成数据丢了）。
+两种安全做法，**选一种**：
+
+| 方案 | 做法 | 窗口 |
+|---|---|---|
+| **A（推荐，零窗口）** | 首次部署时 env 先设 `ERIX_TRANSCRIPT_READ_MODE=legacy` → 起服务（boot 自动建表）→ 跑 §1 Step 2 回填 + Step 3 parity → **再**去掉该 env（或显式设 `new`）并重启 | 无 |
+| B（快，有秒级窗口） | 直接部署新代码 → boot 建表后**立刻**在服务器上手动跑 §1 Step 1（`--step "#1156 Stage A"`）+ Step 2 回填 → 回填期间用户可能读到不完整历史 | 回填耗时（dev 实测 69 轮秒级；真环境按轮数线性估） |
+
+### 6.1 前置（一次性）
+```bash
+# 真环境备份：MariaDB 镜像里是 mariadb-dump，没有 mysqldump（用错会得到 121 字节的假备份）
+docker exec <mariadb容器> mariadb-dump -u<用户> -p<密码> --no-tablespaces <DB_NAME> | gzip > touwaka-pre-$(date +%Y%m%d-%H%M%S).sql.gz
+# 必须验备份，别信"跑完了"：
+ls -la touwaka-pre-*.sql.gz                                   # 应为 MB 级（dev 实测 20.8MB）
+zcat touwaka-pre-*.sql.gz | grep -c "CREATE TABLE"            # 应等于表数量（dev 实测 91）
+```
+- `nas`：`DB_HOST=mariadb`（`erixProd` 网络）、端口 `3000:3000`、`DB_NAME` 默认 `touwaka_mate`（**与本机同名但不同实例，别搞混**）
+- 所有脚本都要 `export ALLOW_NON_TEST_DB=1`（#1167 测试库守卫）+ 按环境填 `DB_*`
+
+### 6.2 部署后复核（每条都要贴输出，不接受"应该没问题"）
+- [ ] **新表形状**：`information_schema.statistics` 查 `uk_atr_dedup_key` 唯一、`idx_atr_request_round` 的 **`NON_UNIQUE=1`**、主键单列 `id`（这是 #1156 决策①的落地铁证，漂了就停）
+- [ ] **回填**：`--verify-only` 的 `rounds_mismatched = 0`；再跑一次 `--write` 的 `rounds_written = 0`（幂等）
+- [ ] **⚠️ 补回填**：如果用了方案 B 或部署与回填之间有间隔，**服务起来之后再跑一次 `--write`**——那段间隔里新代码写的轮会同时进 canonical，但旧代码写的轮只进投影表，漏了就一直漏
+- [ ] **两模式等价**：`verify-transcript-read-parity.js` **exit 0**（判读规则见 §2：**新写入的轮允许差异，方向应是 `new` 更丰富；只有 `new` 更少才算回归**）
+- [ ] **健康**：`/api/health` 200（boot 到 HTTP 绑定可能要 40–60 秒，早了会连不上，别误判成挂了）
+- [ ] **一轮真对话**：`agent_transcript_rounds` 有新增行且 `chat_tool_calls.duration_ms > 0`（#1151 的首证只能在这里拿到真环境数据）
+- [ ] **观察 24 小时的信号**：`transcript_orphan_tool_row`（出现=遗留数据或新缺陷）、`ERR_TRANSCRIPT_DEDUP_RACE`（erix 顺序 retry 会自动恢复，偶发可接受，**批量出现**要查）、clamp 告警、`meta_json` 首写
+- [ ] **回退演练过一次**：至少 §3 的"只退读档"那级
+
+### 6.3 真环境部署**不需要**做的事
+- 不用手动 DROP 任何表（`agent_rounds` 仍是冻结回滚锚，DROP 是独立审批项）
+- 不用改 `scripts/upgrade-database.js`（boot 的「有表 → `needsUpgrade()` → `upgrade()`」已经把 DDL-before-code 兜住，§1 Step 1 手动跑只是让过程可见）
+- 不用管空库 doc 三步骤 FK 顺序报错（**#1190 未修，二次跑自愈**，见 §4.4）——除非那台机是全新空库

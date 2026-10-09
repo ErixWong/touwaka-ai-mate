@@ -9,9 +9,12 @@
  *   1) 从 models/*.js（sequelize-auto 反向生成，只读）解析真实字段集合：
  *      取 `super.init({ ... })` 第一个对象参数里 depth==1 的键；
  *   2) 扫描 server/controllers/**\/*.js 里**纯字符串字面量**的 `attributes: [...]`，
- *      把它归属到同一查询的模型。认得三种形态：
+ *      把它归属到同一查询的模型。判据是「包含该 attributes 的**最内层对象字面量**归属哪个调用」
+ *      （与它是第几个位置参数无关），认得这几种形态：
  *        a. include 块里更近的 `model: ...`；
- *        b. 就近的调用对象 `this.Message.findAll({...})`（含 this.models.X / getModel 别名）；
+ *        b. 所属调用 `this.Message.findAll({...})`，含 options 落在第 2/3 位置参数的
+ *           `Document.findByPk(id, { attributes })`（#1193①）；别名支持传递形式
+ *           `const Version = this.models.DocVersion`（#1193②）；
  *        c. `this.db.models.<蛇形表名>.findAll|findOne|findByPk|findAndCountAll|count({...})`，
  *           含下标写法 `db.models['<表名>']` —— <表名> 就是 models/<表名>.js 的模型名；
  *      归不到的（`helper(this.db, {...})`、`roleData.getXxx({...})` 关联 getter 等第三方上下文）
@@ -106,18 +109,76 @@ function loadModelFields() {
   return map;
 }
 
-/** 收集 `this.X = db.getModel('m')` / `const X = ctx.db.getModel('m')` 这类别名 */
-function buildVarMap(source) {
+/**
+ * 收集控制器里的模型别名：
+ *  1) 既有形态：`this.X = db.getModel('m')` / `const X = ctx.db.getModel('m')`；
+ *  2) 传递形态：`const X = this.models.Y` / `const X = <已知名>.models.Y`（含 ctx.db.models.Y）；
+ *  3) 再传一层裸名：`const X = Y`（Y 已在表里，或 Y 本身就是真实模型名）。
+ * 2)/3) 解析出的模型名必须命中 varMap 已有条目或 models/ 里真实存在的模型名/文件名，
+ * 命不中就不登记 —— 宁缺勿误报，让它继续留在「无法归属」里留痕。
+ * 别名赋值可能在使用点之前或之后，故对候选集做多轮不动点迭代。
+ */
+function buildVarMap(source, modelFields) {
   const map = new Map();
-  const re = /(this\.models\.[\w$]+|this\.[\w$]+|\b(?:const|let|var)\s+[\w$]+)\s*=\s*[^;\n]*?getModel\(\s*['"]([\w$]+)['"]\s*\)/g;
+  const register = (raw, modelName) => {
+    if (!raw || !modelName) return;
+    const lhs = raw.replace(/^(?:const|let|var)\s+/, '').trim();
+    if (!lhs) return;
+    map.set(lhs, modelName);
+    const short = lhs.replace(/^this\.models\./, '').replace(/^this\./, '');
+    if (short) map.set(short, modelName);
+  };
+
+  // 1) `= ...getModel('m')`：与既有实现一致，命中即登记（真有其模型与否交给调用方判）
+  const getModelRe = /(this\.models\.[\w$]+|this\.[\w$]+|\b(?:const|let|var)\s+[\w$]+)\s*=\s*[^;\n]*?getModel\(\s*['"]([\w$]+)['"]\s*\)/g;
   let m;
-  while ((m = re.exec(source))) {
-    const raw = m[1].replace(/^(?:const|let|var)\s+/, '').trim();
-    map.set(raw, m[2]);
-    const short = raw.replace(/^this\.models\./, '').replace(/^this\./, '');
-    if (short) map.set(short, m[2]);
+  while ((m = getModelRe.exec(source))) register(m[1], m[2]);
+
+  // 2)/3) 行尾形态的 `LHS = 点号链`（右值不许带括号/引号，免得把方法调用误当别名）
+  const assignRe = /(this\.models\.[\w$]+|this\.[\w$]+|\b(?:const|let|var)\s+[\w$]+)\s*=\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[\w$]+)*)\s*;?\s*$/gm;
+  const assigns = [];
+  while ((m = assignRe.exec(source))) {
+    const lhs = m[1].replace(/^(?:const|let|var)\s+/, '').trim();
+    const rhs = m[2].replace(/\s+/g, '');
+    if (lhs && rhs && lhs !== rhs) assigns.push({ lhs, rhs });
+  }
+  for (let round = 0; round < 4; round += 1) {
+    let changed = false;
+    for (const { lhs, rhs } of assigns) {
+      const modelName = resolveAliasRhs(rhs, map, modelFields);
+      if (modelName && map.get(lhs) !== modelName) {
+        map.set(lhs, modelName);
+        const short = lhs.replace(/^this\.models\./, '').replace(/^this\./, '');
+        if (short && !map.has(short)) map.set(short, modelName);
+        changed = true;
+      }
+    }
+    if (!changed) break;
   }
   return map;
+}
+
+/**
+ * 别名右值 → 模型名。只认 `<任意前缀>.models.<名>` 与裸 `<已登记别名 / 真实模型名>`；
+ * 解析不出或命不中真实模型 → null（调用方据此不登记）。
+ * 先查 varMap（同文件里 `this.models.X = db.getModel('y')` 这种「挂名」优先于文件名猜测），
+ * 再退化到 models/ 的真实模型名（含 -/_ 与 camel 归一化）。
+ */
+function resolveAliasRhs(rhs, map, modelFields) {
+  if (!rhs) return null;
+  const modelsAccess = /^(?:[\w$.]*\.)?models\.([\w$]+)$/.exec(rhs);
+  if (modelsAccess) {
+    const name = modelsAccess[1];
+    for (const key of [`this.models.${name}`, `models.${name}`, name]) {
+      if (map.has(key)) return map.get(key);
+    }
+    return modelFields ? resolveModelAccessName(name, modelFields) : name;
+  }
+  if (/^[\w$]+$/.test(rhs)) {
+    if (map.has(rhs)) return map.get(rhs);
+    return modelFields ? resolveModelAccessName(rhs, modelFields) : null;
+  }
+  return null;
 }
 
 function resolveModelName(expr, varMap) {
@@ -132,7 +193,139 @@ function resolveModelName(expr, varMap) {
   return varMap.get(tail) || null;
 }
 
-/** 找包含 idx 的最内层 `{`（字符串/注释不做处理：attributes 数组里不会出现这些） */
+/**
+ * 把字符串 / 模板串 / 注释 / 正则字面量的**内容**抹成空格：长度不变、下标一一对应、
+ * 换行原样保留，故所有行号计算与切片照旧有效。
+ * 目的是让括号配对扫描不被 `'a, b'`、`// )`、`/['"]/` 这类字面量里的括号/逗号带偏。
+ * 只做词法级跳过，不解析语法；`/` 是除法还是正则字面量按「前一个有效字符」启发式判别。
+ */
+function maskLiterals(source) {
+  const out = source.split('');
+  const n = source.length;
+  const blank = (from, to) => {
+    for (let i = Math.max(0, from); i < Math.min(to, n); i += 1) if (out[i] !== '\n') out[i] = ' ';
+  };
+  let lastMeaning = '';
+  let i = 0;
+  while (i < n) {
+    const c = source[i];
+    if (c === '/' && source[i + 1] === '/') {
+      const end = source.indexOf('\n', i);
+      blank(i + 2, end < 0 ? n : end);
+      i = end < 0 ? n : end;
+      continue;
+    }
+    if (c === '/' && source[i + 1] === '*') {
+      const end = source.indexOf('*/', i + 2);
+      blank(i + 2, end < 0 ? n : end);
+      i = end < 0 ? n : end + 2;
+      continue;
+    }
+    if (c === '/' && !/[)\w$'"]/.test(lastMeaning)) {
+      let j = i + 1;
+      let inClass = false;
+      while (j < n) {
+        const d = source[j];
+        if (d === '\\') { j += 2; continue; }
+        if (d === '\n') break;
+        if (d === '[') inClass = true;
+        else if (d === ']') inClass = false;
+        else if (d === '/' && !inClass) break;
+        j += 1;
+      }
+      blank(i + 1, j);
+      i = Math.min(j + 1, n);
+      lastMeaning = '/';
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < n) {
+        if (source[j] === '\\') { j += 2; continue; }
+        if (source[j] === c || source[j] === '\n') break;
+        j += 1;
+      }
+      blank(i + 1, j);
+      i = Math.min(j + 1, n);
+      lastMeaning = c;
+      continue;
+    }
+    if (c === '`') {
+      let j = i + 1;
+      while (j < n) {
+        const d = source[j];
+        if (d === '\\') { blank(j, j + 2); j += 2; continue; }
+        if (d === '`') { j += 1; break; }
+        if (d === '$' && source[j + 1] === '{') {
+          let depth = 1;
+          let k = j + 2;
+          while (k < n && depth > 0) {
+            if (source[k] === '{') depth += 1;
+            else if (source[k] === '}') depth -= 1;
+            k += 1;
+          }
+          blank(j, k);
+          j = k;
+          continue;
+        }
+        if (d !== '\n') blank(j, j + 1);
+        j += 1;
+      }
+      i = Math.min(j, n);
+      lastMeaning = '`';
+      continue;
+    }
+    if (!/\s/.test(c)) lastMeaning = c;
+    i += 1;
+  }
+  return out.join('');
+}
+
+/**
+ * 从对象字面量的 `{` 往左找它所属调用的左括号（在 maskLiterals 抹好的源码上走）。
+ * 判据是「包含该 attributes 的**最内层对象字面量**归属哪个调用」，所以第 2/3 位置参数里的
+ * 对象也该归到同一个调用。允许越过：空白、`,`（它前面还有位置参数）、`[`（数组壳，
+ * 如 `foo([{...}])`）以及任何已配对的括号内容；一旦在同层撞上 `;` `=` `:` `?` `}` 等就放弃
+ * —— 猜不准就返回 -1，让它留在「无法归属」里留痕，不硬塞成某个模型的归属。
+ */
+function findEnclosingCallParen(masked, openBrace, maxBack = 6000) {
+  let depth = 0;
+  let i = openBrace - 1;
+  const floor = Math.max(0, openBrace - maxBack);
+  while (i >= floor) {
+    const c = masked[i];
+    if (c === ')' || c === ']' || c === '}') {
+      depth += 1;
+      i -= 1;
+      continue;
+    }
+    if (c === '(' || c === '[' || c === '{') {
+      if (depth > 0) {
+        depth -= 1;
+        i -= 1;
+        continue;
+      }
+      if (c === '(') return i;
+      if (c === '[') {
+        i -= 1;
+        continue;
+      }
+      return -1;
+    }
+    if (depth === 0 && c === ',') {
+      i -= 1;
+      continue;
+    }
+    if (depth > 0 || /[\w$\s.]/.test(c)) {
+      i -= 1;
+      continue;
+    }
+    return -1;
+  }
+  return -1;
+}
+
+/** 找包含 idx 的最内层 `{`（喂 maskLiterals 抹过的源码：字符串/注释里的花括号不算数） */
 function findEnclosingOpenBrace(source, idx) {
   let depth = 0;
   for (let i = idx - 1; i >= 0; i -= 1) {
@@ -178,32 +371,32 @@ function findDepth1Value(source, openIdx, closeIdx, key) {
 }
 
 /**
- * 把 attributes 字面量归属到某个模型表达式。
+ * 把 attributes 字面量归属到某个模型表达式。masked 是 source 的 maskLiterals 结果（下标对齐）。
  * - include 对象里有 `model:` → 用 include 的模型；
- * - 否则看包含它的调用：`this.Message.findAll({...})` → this.Message；
+ * - 否则找**包含它的最内层对象字面量**所属的那个调用（findEnclosingCallParen）：
+ *   `this.Message.findAll({...})` → this.Message；
+ *   `Document.findByPk(id, { attributes })` → Document（options 落在第 2 位置参数同样算）；
  *   `this.db.models.user_profile.findAll({...})` → 额外带上 table='user_profile'（origin 'db-models'），
  *   由调用方用 resolveModelAccessName 把蛇形表名映射到模型名；
- *   形如 `helper(this.db, {...})` / `data.getXxx({...})` 的第三方上下文 → 无法归属，跳过（不误报）。
+ *   形如 `getSourceAttachments(this.db, ids, {...})` / `roleData.getXxx({...})` 的第三方上下文
+ *   callee 落不到模型别名上 → 无法归属，跳过（不误报）。
  */
-function resolveContext(source, attIndex) {
-  const openBrace = findEnclosingOpenBrace(source, attIndex);
+function resolveContext(source, masked, attIndex) {
+  const openBrace = findEnclosingOpenBrace(masked, attIndex);
   if (openBrace < 0) return null;
-  const closeBrace = matchBrace(source, openBrace);
+  const closeBrace = matchBrace(masked, openBrace);
   if (closeBrace > 0) {
     const modelValue = findDepth1Value(source, openBrace, closeBrace, 'model');
     if (modelValue) return { expr: modelValue, origin: 'include-model' };
   }
-  let j = openBrace - 1;
-  while (j >= 0 && /[\s[]/.test(source[j])) j -= 1;
-  if (j >= 0 && source[j] === '(') {
-    const before = source.slice(Math.max(0, j - 160), j);
-    const dbModels = DB_MODELS_CALL_RE.exec(before);
-    const table = dbModels ? (dbModels[1] || dbModels[3]) : null;
-    const callee = /((?:this\.(?:models\.)?[\w$]+|[\w$]+))\.[A-Za-z_$][\w$]*\s*$/.exec(before);
-    if (table) return { expr: callee ? callee[1] : `db.models.${table}`, table, origin: 'db-models' };
-    if (callee) return { expr: callee[1], origin: 'call' };
-    return null;
-  }
+  const paren = findEnclosingCallParen(masked, openBrace);
+  if (paren < 0) return null;
+  const before = source.slice(Math.max(0, paren - 400), paren);
+  const dbModels = DB_MODELS_CALL_RE.exec(before);
+  const table = dbModels ? (dbModels[1] || dbModels[3]) : null;
+  const callee = /((?:this\.(?:models\.)?[\w$]+|[\w$]+))\.[A-Za-z_$][\w$]*\s*$/.exec(before);
+  if (table) return { expr: callee ? callee[1] : `db.models.${table}`, table, origin: 'db-models' };
+  if (callee) return { expr: callee[1], origin: 'call' };
   return null;
 }
 
@@ -273,7 +466,8 @@ function collectAttributesLiterals(source) {
  * @returns {{violations: Array, scanned: number, unresolved: Array}}
  */
 export function scanControllerSource(source, relFile, modelFields) {
-  const varMap = buildVarMap(source);
+  const masked = maskLiterals(source);
+  const varMap = buildVarMap(source, modelFields);
   const violations = [];
   const unresolved = [];
   let scanned = 0;
@@ -286,7 +480,7 @@ export function scanControllerSource(source, relFile, modelFields) {
 
     const line = source.slice(0, att.index).split('\n').length;
 
-    const context = resolveContext(source, att.index);
+    const context = resolveContext(source, masked, att.index);
     let modelName = context ? resolveModelName(context.expr, varMap) : null;
     // varMap 只登记 `X = db.getModel('m')` 这类别名，认不出 `db.models.<蛇形表名>`：
     // 这条路径上再用 models/ 的真实模型名（含 -/_ 与 camel 归一化）归属一次。
@@ -473,4 +667,85 @@ test('守卫：db.models["<表名>"] 下标与 -/_ 差异同样归属；关联 g
   // 第三方上下文（关联 getter）依旧只能留痕，不能为了降「无法归属」计数把它归到某个模型上造成误报
   assert.equal(unresolved.length, 1);
   assert.match(unresolved[0], /getPermission|roleData|no-context/);
+});
+
+/**
+ * 盲区回归（#1193 ①）：options 落在**第二个位置参数**里的调用。
+ * 旧实现「从 attributes 往前找所属调用，但在遇到 `{` 之前碰到 `,` 就放弃」，
+ * 于是 `Document.findByPk(sourceId, { attributes: [...] })` 归不到模型
+ * （实测：往 attachment.controller.js:310 塞假列，守卫仍 5 pass / 0 fail）。
+ * 判据应是「包含该 attributes 的最内层对象字面量归属哪个调用」，与它是第几个位置参数无关。
+ */
+test('守卫有牙：options 在第 2/3 位置参数的调用假列必须被抓住（#1193①）', () => {
+  const modelFields = new Map([
+    ['document', new Set(['id', 'title'])],
+    ['document_revision', new Set(['id', 'document_id'])],
+  ]);
+  const src = `
+    export default class C {
+      async find(ctx) {
+        const Document = this.db.getModel('document');
+        const DocumentRevision = ctx.db.getModel('document_revision');
+        const document = await Document.findByPk(ctx.params.id, { attributes: ['id', 'zzz_probe_a1'], raw: true });
+        const revision = await DocumentRevision.findByPk(ctx.params.id, {
+          attributes: ['document_id', 'zzz_probe_b1'],
+          raw: true,
+        });
+        const files = await getSourceAttachments(this.db, [1, 2], { attributes: ['zzz_probe_c1'] });
+        return { document, revision, files };
+      }
+    }
+  `;
+  const { violations, scanned, unresolved } = scanControllerSource(src, 'server/controllers/fake.controller.js', modelFields);
+  assert.equal(scanned, 2, '第 2 位置参数里的两处 attributes 应被校验');
+  assert.deepEqual(
+    violations.map((v) => `${v.model}:${v.column}:${v.line}`),
+    ['document:zzz_probe_a1:6', 'document_revision:zzz_probe_b1:8'],
+  );
+  // 第三方 helper 的第 3 位置参数照旧只能留痕，不许硬塞成某个模型的归属
+  assert.equal(unresolved.length, 1, 'getSourceAttachments(this.db, ids, {...}) 应继续留在无法归属里');
+  assert.match(unresolved[0], /no-context|getSourceAttachments/);
+  assert.ok(!violations.some((v) => v.column === 'zzz_probe_c1'), '归不到模型的第三方调用不该判违规');
+});
+
+/**
+ * 盲区回归（#1193 ②）：模型被赋值给局部变量后再用（传递别名）。
+ * 真实形态见 doc.controller.js：`this.models.DocVersion = this.db.getModel('document_revision')`（:83）
+ * → `const Version = this.models.DocVersion;`（:1389）→ `Version.findAll({ attributes: [...] })`（:1398）。
+ * 旧 buildVarMap 只登记 `= db.getModel('…')`，这条链断在最后一跳。
+ */
+test('守卫有牙：传递别名（this.models.X → 局部变量）的假列必须被抓住（#1193②）', () => {
+  const modelFields = new Map([
+    ['document_revision', new Set(['id', 'document_id', 'revision_label'])],
+    ['doc_tag', new Set(['id', 'name'])],
+  ]);
+  const src = `
+    export default class C {
+      constructor(ctx) {
+        this.models = {};
+        this.models.DocVersion = ctx.db.getModel('document_revision');
+        this.models.DocTag = ctx.db.getModel('doc_tag');
+      }
+      async rename(ctx) {
+        const Version = this.models.DocVersion;
+        const Tag = this.models.DocTag;
+        const siblings = await Version.findAll({
+          where: { document_id: 1 },
+          attributes: ['id', 'revision_label', 'zzz_probe_a2'],
+          raw: true,
+        });
+        const tags = await Tag.findAll({ attributes: ['id', 'nope_tag'] });
+        const others = await SomethingElse.findAll({ attributes: ['zzz_probe_unresolved'] });
+        return { siblings, tags, others };
+      }
+    }
+  `;
+  const { violations, scanned, unresolved } = scanControllerSource(src, 'server/controllers/fake.controller.js', modelFields);
+  assert.equal(scanned, 2, '两处传递别名上的 attributes 都应被校验');
+  assert.deepEqual(
+    violations.map((v) => `${v.model}:${v.column}:${v.line}`),
+    ['document_revision:zzz_probe_a2:13', 'doc_tag:nope_tag:16'],
+  );
+  assert.equal(unresolved.length, 1, '没登记过的 SomethingElse 仍应留痕，不许猜模型');
+  assert.match(unresolved[0], /SomethingElse/);
 });
