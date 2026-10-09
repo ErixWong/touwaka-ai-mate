@@ -96,7 +96,7 @@ DDL 双侧：`scripts/upgrade-database.js`（存量库，步骤名含 `#1156 Sta
 | `wm_` | Notes 笔记 key（工作记忆临时笔记，宿主 facade 写入） | `lib/psyche/psyche-manager.js`（`wm_<ts>_<random>`） |
 | `msg_` | 消息 ID（流式响应首 delta 的 message_id） | `lib/chat-service.js`（`msg_` + `Utils.newID(10)`） |
 | `round_` | `agent_rounds.id`（一次 LLM 调用一行，issue #1134） | erix adaptor 写入侧（T2 落地，`round_` + `Utils.newID`） |
-| `atr_` | `agent_transcript_rounds.id`（erix RoundRecord canonical 行 ID，issue #1156 Stage A） | erix adaptor 写入侧（Stage B 接入，`atr_` + `Utils.newID`；DDL 已落，见 §表登记 2） |
+| `atr_` | `agent_transcript_rounds.id`（erix RoundRecord canonical 行 ID，issue #1156 Stage A） | erix adaptor 写入侧（Stage B 已接入：`atr_` + `Utils.newID`；读侧仍用 legacy，待 Stage C 切换；DDL 已落，见 §表登记 2） |
 | `tc_` | `chat_tool_calls` 关联实体 ID 预留（表主键为 provider call id `tool_use_id`，无前缀；`tc_` 预留给派生消息/聚合行的关联 ID，T2/T3 落地） | erix adaptor 写入侧（`tc_` + `Utils.newID`） |
 | `notes-v1:` | Notes scopeRef 命名空间（非表 ID，登记以避免前缀碰撞） | `lib/notes/notes-policy.js`（`buildNotesScopeRef`） |
 | `lsn_` | `memory_lesson.id`（记忆 lesson/pattern 行 ID，**设计中未落地**，见 `topics/memory/memory-model.md`） | 设计稿（实现时落 `lib/memory-lesson/`） |

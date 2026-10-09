@@ -133,13 +133,14 @@ async function resolveConnection() {
     if (!ctx) throw new Error(`没给 DB_* 环境变量，也读不到测试库凭据（~/.config/mcp/creds/touwaka-test-db.json）`);
     return { sequelize: ctx.db.sequelize, database: ctx.creds.database, source: "openTestDatabase()" };
   }
-  // 生产路径：与 scripts/upgrade-database.js 同一套 DB_* 读取方式；非测试库必须显式确认。
+  // 显式 DB_* 路径；upgrade-database.js 也读取这些变量，但使用 mysql2/promise 建立连接。
+  // 非测试库必须显式确认。
   assertTestDatabase(envTarget, { env: process.env });
   const { Sequelize } = await import("sequelize");
   const sequelize = new Sequelize(envTarget, process.env.DB_USER, process.env.DB_PASSWORD, {
     host: process.env.DB_HOST || "localhost",
     port: Number(process.env.DB_PORT || 3306),
-    dialect: "mariadb",
+    dialect: "mysql",
     logging: false,
   });
   await sequelize.authenticate();
