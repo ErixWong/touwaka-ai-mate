@@ -51,6 +51,9 @@ const { createTouwakaTranscriptStore, CANONICAL_TABLE } = await import(
 );
 const { runMigrationSteps, parseUpgradeOptions } = await import("../../scripts/upgrade-database.js");
 
+// This suite checks the legacy display-row loader; pin it explicitly, independent of the process default.
+process.env.ERIX_TRANSCRIPT_READ_MODE = "legacy";
+
 const db = dbCtx?.db ?? null;
 // 本文件独占的 request_id 命名空间，只清自己写入的行
 const ns = randomUUID().slice(0, 8);

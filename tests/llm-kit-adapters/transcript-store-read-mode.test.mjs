@@ -1,17 +1,19 @@
 /**
- * issue #1156 Stage C — 读侧模式开关 `ERIX_TRANSCRIPT_READ_MODE` 与 **两模式等价**
+ * issue #1156 Stage C/D — 读侧模式开关、**两模式等价**与 dedup 并发竞态守卫
  *
- * 四组断言（全部对真实 MariaDB 测试库 llm_kit_test，破坏性操作前一律过
+ * 四组读侧断言（对真实 MariaDB 测试库 llm_kit_test，破坏性操作前一律过
  * openTestDatabase() 的 #1167 硬断言）：
  *   ① **等价断言**：一份有代表性的语料（种子轮 / appendUserTurn 同轮双行 / tool 调用与
  *      tool 结果 / is_error tool 行 / folded 轮 / 有 usage 的轮 / 写入方没给 dedupKey·ts·folded
  *      的轮）在 `legacy` 与 `new` 下，三个读方法（load / loadByDedupKey / loadMaxRound）
  *      的输出**规范化后逐轮深相等**。不是"条数相等"：比对用的是 parity 脚本自己的
  *      canonicalize / alignRounds / readUnder（复用同一份实现，不在测试里再抄一份）。
- *   ② 默认读模式必须是 `legacy`（红线：生产切不切 `new` 由 Eric 拍，代码不许自己翻）。
- *   ③ 未知取值回落 `legacy` **且**打出结构化告警（不静默、不抛错、不带倒 load()）。
+ *   ② 默认读模式必须是 `new`，未配置时三个读方法都走 canonical。
+ *   ③ 未知取值回落到当前默认档（`new`）**且**打出结构化告警（不静默、不抛错、不带倒 load()）。
  *   ④ `new` 档真的换了真相源：把 canonical 行改掉一处，`new` 看得见、`legacy` 不受影响
  *      （钉住"new 确实读 canonical"，而不是两个档都在读同一张表、①只是同义反复）。
+ * 另有一条不依赖数据库的确定性写入测试，钉住 INSERT IGNORE 竞态在 chat_tool_calls
+ * 子行写入前抛错。
  *
  * 语料形状说明（不是随手挑的）：全部取 erix/erix-agent 的 canonical 形状，即
  * 展示面拆行 → 重组本就应该无损的那些形状。已知展示面**有损**的形状（纯 tool 消息上的
@@ -266,6 +268,62 @@ after(async () => {
   else if (dbCtx?.db?.sequelize) await db.sequelize.close();
 });
 
+test("appendRound dedup 并发竞态：INSERT IGNORE 未写入时在子行前 fail-fast", async () => {
+  const requestId = "run-dedup-race-test";
+  const dedupKey = `${requestId}:round:1`;
+  const childWrites = [];
+  const tx = {};
+  let transactionRejected = false;
+  const mockDb = {
+    sequelize: {
+      async query(sql, options = {}) {
+        const statement = String(sql);
+        assert.equal(options.transaction, tx, "点查与 INSERT 必须沿用同一事务");
+        if (/SELECT id FROM agent_rounds WHERE dedup_key/.test(statement)) return [[], []];
+        if (/INSERT IGNORE INTO agent_rounds/.test(statement)) return [{ affectedRows: 0 }, []];
+        if (/INSERT INTO chat_tool_calls/.test(statement)) childWrites.push(statement);
+        throw new Error(`意外的数据库查询：${statement}`);
+      },
+      async transaction(callback) {
+        try {
+          return await callback(tx);
+        } catch (error) {
+          transactionRejected = true;
+          throw error;
+        }
+      },
+    },
+  };
+  const store = createTouwakaTranscriptStore({
+    db: mockDb,
+    requestContext: { user_id: "test-user" },
+  });
+
+  await assert.rejects(
+    () => store.appendRound(requestId, {
+      round: 1,
+      dedupKey,
+      ts: "2026-10-09T00:00:00.000Z",
+      messages: [{
+        role: "assistant",
+        content: [{ type: "tool_use", id: "tool-race", name: "read_file", input: {} }],
+      }],
+    }),
+    (error) => {
+      assert.equal(error.code, "ERR_TRANSCRIPT_DEDUP_RACE");
+      assert.equal(error.request_id, requestId);
+      assert.equal(error.dedup_key, dedupKey);
+      assert.match(error.expected_round_id, /^round_/);
+      assert.match(error.message, new RegExp(`request_id=${requestId}`));
+      assert.match(error.message, new RegExp(`dedup_key=${dedupKey}`));
+      assert.match(error.message, new RegExp(`expected_round_id=${error.expected_round_id}`));
+      return true;
+    },
+  );
+  assert.equal(transactionRejected, true, "错误必须从事务回调抛出以触发回滚");
+  assert.deepEqual(childWrites, [], "竞态失败必须发生在任何 chat_tool_calls 子行写入之前");
+});
+
 if (!creds) {
   test("#1156 Stage C 读侧模式（真实 MariaDB）", { skip: `缺少凭据 ${CREDS_PATH}` }, () => {});
 } else {
@@ -349,48 +407,76 @@ if (!creds) {
     assert.equal(report.match, true, `compareRequest 必须判一致，实际差异：${JSON.stringify(report.issues)}`);
   });
 
-  test("② 默认读模式必须是 legacy（没设 / 空串都算没设）", async () => {
+  test("② 默认读模式必须是 new（没设 / 空串都算没设）", async () => {
     delete process.env[TRANSCRIPT_READ_MODE_ENV];
-    assert.equal(DEFAULT_TRANSCRIPT_READ_MODE, TRANSCRIPT_READ_MODE_LEGACY,
-      "代码里的默认读模式常量必须是 legacy（红线：切 new 是 Eric 的运维决策）");
-    assert.equal(resolveTranscriptReadMode(), "legacy", "没设环境变量时必须解析成 legacy");
+    assert.equal(DEFAULT_TRANSCRIPT_READ_MODE, TRANSCRIPT_READ_MODE_NEW,
+      "代码里的默认读模式常量必须是 new");
+    assert.equal(resolveTranscriptReadMode(), "new", "没设环境变量时必须解析成 new");
     assert.equal(TRANSCRIPT_READ_MODE_NEW, "new");
     process.env[TRANSCRIPT_READ_MODE_ENV] = "   ";
-    assert.equal(resolveTranscriptReadMode(), "legacy", "空串/全空白按没设处理，仍必须是 legacy");
+    assert.equal(resolveTranscriptReadMode(), "new", "空串/全空白按没设处理，仍必须是 new");
     process.env[TRANSCRIPT_READ_MODE_ENV] = "NEW";
     assert.equal(resolveTranscriptReadMode(), "new", "取值按 trim + 小写归一（运维大小写手滑不该回退）");
 
-    // 行为级：不设环境变量时，store 的读输出必须与显式 legacy 一字不差。
-    // 这里必须**真的把变量删掉**再读：上一行刚把 "NEW" 设进去，不删就会让这一段
-    // 在"默认已是 new"的情况下仍然绿（变异实测抓到的假绿，已铉死）。
+    // 行为级：不设环境变量时，store 的读输出必须与显式 new 一字不差。
     delete process.env[TRANSCRIPT_READ_MODE_ENV];
-    assert.equal(resolveTranscriptReadMode(), "legacy", "进入行为级比对前必须确认当下就是默认态");
+    assert.equal(resolveTranscriptReadMode(), "new", "进入行为级比对前必须确认当下就是默认态");
     const store = createTouwakaTranscriptStore({ db, requestContext });
-    const id = runId("default-legacy");
+    const id = runId("default-new");
     await seedCorpus(store, id);
     const roundsDefault = await store.load(id);
-    const roundsForced = (await readUnder(store, TRANSCRIPT_READ_MODE_LEGACY, id)).rounds;
+    const roundsForced = (await readUnder(store, TRANSCRIPT_READ_MODE_NEW, id)).rounds;
     assert.deepEqual(canonicalize(roundsDefault), canonicalize(roundsForced),
-      "默认必须走 legacy 读法：与显式 legacy 输出必须一致");
-    // 且默认读法真的**不是** canonical：canonical 里插一条只有 new 档才看得见的行
-    const [canonicalRoundCount] = await db.sequelize.query(
-      `SELECT COUNT(*) AS n FROM \`${CANONICAL_TABLE}\` WHERE request_id = :rid`,
-      { replacements: { rid: id } },
+      "默认必须走 new 读法：与显式 new 输出必须一致");
+
+    // 两模式语料相等不足以证明默认真走 canonical；加一条 canonical-only 标记，
+    // 钉住默认 load / loadByDedupKey / loadMaxRound 的实际读档路径。
+    const canonicalOnlyKey = `${id}:canonical-only-default`;
+    const canonicalOnlyRecord = {
+      round: 8,
+      dedupKey: canonicalOnlyKey,
+      ts: "2026-11-01T00:00:08.000Z",
+      messages: [{ role: "assistant", content: [{ type: "text", text: "默认档 canonical-only" }] }],
+    };
+    await db.sequelize.query(
+      `INSERT INTO \`${CANONICAL_TABLE}\`
+         (id, request_id, round_no, dedup_key, record_json, created_at, updated_at)
+       VALUES (:id, :rid, :roundNo, :dedupKey, :record, NOW(), NOW())`,
+      {
+        replacements: {
+          id: `atr_readmode_default_${ns}`,
+          rid: id,
+          roundNo: canonicalOnlyRecord.round,
+          dedupKey: canonicalOnlyKey,
+          record: JSON.stringify(canonicalOnlyRecord),
+        },
+      },
     );
-    assert.equal(Number(canonicalRoundCount[0].n), 7, "语料应落 7 行 canonical（7 条 record，同轮双行是两个身份）");
-    assert.equal(canonicalize(roundsDefault).length, 7, "默认（legacy）装配出的轮数必须还是现状的 7 行");
+    const defaultWithCanonicalOnly = await store.load(id);
+    assert.ok(defaultWithCanonicalOnly.some((record) => record.dedupKey === canonicalOnlyKey),
+      "默认 load 必须看见 canonical-only 轮");
+    assert.deepEqual(await store.loadByDedupKey(id, canonicalOnlyKey), canonicalOnlyRecord,
+      "默认 loadByDedupKey 必须看见 canonical-only 轮");
+    assert.equal(await store.loadMaxRound(id), canonicalOnlyRecord.round,
+      "默认 loadMaxRound 必须包含 canonical-only 最大轮号");
+    assert.equal(
+      await underMode(TRANSCRIPT_READ_MODE_LEGACY, () => store.loadByDedupKey(id, canonicalOnlyKey)),
+      null,
+      "显式 legacy 仍必须只读展示面",
+    );
   });
 
-  test("③ 未知取值：回落 legacy + 打一条结构化告警，且 load() 不许被带倒", async () => {
+  test("③ 未知取值：回落到当前默认档（new）+ 打告警，且 load() 不许被带倒", async () => {
     const warnings = [];
     // 每次用没告过的取值：同一取值只告一次（防刷日志），复用旧值会被去重挡掉
     process.env[TRANSCRIPT_READ_MODE_ENV] = `totally-bogus-${ns}`;
-    assert.equal(resolveTranscriptReadMode({ logger: { warn: (m, meta) => warnings.push({ m, meta }) } }), "legacy",
-      "未知取值必须回落到 legacy，不崩、不静默");
+    assert.equal(resolveTranscriptReadMode({ logger: { warn: (m, meta) => warnings.push({ m, meta }) } }), "new",
+      "未知取值必须回落到当前默认档 new，不崩、不静默");
     assert.equal(warnings.length, 1, "必须打一条结构化告警");
+    assert.match(warnings[0].m, /回落到当前默认档 new/);
     assert.deepEqual(
       { event: warnings[0].meta?.event, configured_value: warnings[0].meta?.configured_value, effective: warnings[0].meta?.effective_read_mode },
-      { event: "transcript_read_mode_unknown", configured_value: `totally-bogus-${ns}`, effective: "legacy" },
+      { event: "transcript_read_mode_unknown", configured_value: `totally-bogus-${ns}`, effective: "new" },
     );
 
     // 同一个未知取值再解析不得重复刷屏
@@ -410,7 +496,7 @@ if (!creds) {
       logger: { warn: () => { throw new Error("logs/ 不可写"); } },
     });
     const loaded = await noisy.load(id);
-    assert.equal(loaded.length, 1, "日志实现抛错 + 未知模式时 load() 仍必须按 legacy 正常返回");
+    assert.equal(loaded.length, 1, "日志实现抛错 + 未知模式时 load() 仍必须按默认 new 正常返回");
     assert.equal(await noisy.loadMaxRound(id), 1, "loadMaxRound 同样不许被带倒");
   });
 

@@ -39,6 +39,9 @@ import {
   resolveDedupCandidateLimit,
 } from '../../lib/llm-kit-adapters/transcript-store.js';
 
+// This suite also inspects the legacy agent_rounds query shape; do not inherit a default read mode.
+process.env.ERIX_TRANSCRIPT_READ_MODE = 'legacy';
+
 // issue #1167：目标库必须是测试库（openTestDatabase 内部在建连之前硬断言）。
 const dbCtx = await openTestDatabase();
 const creds = dbCtx?.creds ?? null;
