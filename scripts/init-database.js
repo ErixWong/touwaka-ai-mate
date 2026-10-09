@@ -606,6 +606,33 @@ const TABLES = [
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户技能参数表（只存储用户覆盖的参数）'`,
+
+  // ==================== Agent 消息面 canonical（issue #1156 Stage A） ====================
+  // 与 scripts/upgrade-database.js 里 'create agent_transcript_rounds table (#1156 Stage A)' 与
+  // 'create llm_kit_run_checkpoint table (#1156 Stage A)' 两步逐字段一致（新装库不走增量迁移，
+  // 因此两张表必须在建库基线里也存在）。形状由 Eric 拍板（issue #1156 评论）：
+  //   唯一性只落在身份 dedup_key 上；(request_id, round_no) 是**普通 KEY**（同轮两行合法）。
+  //   时间列一律应用侧写入（不写 DEFAULT CURRENT_TIMESTAMP）；无布尔列，后续新增一律 BIT(1)。
+  `CREATE TABLE IF NOT EXISTS agent_transcript_rounds (
+    id VARCHAR(32) NOT NULL COMMENT 'Utils.newID，前缀 atr_（AGENTS.md §3.4 / 决策①）',
+    request_id VARCHAR(64) NOT NULL COMMENT 'erix runId，即 chat_requests.request_id',
+    round_no INT NOT NULL COMMENT '轮次序号；同轮可有多行（引擎行 + appendUserTurn 预写行），是属性不是身份',
+    dedup_key VARCHAR(255) NOT NULL COMMENT 'erix RoundRecord.dedupKey，领域身份；唯一性只落在这一列（决策①）',
+    record_json JSON NOT NULL COMMENT '全量 RoundRecord 原样 = 引擎面唯一真相（决策③′）',
+    created_at DATETIME NOT NULL COMMENT '应用侧写入',
+    updated_at DATETIME NULL COMMENT '应用侧写入',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_atr_dedup_key (dedup_key),
+    KEY idx_atr_request_round (request_id, round_no)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='erix RoundRecord canonical（引擎面唯一真相，#1156）'`,
+
+  `CREATE TABLE IF NOT EXISTS llm_kit_run_checkpoint (
+    run_id VARCHAR(64) NOT NULL COMMENT 'erix runId，即 chat_requests.request_id',
+    snapshot_json JSON NOT NULL COMMENT 'run 级 snapshot 原样（整份覆盖写）',
+    revision BIGINT NOT NULL COMMENT '单 run 单调 CAS 版本号；并发写用 revision 条件更新',
+    updated_at DATETIME NOT NULL COMMENT '应用侧写入',
+    PRIMARY KEY (run_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='erix run snapshot 档（#1156）'`,
 ];
 
 // 循环外键约束定义（需要在所有表创建后添加）
