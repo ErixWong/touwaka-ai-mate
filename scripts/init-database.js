@@ -607,6 +607,46 @@ const TABLES = [
     FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户技能参数表（只存储用户覆盖的参数）'`,
 
+  // ==================== Agent 持久化三层物化（issue #1134 T1；#1179 补进建库基线） ====================
+  // run(chat_requests) → round(agent_rounds) → message(messages) + tool_call(chat_tool_calls)
+  // 时间字段一律应用侧写入（禁止 DEFAULT CURRENT_TIMESTAMP）；布尔一律 BIT(1)
+  // 与 scripts/upgrade-database.js 里 'create agent_rounds table' / 'create chat_tool_calls table'
+  // 两步逐字段一致。历史上这两步**只在** upgrade 里，而空库路径根本不跑 upgrade（#1179），
+  // 于是新装库变成「有 canonical（#1156 Stage A 已进基线）、没有投影两张」的畸形形态。
+  `CREATE TABLE IF NOT EXISTS agent_rounds (
+    id VARCHAR(32) NOT NULL,
+    request_id VARCHAR(64) NOT NULL COMMENT 'erix runId，即 chat_requests.request_id',
+    round_no INT NOT NULL COMMENT '轮次序号',
+    dedup_key VARCHAR(255) NOT NULL COMMENT 'erix RoundRecord.dedupKey，幂等键',
+    stop_reason VARCHAR(64) NULL,
+    \`usage\` JSON NULL,
+    latency_ms INT NULL,
+    folded BIT(1) NOT NULL DEFAULT b'0' COMMENT '是否已折叠（compaction）',
+    folded_range JSON NULL COMMENT '折叠范围',
+    record_json JSON NULL COMMENT 'RoundRecord 其余字段（load() 重组往返保真）',
+    ts VARCHAR(32) NOT NULL COMMENT 'erix record.ts ISO 字符串原样存',
+    created_at DATETIME NOT NULL COMMENT '应用侧写入',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_agent_rounds_dedup_key (dedup_key),
+    KEY idx_agent_rounds_request (request_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+  `CREATE TABLE IF NOT EXISTS chat_tool_calls (
+    tool_use_id VARCHAR(128) NOT NULL COMMENT 'provider 生成的 call id',
+    request_id VARCHAR(64) NOT NULL,
+    round_id VARCHAR(32) NOT NULL COMMENT 'agent_rounds.id',
+    name VARCHAR(255) NOT NULL,
+    input_json JSON NULL,
+    result_json JSON NULL COMMENT '工具输出正身唯一存储',
+    is_error BIT(1) NOT NULL DEFAULT b'0',
+    duration_ms INT NULL,
+    created_at DATETIME NOT NULL COMMENT '应用侧写入',
+    PRIMARY KEY (tool_use_id),
+    KEY idx_chat_tool_calls_request (request_id),
+    KEY idx_chat_tool_calls_name (name),
+    KEY idx_chat_tool_calls_is_error (is_error)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
   // ==================== Agent 消息面 canonical（issue #1156 Stage A） ====================
   // 与 scripts/upgrade-database.js 里 'create agent_transcript_rounds table (#1156 Stage A)' 与
   // 'create llm_kit_run_checkpoint table (#1156 Stage A)' 两步逐字段一致（新装库不走增量迁移，
@@ -1003,6 +1043,36 @@ async function initDatabase() {
       );
     }
     console.log('  - system_settings initialized');
+
+    // ==================== init 收尾：无条件再跑一遍增量迁移（issue #1179） ====================
+    // 背景：上面 TABLES 只是“建库基线”，历史上大量步骤（列/索引/部分表）**只存在于**
+    // upgrade-database.js；而 server/index.js 的空库分支跑完 init 就结束（两个分支互斥，
+    // 根本不看 needsUpgrade()）⇒ 新装库的缺口永不自愈（#1179 的症状：投影两张表缺失）。
+    // 这里让 init 收尾时真跑一遍 upgrade()（同进程、同一份 DB_* 环境变量，所以 DB_NAME
+    // 覆盖照样生效）：每一步的 check 命中即 Skipped（#1158 的幂等），因此重跑安全；
+    // 从此“init 与 upgrade 谁先谁后”不再影响最终形态。
+    // 失败不静默也不过度致命：步骤失败照样打 ERROR 级清单（不谎报“全部就绪”），
+    // 但 init 本身不因此非 0 退出 —— 与 server/index.js 里“升级失败不阻止启动”的
+    // 既有约定保持一致。实证：空库上 upgrade 有 3 个 doc-platform 建表步骤因步骤顺序
+    // 问题（它们 FK 引用的 documents / document_revisions / document_chunks 建在后面）
+    // 而失败，那是 #1179 范围外的存量缺陷（已写进执行报告，本单不顺手改步骤顺序）。
+    console.log('\nRunning incremental migrations after init (issue #1179)...');
+    const { upgrade } = await import('./upgrade-database.js');
+    const upgradeResults = await upgrade([]);
+    if (upgradeResults.failed.length > 0) {
+      const detail = upgradeResults.failed
+        .map(({ name, error }) => `    - ${name}: ${error}`)
+        .join('\n');
+      console.error(
+        `\n⚠️  init 收尾的 upgrade 有 ${upgradeResults.failed.length} 个步骤失败（建库本身已完成，`
+        + '但表可能不完整：修好后续跑 node scripts/upgrade-database.js 即可，重跑幂等）：\n' + detail,
+      );
+    } else {
+      console.log(
+        `  ✓ upgrade: applied=${upgradeResults.applied.length}, ` +
+        `skipped=${upgradeResults.skipped.length}, failed=0`,
+      );
+    }
 
     console.log('\n✅ Database initialization completed successfully!');
     console.log(`\nTest accounts:`);

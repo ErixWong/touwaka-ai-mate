@@ -67,7 +67,8 @@ node scripts/verify-transcript-read-parity.js --report temp/parity.json
 1. **迁移/脚本输出不要接 `head`**：管道提前关闭 → SIGPIPE 杀进程，而新步骤恰在步骤列表**末尾**，会被杀在到达之前（幂等救过一次）。看摘要用 `tail` 或先落文件
 2. **非测试库要 `ALLOW_NON_TEST_DB=1`**：`#1167` 的守卫默认拦一切非 `llm_kit_test`，两个脚本都复用它
 3. **`--dry-run` 报不一致 ≠ 失败**：回填前的正常状态
-4. **新装空库**：`#1179` —— 空库路径只跑 `init-database.js`、**不跑 upgrade**，而 init 里缺 `agent_rounds`/`chat_tool_calls` ⇒ 新装库请**先手动 `node scripts/upgrade-database.js` 补齐**，或等 #1179 修好。本手册的 Step 1 已顺手解决这一点（显式跑 upgrade）
+4. **新装空库**：`#1179` **已修**——以前空库路径只跑 `init-database.js`、**不跑 upgrade**（`server/index.js` 两个分支互斥），而 init 基线里缺 `agent_rounds`/`chat_tool_calls` ⇒ 新装库「有 canonical、没有投影两张」且不自愈。现在：两张投影表已并入建库基线，且 `init-database.js` 收尾**无条件再跑一遍 `upgrade()`** ⇒ 空库终态 = init 基线 + 全部增量迁移（实测：与「旧 init + 手动 `upgrade-database.js`」建出来的库逐表逐列逐索引 **0 差异**，四张 erix 表形状与 dev 库也 0 差异）。
+   ⚠️ 仍然存在的**存量坑**（与本单无关，未修）：空库上 upgrade 有 3 个 doc-platform 建表步骤（`doc_document_tags` / `doc_compare_runs` / `doc_compare_items`）因**步骤顺序**问题失败——它们 FK 引用的 `documents` / `document_revisions` / `document_chunks` 建在后面。init 收尾会把这 3 条打成 ERROR 清单但不谎报成功；**再跑一遍 `node scripts/upgrade-database.js`** 就会补齐（本手册 Step 1 显式跑 upgrade 正好覆盖）
 5. **孤儿 tool 行告警**：`transcript_orphan_tool_row` 真出现 = 遗留数据或新缺陷。产生机制有两类，一类由单事务消灭（中途失败/crash），一类由 `appendRound` 的 dedup 竞态 fail-fast 守卫消灭（`ERR_TRANSCRIPT_DEDUP_RACE`，erix 顺序 retry 会自动恢复）
 
 ## 5. 验收清单

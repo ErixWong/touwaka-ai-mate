@@ -26,6 +26,16 @@ const TEST_PASSWORD = process.env.TEST_PASSWORD || 'password123';
 const EXPRESSIVE_MODEL_ID = process.env.EXPRESSIVE_MODEL_ID || null;
 const REFLECTIVE_MODEL_ID = process.env.REFLECTIVE_MODEL_ID || null;
 
+// ---- 锚点清洗专家的 max_tool_rounds 种子值（issue #1176）----
+// 约定区间是 1–50（`models/expert.js` 列注释、前端
+// `frontend/src/components/settings/ExpertSettingsTab.vue` 的 `:min="1" :max="50"`、
+// 写入侧硬校验 `lib/agent/max-tool-rounds.js` 的 MAX_TOOL_ROUNDS_MIN / _MAX），
+// 系统默认则是 20。这里历史上写的是 60：它能落库（旧写入侧无校验），但运行时会被
+// `resolveEffectiveMaxToolRounds` 夹回 50 并每轮刷一条 logger.warn（#1166）。
+// 取区间上界 50：既不丢清洗所需的轮数预算，也不再产生夹取告警。
+// `apps/standard-mgr/server/service.js` 复用同一个常量，避免两处种子各写一份。
+const ANCHOR_EXPERT_MAX_TOOL_ROUNDS = 50;
+
 // ---- prompt_template（从 PLAN §3 行为契约提炼）----
 const DEFAULT_PROMPT = `你是标准文档引用清洗专家。你的任务有二：1) 识别文档中对**其他标准**的外部引用；2) 识别文档内**章节间**的交叉引用。两项任务均需定位目标并写入记录。
 
@@ -199,7 +209,7 @@ async function createExpert(token, expressiveModelId, reflectiveModelId) {
     introduction: '通读标准文档全文，识别对其他标准的引用并定位到目标章节，写入引用记录。',
     prompt_template: PROMPT_TEMPLATE,
     is_active: true,
-    max_tool_rounds: 60,
+    max_tool_rounds: ANCHOR_EXPERT_MAX_TOOL_ROUNDS,
   };
   if (expressiveModelId) body.expressive_model_id = expressiveModelId;
   if (reflectiveModelId) body.reflective_model_id = reflectiveModelId;
@@ -308,12 +318,12 @@ async function main() {
   console.log('=== 完成 ===');
   console.log(`专家 ID: ${expert.id}`);
   console.log(`技能 ID: ${skillId}`);
-  console.log(`max_tool_rounds: 60`);
+  console.log(`max_tool_rounds: ${ANCHOR_EXPERT_MAX_TOOL_ROUNDS}`);
   console.log('\n下一步: node scripts/run-anchor-cleaning.mjs');
   console.log('  （脚本自动调用服务端 /standards/:id/clean 端点，无需再传 EXPERT_ID）');
 }
 
-// 作为主模块运行时才执行（被其他脚本 import 时仅导出 DEFAULT_PROMPT）
+// 作为主模块运行时才执行（被其他脚本 import 时只导出 DEFAULT_PROMPT 与 ANCHOR_EXPERT_MAX_TOOL_ROUNDS）
 const isMainModule =
   process.argv[1] &&
   import.meta.url === new URL(`file://${process.argv[1].replace(/\\/g, '/')}`).href;
@@ -325,4 +335,4 @@ if (isMainModule) {
   });
 }
 
-export { DEFAULT_PROMPT };
+export { DEFAULT_PROMPT, ANCHOR_EXPERT_MAX_TOOL_ROUNDS };
