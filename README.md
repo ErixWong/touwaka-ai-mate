@@ -431,7 +431,7 @@ touwaka-mate-v2/
 | [专家编排设计](docs/design/core/phase2/expert-orchestration.md) | TaskOrchestrator、专家分身机制 |
 | [知识库重构设计](docs/design/topics/knowledge-base/kb-refactor-design.md) | 新知识库结构：文章/节/段/标签 |
 | [组织架构设计](docs/design/core/phase2/org-architecture.md) | 部门树、职位管理、用户关联 |
-| [App Platform 设计](docs/design/app-platform/README.md) | App 市场、平台能力与页面/数据库设计 |
+| [App Platform 设计](docs/design/app-platform-boundaries.md) | App 市场、平台能力与页面/数据库设计 |
 
 ### 开发指南
 | 文档 | 说明 |
@@ -457,7 +457,7 @@ touwaka-mate-v2/
 | [Expert Orchestration](docs/design/core/phase2/expert-orchestration.md) | TaskOrchestrator, expert clone mechanism |
 | [KB Refactor Design](docs/design/topics/knowledge-base/kb-refactor-design.md) | New KB structure: Article/Section/Paragraph/Tags |
 | [Organization Architecture](docs/design/core/phase2/org-architecture.md) | Department tree, position management |
-| [App Platform Design](docs/design/app-platform/README.md) | App market, platform capability and schema/page design |
+| [App Platform Design](docs/design/app-platform-boundaries.md) | App market, platform capability and schema/page design |
 
 ### Development Guides
 | Document | Description |
