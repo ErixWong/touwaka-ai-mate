@@ -1617,89 +1617,6 @@ const MIGRATIONS = [
     }
   },
 
-  // 2. doc_document_tags - 文档标签关联表
-  {
-    name: 'doc_document_tags table create',
-    check: async (conn) => await hasTable(conn, 'doc_document_tags'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE doc_document_tags (
-          id VARCHAR(32) NOT NULL COMMENT '关联ID',
-          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
-          tag_id VARCHAR(32) NOT NULL COMMENT '标签ID',
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          UNIQUE INDEX idx_doc_tag (document_id, tag_id),
-          INDEX idx_doc_document (document_id),
-          INDEX idx_doc_tag_id (tag_id),
-          CONSTRAINT fk_doctag_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
-          CONSTRAINT fk_doctag_tag FOREIGN KEY (tag_id) REFERENCES doc_tags(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档标签关联表'
-      `);
-      console.log('  ✓ Created doc_document_tags table');
-    }
-  },
-
-  // 3. doc_compare_runs - 比对任务表
-  {
-    name: 'doc_compare_runs table create',
-    check: async (conn) => await hasTable(conn, 'doc_compare_runs'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE doc_compare_runs (
-          id VARCHAR(32) NOT NULL COMMENT '比对任务ID',
-          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
-          base_version_id VARCHAR(32) NOT NULL COMMENT '基准版本ID',
-          target_version_id VARCHAR(32) NOT NULL COMMENT '目标版本ID',
-          status ENUM('pending', 'processing', 'completed', 'failed') NOT NULL DEFAULT 'pending' COMMENT '任务状态',
-          summary_json JSON NULL COMMENT '比对摘要',
-          model_info JSON NULL COMMENT '使用的模型信息',
-          duration_ms INT NULL COMMENT '执行时长(ms)',
-          created_by VARCHAR(32) NOT NULL COMMENT '创建者ID',
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          INDEX idx_doc_status (document_id, status),
-          INDEX idx_versions (base_version_id, target_version_id),
-          CONSTRAINT fk_comp_runs_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
-          CONSTRAINT fk_comp_runs_base_rev FOREIGN KEY (base_version_id) REFERENCES document_revisions(id) ON DELETE CASCADE,
-          CONSTRAINT fk_comp_runs_target_rev FOREIGN KEY (target_version_id) REFERENCES document_revisions(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='比对任务表'
-      `);
-      console.log('  ✓ Created doc_compare_runs table');
-    }
-  },
-
-  // 4. doc_compare_items - 比对结果明细表
-  {
-    name: 'doc_compare_items table create',
-    check: async (conn) => await hasTable(conn, 'doc_compare_items'),
-    migrate: async (conn) => {
-      await conn.execute(`
-        CREATE TABLE doc_compare_items (
-          id VARCHAR(32) NOT NULL COMMENT '比对明细ID',
-          run_id VARCHAR(32) NOT NULL COMMENT '比对任务ID',
-          base_unit_id VARCHAR(32) NULL COMMENT '基准内容单元ID',
-          target_unit_id VARCHAR(32) NULL COMMENT '目标内容单元ID',
-          change_type ENUM('identical', 'modified', 'semantic_change', 'added', 'removed') NOT NULL COMMENT '变更类型',
-          summary TEXT NULL COMMENT '变更摘要',
-          risk_level ENUM('none', 'low', 'medium', 'high') NULL COMMENT '风险等级',
-          key_changes_json JSON NULL COMMENT '关键变更',
-          evidence_unit_ids_json JSON NULL COMMENT '依据内容单元IDs',
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          INDEX idx_run (run_id),
-          INDEX idx_change_type (run_id, change_type),
-          INDEX idx_base_unit (base_unit_id),
-          INDEX idx_target_unit (target_unit_id),
-          CONSTRAINT fk_comp_items_run FOREIGN KEY (run_id) REFERENCES doc_compare_runs(id) ON DELETE CASCADE,
-          CONSTRAINT fk_comp_items_base_chunk FOREIGN KEY (base_unit_id) REFERENCES document_chunks(id) ON DELETE SET NULL,
-          CONSTRAINT fk_comp_items_target_chunk FOREIGN KEY (target_unit_id) REFERENCES document_chunks(id) ON DELETE SET NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='比对结果明细表'
-      `);
-      console.log('  ✓ Created doc_compare_items table');
-    }
-  },
   // 5. topics 新增 start_time / end_time（Phase 2 WP-1）
   {
     name: 'topics add start_time and end_time',
@@ -1945,6 +1862,112 @@ const MIGRATIONS = [
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档分段'
       `);
       console.log('  ✓ Created document_chunks table');
+    }
+  },
+
+  // ------------------------------------------------------------------
+  // #1190：下面三个建表步骤（31.1 / 31.2 / 31.3）必须排在各自 FK 父表的
+  // create 步骤之后 —— 它们的 CREATE TABLE 里带内联 FOREIGN KEY，父表不存在
+  // 时整条 CREATE 直接失败（errno 150 "Foreign key constraint is incorrectly
+  // formed"），空库首跑就是 Failed: 3。依赖清单（按步骤 name 定位）：
+  //   doc_document_tags → documents(id)          步骤 'documents table create'
+  //                     → doc_tags(id)           步骤 'doc_tags table create'
+  //   doc_compare_runs  → documents(id)          步骤 'documents table create'
+  //                     → document_revisions(id) 步骤 'document_revisions table create'
+  //   doc_compare_items → doc_compare_runs(id)   步骤 'doc_compare_runs table create'
+  //                     → document_chunks(id)    步骤 'document_chunks table create'
+  // 所以插入点选在 'document_chunks table create' 之后（doc_tags 更在前），
+  // 且三步的相对顺序不能动：doc_compare_items 的父表 doc_compare_runs 在其之前。
+  // 历史事实（别再把这三步挪回 documents/document_chunks 之前）：它们原先紧跟
+  // 'doc_tags table create'，空库首跑 Applied 69 / Skipped 63 / Failed 3；因为失败
+  // 时 CREATE TABLE 完全不落地，而后续步骤照样跑完，所以再跑一次 upgrade 时父表
+  // 已就位、三步全部成功（实测第二次 Applied 8 / Skipped 127 / Failed 0）—— 这个
+  // "重跑自愈"只是掩盖，第一次交付的库是缺表的。
+  // 与本组之后的 'doc platform core tables rebuild v2'（FOREIGN_KEY_CHECKS=0 下
+  // drop/重建 documents 等父表，再按 hasTable 条件重挂这些 FK）的先后关系不变：
+  // 三步仍在它之前，与修复前的相对顺序一致。
+  // ------------------------------------------------------------------
+  // 31.1 doc_document_tags - 文档标签关联表（#1190 起在此处建：依赖 documents / doc_tags）
+  {
+    name: 'doc_document_tags table create',
+    check: async (conn) => await hasTable(conn, 'doc_document_tags'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE doc_document_tags (
+          id VARCHAR(32) NOT NULL COMMENT '关联ID',
+          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
+          tag_id VARCHAR(32) NOT NULL COMMENT '标签ID',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE INDEX idx_doc_tag (document_id, tag_id),
+          INDEX idx_doc_document (document_id),
+          INDEX idx_doc_tag_id (tag_id),
+          CONSTRAINT fk_doctag_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+          CONSTRAINT fk_doctag_tag FOREIGN KEY (tag_id) REFERENCES doc_tags(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档标签关联表'
+      `);
+      console.log('  ✓ Created doc_document_tags table');
+    }
+  },
+
+  // 31.2 doc_compare_runs - 比对任务表（#1190 起在此处建：依赖 documents / document_revisions）
+  {
+    name: 'doc_compare_runs table create',
+    check: async (conn) => await hasTable(conn, 'doc_compare_runs'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE doc_compare_runs (
+          id VARCHAR(32) NOT NULL COMMENT '比对任务ID',
+          document_id VARCHAR(32) NOT NULL COMMENT '文档ID',
+          base_version_id VARCHAR(32) NOT NULL COMMENT '基准版本ID',
+          target_version_id VARCHAR(32) NOT NULL COMMENT '目标版本ID',
+          status ENUM('pending', 'processing', 'completed', 'failed') NOT NULL DEFAULT 'pending' COMMENT '任务状态',
+          summary_json JSON NULL COMMENT '比对摘要',
+          model_info JSON NULL COMMENT '使用的模型信息',
+          duration_ms INT NULL COMMENT '执行时长(ms)',
+          created_by VARCHAR(32) NOT NULL COMMENT '创建者ID',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          INDEX idx_doc_status (document_id, status),
+          INDEX idx_versions (base_version_id, target_version_id),
+          CONSTRAINT fk_comp_runs_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+          CONSTRAINT fk_comp_runs_base_rev FOREIGN KEY (base_version_id) REFERENCES document_revisions(id) ON DELETE CASCADE,
+          CONSTRAINT fk_comp_runs_target_rev FOREIGN KEY (target_version_id) REFERENCES document_revisions(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='比对任务表'
+      `);
+      console.log('  ✓ Created doc_compare_runs table');
+    }
+  },
+
+  // 31.3 doc_compare_items - 比对结果明细表（#1190 起在此处建：依赖 doc_compare_runs / document_chunks）
+  {
+    name: 'doc_compare_items table create',
+    check: async (conn) => await hasTable(conn, 'doc_compare_items'),
+    migrate: async (conn) => {
+      await conn.execute(`
+        CREATE TABLE doc_compare_items (
+          id VARCHAR(32) NOT NULL COMMENT '比对明细ID',
+          run_id VARCHAR(32) NOT NULL COMMENT '比对任务ID',
+          base_unit_id VARCHAR(32) NULL COMMENT '基准内容单元ID',
+          target_unit_id VARCHAR(32) NULL COMMENT '目标内容单元ID',
+          change_type ENUM('identical', 'modified', 'semantic_change', 'added', 'removed') NOT NULL COMMENT '变更类型',
+          summary TEXT NULL COMMENT '变更摘要',
+          risk_level ENUM('none', 'low', 'medium', 'high') NULL COMMENT '风险等级',
+          key_changes_json JSON NULL COMMENT '关键变更',
+          evidence_unit_ids_json JSON NULL COMMENT '依据内容单元IDs',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          INDEX idx_run (run_id),
+          INDEX idx_change_type (run_id, change_type),
+          INDEX idx_base_unit (base_unit_id),
+          INDEX idx_target_unit (target_unit_id),
+          CONSTRAINT fk_comp_items_run FOREIGN KEY (run_id) REFERENCES doc_compare_runs(id) ON DELETE CASCADE,
+          CONSTRAINT fk_comp_items_base_chunk FOREIGN KEY (base_unit_id) REFERENCES document_chunks(id) ON DELETE SET NULL,
+          CONSTRAINT fk_comp_items_target_chunk FOREIGN KEY (target_unit_id) REFERENCES document_chunks(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='比对结果明细表'
+      `);
+      console.log('  ✓ Created doc_compare_items table');
     }
   },
 
