@@ -107,7 +107,8 @@ zcat touwaka-pre-*.sql.gz | grep -c "CREATE TABLE"            # 应等于表数�
 - [ ] **新表形状**：`information_schema.statistics` 查 `uk_atr_dedup_key` 唯一、`idx_atr_request_round` 的 **`NON_UNIQUE=1`**、主键单列 `id`（这是 #1156 决策①的落地铁证，漂了就停）
 - [ ] **回填**：`--verify-only` 的 `rounds_mismatched = 0`；再跑一次 `--write` 的 `rounds_written = 0`（幂等）
 - [ ] **⚠️ 补回填**：如果用了方案 B 或部署与回填之间有间隔，**服务起来之后再跑一次 `--write`**——那段间隔里新代码写的轮会同时进 canonical，但旧代码写的轮只进投影表，漏了就一直漏
-- [ ] **两模式等价**：`verify-transcript-read-parity.js` **exit 0**（判读规则见 §2：**新写入的轮允许差异，方向应是 `new` 更丰富；只有 `new` 更少才算回归**）
+- [ ] **行级 SQL 不变式**：`check-transcript-sql-invariants.mjs` **exit 0**（I1–I5；独立于读法实现的第三方视角，先跑它，见 §6.4）
+- [ ] **两模式等价**：`verify-transcript-read-parity.js` **exit 0**（#1196 之后 **exit 只由 `content_diff` 触发**，`ordering_only` 不扣 exit；判读规则见 §2：**新写入的轮允许差异，方向应是 `new` 更丰富；只有 `new` 更少才算回归**）
 - [ ] **健康**：`/api/health` 200（boot 到 HTTP 绑定可能要 40–60 秒，早了会连不上，别误判成挂了）
 - [ ] **一轮真对话**：`agent_transcript_rounds` 有新增行且 `chat_tool_calls.duration_ms > 0`（#1151 的首证只能在这里拿到真环境数据）
 - [ ] **观察 24 小时的信号**：`transcript_orphan_tool_row`（出现=遗留数据或新缺陷）、`ERR_TRANSCRIPT_DEDUP_RACE`（erix 顺序 retry 会自动恢复，偶发可接受，**批量出现**要查）、clamp 告警、`meta_json` 首写
@@ -117,3 +118,20 @@ zcat touwaka-pre-*.sql.gz | grep -c "CREATE TABLE"            # 应等于表数�
 - 不用手动 DROP 任何表（`agent_rounds` 仍是冻结回滚锚，DROP 是独立审批项）
 - 不用改 `scripts/upgrade-database.js`（boot 的「有表 → `needsUpgrade()` → `upgrade()`」已经把 DDL-before-code 兜住，§1 Step 1 手动跑只是让过程可见）
 - 不用管空库 doc 三步骤 FK 顺序报错（**#1190 未修，二次跑自愈**，见 §4.4）——除非那台机是全新空库
+
+### 6.4 两层验收闸门（部署后按顺序跑）
+
+```bash
+# ① 行级 SQL 不变式（独立第三方视角、便宜、先跑这个）
+DB_HOST=… DB_PORT=… DB_USER=… DB_PASSWORD=… DB_NAME=… ALLOW_NON_TEST_DB=1   node scripts/check-transcript-sql-invariants.mjs --limit 200
+#    期望 exit=0；I1 轮覆盖 / I2 孤儿工具调用 / I3 dedup_key 唯一 / I4 MAX(round_no) 两侧相等 / I5 messages 行数
+#    非 0 = 有违反，报告 JSON 会点名不变式与 request_id，先查清再继续
+
+# ② 双读 parity（语义等价、较慢，后跑）
+DB_… ALLOW_NON_TEST_DB=1 node scripts/verify-transcript-read-parity.js --limit 20 --report temp/parity.json
+#    exit=0 = 一字不差；exit=3 且明细里只有 ordering_only = 可接受（块先后顺序差，内容全同）
+#    exit=3 且存在 content_diff = 必须查清：legacy 侧已知有损投影（tool_result 8 键 + folded）会命中这一类，
+#    新侧是保真侧，content_diff 出现在“legacy 缺键”方向属已知现象，不是数据丢失
+```
+
+**判“最新 request”不要用 `ORDER BY request_id DESC`**：2026-09-13 ID 方案修好之前的 `req_` 是替换式混淆、字典序不保序，旧字母段会排在新的数字段之后。含历史旧行的表一律用 `created_at`。
