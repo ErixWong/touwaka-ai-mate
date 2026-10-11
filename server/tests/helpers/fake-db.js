@@ -38,6 +38,10 @@ export function createFakeDb() {
         const row = rows.get(keyOf(params[0], params[1]));
         return row ? [snapshot(row)] : [];
       }
+      // 跨 scope 全量扫描（purge）：不带 scope_ref 谓词 → 全表
+      if (!/WHERE\s+scope_ref\s*=\s*\?/i.test(text)) {
+        return [...rows.values()].map(snapshot);
+      }
       // scope_ref 全量列表
       return [...rows.values()]
         .filter(row => row.scope_ref === params[0])

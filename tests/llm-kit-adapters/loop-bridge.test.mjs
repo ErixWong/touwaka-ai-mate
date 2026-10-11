@@ -386,8 +386,12 @@ test("builds an erix loop with structured tool execution and canonical results",
   assert.equal(toolResult.success, true);
   assert.deepEqual(toolResult.atomic_steps, ["echo"]);
   assert.equal(toolResult.toolMessageId, "tool-message-1");
-  assert.equal(events.at(-1).type, "round_end");
-  assert.equal(events.at(-1).stopReason, "end_turn");
+  // erix 0.18.0（issue #165）新增一次性终局汇总事件 run_outcome，排在 round_end
+  // 之后 —— 这是 additive 的 semver minor，不是行为回归：round_end 本身仍按原形状
+  // 透传。两条都钉住：round_end 形状不变 + run_outcome 作为最后一个事件透传下来。
+  const lastRoundEnd = events.filter((event) => event.type === "round_end").at(-1);
+  assert.equal(lastRoundEnd.stopReason, "end_turn");
+  assert.equal(events.at(-1).type, "run_outcome");
 
   assert.ok(store.calls.appendRound.length > 0);
   assert.ok(store.calls.saveRunSnapshot.length > 0);
