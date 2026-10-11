@@ -23,12 +23,27 @@
  *   本来就该让两侧在这三个键上一致，剔掉等于把"读侧发明字段"这类真差异藏起来。
  *   窄剔除 = 更强的信号（只可能报得多，不会把真差异抹平）。
  *
+ * 差异三分类（issue #1196）：identical / ordering_only / content_diff
+ *   展示面按列重组 record 时把 reasoning 块固定排在 text 块之后，而 canonical 存的是
+ *   **引擎原始顺序**。于是「块集合与文字一字不差、只有先后不同」这种差异以前被算成
+ *   真差异、与 #1150 那类真回归共用 exit=3，exit code 长期是噪音，真内容回归会被埋掉。
+ *   现在分三类：
+ *     - identical     ：深比对无差异。
+ *     - ordering_only ：深比对**已经报出差异之后**，再单独确认「两侧只是 content[] 元素
+ *                       先后不同、块集合与块内容全同」（判据见 classifyIssueKind）。
+ *                       排序只用来**解释一个已经报出的差异**，从来不用排序后 stringify
+ *                       代替深比对：要不要报差异，判据仍是 canonicalize + 逐路径深比对。
+ *     - content_diff  ：其余全部差异（少块 / 多块 / 文字不同 / 键集不同 / 一侧缺行…）。
+ *   exit code **只由 content_diff 触发 = 3**；ordering_only 单独计数、单独列明细（哪个
+ *   request、哪一轮、哪个块数组、哪两个块换了序），报告 JSON 里三类计数齐备。
+ *
  * 用法
  *   node scripts/verify-transcript-read-parity.js                        # 全库
  *   node scripts/verify-transcript-read-parity.js --limit 20
  *   node scripts/verify-transcript-read-parity.js --request-id <id>
  *   node scripts/verify-transcript-read-parity.js --report temp/parity.json
- *   退出码：全一致 = 0；有差异 = 3（**是信号不是崩**，方便当闸门用）；用法/连接错误 = 1。
+ *   退出码：无 content_diff = 0（哪怕有 ordering_only）；有 content_diff = 3（**是信号不是崩**）；
+ *   用法/连接错误 = 1。
  *
  * 连哪个库（与 scripts/backfill-transcript-canonical.js 同约定）
  *   - 默认（没给 DB_*）：走 tests/helpers/test-db-guard.mjs 的 openTestDatabase()，
@@ -91,6 +106,119 @@ export function canonicalize(value) {
 
 export function stableStringify(value) {
   return JSON.stringify(canonicalize(value));
+}
+
+// ==================== issue #1196：差异归因（**不是**另一种比对） ====================
+
+/**
+ * 只把「块数组」按元素排序：已规范化值里挂在 `content` 键下、元素都是带字符串 `type` 的
+ * 对象的那些数组（record.messages[].content 与 record.response.content 都算）。
+ * 其余一律原样不动。**自下而上**排（先把元素内部排完再排本层），保证元素比的是稳定形。
+ *
+ * 用途只有一个：给深比对**已经报出**的差异做归因。排完序两边全等 ⇒ 差异**只可能**
+ * 出自这些数组的元素先后（排序动不到别的任何东西），因此「块集合与内容全同、仅顺序异」。
+ * 它绝不参与「要不要报差异」——报不报只看 normalizedDiffPaths。
+ */
+export function sortBlockArrays(value, keyName = "") {
+  if (Array.isArray(value)) {
+    const items = value.map((item) => sortBlockArrays(item, ""));
+    const isBlockArray = keyName === "content"
+      && items.length > 1
+      && items.every((item) => item && typeof item === "object" && !Array.isArray(item) && typeof item.type === "string");
+    if (!isBlockArray) return items;
+    return [...items].sort((left, right) => {
+      const a = JSON.stringify(left);
+      const b = JSON.stringify(right);
+      if (a === b) return 0;
+      return a < b ? -1 : 1;
+    });
+  }
+  if (value === null || typeof value !== "object") return value;
+  const out = {};
+  for (const key of Object.keys(value)) out[key] = sortBlockArrays(value[key], key);
+  return out;
+}
+
+/** 块序无关的规范化串：只在深比对报出差异**之后**用于归因。 */
+export function stableStringifyIgnoringBlockOrder(value) {
+  return JSON.stringify(sortBlockArrays(canonicalize(value)));
+}
+
+/**
+ * 给一条**已由深比对确认存在差异**的记录对归因（#1196）：
+ *   两侧把块数组排序后全等 → ordering_only；否则 content_diff。
+ * 一侧缺行（alignRounds 填的字符串标记）永远是 content_diff：少一整轮不是顺序问题。
+ * 注意调用方必须已经拿到非空 diff_paths——本函数不会把「无差异」误报成任何一种。
+ */
+export function classifyIssueKind(legacyValue, newValue) {
+  if (typeof legacyValue === "string" || typeof newValue === "string") return "content_diff";
+  return stableStringifyIgnoringBlockOrder(legacyValue) === stableStringifyIgnoringBlockOrder(newValue)
+    ? "ordering_only"
+    : "content_diff";
+}
+
+/** 块的人读标签（报告样例用）：type + 正文前段。 */
+function blockLabel(block) {
+  const type = block && typeof block.type === "string" ? block.type : "?";
+  const head = typeof block?.text === "string" ? block.text.replace(/\s+/g, " ").trim().slice(0, 24) : "";
+  return head === "" ? type : `${type}(${head}…)`;
+}
+
+/** 找出**哪两个块**换了序（按新侧下标的逆序对，最多 3 对）。 */
+function swappedBlockPairs(legacyBlocks, newBlocks) {
+  const keyOf = (block) => JSON.stringify(block);
+  const newIndex = new Map(newBlocks.map((block, index) => [keyOf(block), index]));
+  const sequence = legacyBlocks.map((block) => newIndex.get(keyOf(block)) ?? -1);
+  const pairs = [];
+  for (let i = 0; i < sequence.length && pairs.length < 3; i += 1) {
+    for (let j = i + 1; j < sequence.length && pairs.length < 3; j += 1) {
+      if (sequence[i] > sequence[j]) {
+        pairs.push(`${blockLabel(legacyBlocks[i])} <-> ${blockLabel(legacyBlocks[j])}`);
+      }
+    }
+  }
+  return pairs;
+}
+
+/**
+ * 定位到具体是哪个块数组换了序，产出报告样例：块数组路径 + 两侧块序 + 换了序的块对。
+ * 只在 classifyIssueKind 给出 ordering_only 后调用（内容差异时这里的输出无意义）。
+ */
+export function findBlockOrderDiffs(a, b, base = "", found = [], alreadyCanonical = false) {
+  const left = alreadyCanonical ? a : canonicalize(a);
+  const right = alreadyCanonical ? b : canonicalize(b);
+  if (JSON.stringify(left) === JSON.stringify(right)) return found;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    const isBlockArray = (base === "content" || base.endsWith(".content"))
+      && left.every((block) => block && typeof block === "object" && typeof block.type === "string")
+      && right.every((block) => block && typeof block === "object" && typeof block.type === "string");
+    if (isBlockArray) {
+      const leftKeys = left.map((block) => JSON.stringify(block)).sort().join("\u0000");
+      const rightKeys = right.map((block) => JSON.stringify(block)).sort().join("\u0000");
+      if (leftKeys === rightKeys) {
+        found.push({
+          path: base,
+          legacy_order: left.map((block) => blockLabel(block)),
+          new_order: right.map((block) => blockLabel(block)),
+          swapped_pairs: swappedBlockPairs(left, right),
+        });
+        return found;
+      }
+    }
+    if (left.length === right.length) {
+      for (let index = 0; index < left.length; index += 1) {
+        findBlockOrderDiffs(left[index], right[index], `${base}[${index}]`, found, true);
+      }
+    }
+    return found;
+  }
+  if (left && right && typeof left === "object" && typeof right === "object") {
+    for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+      findBlockOrderDiffs(left[key], right[key], base ? `${base}.${key}` : key, found, true);
+    }
+    return found;
+  }
+  return found;
 }
 
 /** 两侧规范化值的路径级差异（最多 12 条，够定位就行，报告不撑爆）。 */
@@ -234,21 +362,29 @@ export function compareRequest(store, runId) {
 
     const aligned = alignRounds(legacyOut.rounds, newOut.rounds);
     for (const entry of aligned) {
+      // 比对强度一分没降：报不报差异只看 normalizedDiffPaths（逐路径深比对）。
+      // classifyIssueKind 是在**已经报出差异之后**做归因（#1196）。
       const paths = normalizedDiffPaths(entry.legacy, entry.new);
       if (paths.length > 0) {
-        issues.push({
+        const kind = classifyIssueKind(entry.legacy, entry.new);
+        const issue = {
           method: "load",
           key: entry.key,
           round_no: entry.round_no,
+          kind,
           diff_paths: paths,
           legacy_side: stableStringify(entry.legacy).slice(0, 400),
           new_side: stableStringify(entry.new).slice(0, 400),
-        });
+        };
+        if (kind === "ordering_only") {
+          issue.block_order_swaps = findBlockOrderDiffs(entry.legacy, entry.new);
+        }
+        issues.push(issue);
       }
     }
 
     if (legacyOut.max_round !== newOut.max_round) {
-      issues.push({ method: "loadMaxRound", key: "max_round", diff_paths: ["$"],
+      issues.push({ method: "loadMaxRound", key: "max_round", kind: "content_diff", diff_paths: ["$"],
         legacy_side: String(legacyOut.max_round), new_side: String(newOut.max_round) });
     }
 
@@ -259,14 +395,28 @@ export function compareRequest(store, runId) {
       const newHit = newProbes.has(key) ? newProbes.get(key) : "<未点查>";
       const paths = normalizedDiffPaths(legacyHit, newHit);
       if (paths.length > 0) {
-        issues.push({ method: "loadByDedupKey", key, diff_paths: paths,
+        const kind = classifyIssueKind(legacyHit, newHit);
+        const issue = { method: "loadByDedupKey", key, kind, diff_paths: paths,
           legacy_side: stableStringify(legacyHit).slice(0, 400),
-          new_side: stableStringify(newHit).slice(0, 400) });
+          new_side: stableStringify(newHit).slice(0, 400) };
+        if (kind === "ordering_only") issue.block_order_swaps = findBlockOrderDiffs(legacyHit, newHit);
+        issues.push(issue);
       }
     }
 
+    // 会话级三分类：有任一条 content_diff 就是 content_diff；全部是 ordering_only 才是
+    // ordering_only；无差异才是 identical。match 维持旧语义（= 一字不差），供旧调用方用。
+    const issuesContentDiff = issues.filter((issue) => issue.kind === "content_diff").length;
+    const issuesOrderingOnly = issues.filter((issue) => issue.kind === "ordering_only").length;
+    const classification = issues.length === 0
+      ? "identical"
+      : (issuesContentDiff > 0 ? "content_diff" : "ordering_only");
+
     return {
       request_id: runId,
+      classification,
+      issues_content_diff: issuesContentDiff,
+      issues_ordering_only: issuesOrderingOnly,
       legacy_round_count: legacyOut.rounds.length,
       new_round_count: newOut.rounds.length,
       legacy_max_round: legacyOut.max_round,
@@ -306,6 +456,9 @@ export async function main() {
   }
 
   const mismatched = entries.filter((entry) => !entry.match);
+  const identical = entries.filter((entry) => entry.classification === "identical");
+  const orderingOnly = entries.filter((entry) => entry.classification === "ordering_only");
+  const contentDiff = entries.filter((entry) => entry.classification === "content_diff");
   const report = {
     generated_at: new Date().toISOString(),
     database,
@@ -323,10 +476,27 @@ export async function main() {
         dedupKey: "领域身份，是 record 内容，不能比掉",
       },
     },
+    // issue #1196：三分类的判据写进报告，事后能追问「这条为何被归为纯顺序」。
+    classification: {
+      identical: "normalizedDiffPaths 无差异",
+      ordering_only: "深比对已报出差异，且只对挂在 content 键下的块数组做元素排序后两侧全等"
+        + " ⇒ 块集合与块内容全同、仅先后不同（排序只做归因，没替代深比对）",
+      content_diff: "其余全部差异：少块/多块/文字不同/键集不同/一侧缺行/max_round 不等",
+      request_level_rule: "会话内有任何 content_diff 条目就是 content_diff；全部条目都是 ordering_only 才是 ordering_only",
+      exit_code_rule: "exit=3 只由 content_diff 触发；ordering_only 单独计数、单独列明细，不影响 exit",
+      evidence_fields: "ordering_only 的 issue 带 block_order_swaps：块数组路径 + 两侧块序 + 换了序的块对",
+    },
     totals: {
       requests_compared: entries.length,
-      requests_matched: entries.length - mismatched.length,
+      requests_identical: identical.length,
+      requests_ordering_only: orderingOnly.length,
+      requests_content_diff: contentDiff.length,
+      // 旧字段保留：matched = 一字不差；mismatched = 有任何差异（含纯顺序）
+      requests_matched: identical.length,
       requests_mismatched: mismatched.length,
+      issues_total: entries.reduce((sum, entry) => sum + entry.issues.length, 0),
+      issues_ordering_only: entries.reduce((sum, entry) => sum + entry.issues_ordering_only, 0),
+      issues_content_diff: entries.reduce((sum, entry) => sum + entry.issues_content_diff, 0),
       rounds_legacy: entries.reduce((sum, entry) => sum + entry.legacy_round_count, 0),
       rounds_new: entries.reduce((sum, entry) => sum + entry.new_round_count, 0),
       probes_compared: entries.reduce((sum, entry) => sum + entry.probe_count, 0),
@@ -334,6 +504,8 @@ export async function main() {
       requests_only_in_canonical_side: requests.filter((item) => !item.in_display && item.in_canonical).length,
     },
     mismatches: mismatched,
+    content_diff_requests: contentDiff,
+    ordering_only_requests: orderingOnly,
     requests: entries,
   };
 
@@ -346,19 +518,29 @@ export async function main() {
     `  会话比对   : ${report.totals.requests_compared} 个（展示面独有 ${report.totals.requests_only_in_display_side} / canonical 独有 ${report.totals.requests_only_in_canonical_side}）`,
     `  轮数       : legacy ${report.totals.rounds_legacy} 轮 vs new ${report.totals.rounds_new} 轮`,
     `  点查探针   : ${report.totals.probes_compared} 次（含必然未命中的一条）`,
-    `  一致       : ${report.totals.requests_matched} 个会话`,
-    `  不一致     : ${report.totals.requests_mismatched} 个会话`,
+    `  一字不差   : ${report.totals.requests_identical} 个会话（identical）`,
+    `  纯块顺序   : ${report.totals.requests_ordering_only} 个会话（ordering_only，#1196：**不扣 exit**）`,
+    `  真内容差异 : ${report.totals.requests_content_diff} 个会话（content_diff，exit=3 的唯一来源）`,
+    `  差异条目   : ${report.totals.issues_total} 条（纯顺序 ${report.totals.issues_ordering_only} / 真内容 ${report.totals.issues_content_diff}）`,
     `  报告       : ${reportPath}`,
   ].join("\n"));
-  for (const entry of mismatched.slice(0, 20)) {
-    const first = entry.issues[0];
+  for (const entry of contentDiff.slice(0, 20)) {
+    const first = entry.issues.find((issue) => issue.kind === "content_diff") ?? entry.issues[0];
     console.log(`  ! ${entry.request_id} ${first.method} key=${first.key} 差异=${first.diff_paths.join(",")}`);
   }
-  if (mismatched.length > 20) console.log(`  ! …另有 ${mismatched.length - 20} 个会话不一致，见报告文件`);
+  if (contentDiff.length > 20) console.log(`  ! …另有 ${contentDiff.length - 20} 个会话有真内容差异，见报告文件`);
+  for (const entry of orderingOnly.slice(0, 20)) {
+    const first = entry.issues[0];
+    const swap = first.block_order_swaps?.[0];
+    const where = swap ? `${swap.path} ${swap.swapped_pairs.join(" , ")}` : first.key;
+    console.log(`  ~ ${entry.request_id} 仅块顺序（不影响 exit）：${where}`);
+  }
+  if (orderingOnly.length > 20) console.log(`  ~ …另有 ${orderingOnly.length - 20} 个会话仅块顺序，见报告文件`);
 
   await sequelize.close();
-  // 有差异就非零退出：这是信号，不是崩
-  if (mismatched.length > 0) process.exitCode = 3;
+  // 只有**真内容差异**才让闸门红：纯块顺序是已知噪音，单独计数看报告（issue #1196）。
+  // 这是信号不是崩。
+  if (contentDiff.length > 0) process.exitCode = 3;
 }
 
 // 只有**直接跑**本文件才执行 main（测试 import 拿工具函数时不能连带跑一轮真比对）。
