@@ -253,19 +253,23 @@ describe('ErixNotesStoreAdapter', () => {
     expect(rowOf(db, scopeRef, 'k1')).to.equal(null);
   });
 
-  it('is a defensive no-op for complete/janitor (no lifecycle side effects)', async () => {
+  it('flips active records to done on complete (#1185 ①) and keeps janitor a no-op', async () => {
     const { db, store } = makeStore();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
     const adapter = new ErixNotesStoreAdapter({ store, scopeRef });
     await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
-    const before = rowOf(db, scopeRef, 'k1').updated_at;
 
+    // erix 契约硬义务（#1185 ①）：complete 把本 scope 的 active 记录置 done 并计数
+    expect(await adapter.complete({ scope: 'run', scopeRef })).to.deep.equal({ status: 'found', completed: 1 });
+    expect((await store.read(scopeRef, 'k1')).state).to.equal('done');
+    // done 不重复计数
     expect(await adapter.complete({ scope: 'run', scopeRef })).to.deep.equal({ status: 'found', completed: 0 });
+    // janitor 仍是 0.10 兼容 no-op（0.12.0 起清理走 purge），不得改记录
     expect(await adapter.janitor({ scope: 'run', scopeRef })).to.deep.equal({ status: 'found', changed: 0, revoked: 0 });
-
-    const after = await store.read(scopeRef, 'k1');
-    expect(after.state).to.equal('active'); // 未被 lifecycle 改动
-    expect(rowOf(db, scopeRef, 'k1').updated_at).to.equal(before);
+    expect((await store.read(scopeRef, 'k1')).state).to.equal('done');
+    // 宿主元数据列不受影响（#1185 ④ 是端口出口投影，不是删列）
+    expect(rowOf(db, scopeRef, 'k1').record_version).to.be.a('string');
+    expect(rowOf(db, scopeRef, 'k1').expires_at).to.be.a('number');
   });
 
   it('overrides stale expires_at on every write (single TTL source)', async () => {
