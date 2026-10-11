@@ -286,7 +286,7 @@ describe('ErixNotesStoreAdapter', () => {
     expect(Math.abs(Date.parse(stored.expires_at) - expectedExpiry)).to.be.lessThan(2000);
   });
 
-  it('rejects writes that are not based on the current record (CAS guard, no retry)', async () => {
+  it('port no longer judges lineage; a real race still throws notes_cas_conflict (store CAS ②)', async () => {
     const { store } = makeStore();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
     const adapter = new ErixNotesStoreAdapter({ store, scopeRef });
@@ -295,21 +295,52 @@ describe('ErixNotesStoreAdapter', () => {
     // 首次创建（无 predecessor）
     await adapter.write({ scope: 'run', scopeRef, key: 'k1', record: sampleRecord({ key: 'k1', scopeRef }) });
 
-    // 伪造的"更新"：superseded 与 current 都对不上存储现状
+    // ① 已删：端口不再从 superseded/current 反推「是否基于存储当前记录」。
+    // 谱系对不上的写入不再被端口拦下，照常交给存储层裁决。
+    await adapter.write({
+      scope: 'run', scopeRef, key: 'k1',
+      record: {
+        ...sampleRecord({ key: 'k1', scopeRef }),
+        current: { content: 'not-based-on-current', provenance: { source: 'agent', verified: true, ts }, ts },
+        superseded: [{ content: 'other', invalid: true }],
+      },
+    });
+    expect((await store.read(scopeRef, 'k1')).current.content).to.equal('not-based-on-current');
+
+    // ② 仍在：适配器 read 之后、write 之前有对手抢先推进 record_version → 真竞态。
+    const racingStore = {
+      read: async (ref, key) => {
+        const current = await store.read(ref, key);
+        if (current) {
+          await store.write(ref, key, { ...current, relevance: 0.9 }, { expectedVersion: current.record_version });
+        }
+        return current;
+      },
+      write: (ref, key, record, options) => store.write(ref, key, record, options),
+      delete: (ref, key, options) => store.delete(ref, key, options),
+      list: (ref) => store.list(ref),
+    };
+    const racingAdapter = new ErixNotesStoreAdapter({ store: racingStore, scopeRef });
+
     let conflict;
     try {
-      await adapter.write({
+      await racingAdapter.write({
         scope: 'run', scopeRef, key: 'k1',
         record: {
           ...sampleRecord({ key: 'k1', scopeRef }),
-          current: { content: 'forged', provenance: { source: 'agent', verified: true, ts }, ts },
-          superseded: [{ content: 'other', invalid: true }],
+          current: { content: 'loser', provenance: { source: 'agent', verified: true, ts }, ts },
         },
       });
     } catch (error) {
       conflict = error;
     }
+    expect(conflict).to.be.instanceOf(NotesStoreError);
     expect(conflict?.code).to.equal('notes_cas_conflict');
+
+    // 冲突必须显式而不是静默丢弃：胜者（对手那次写入）完整可读
+    const winner = await store.read(scopeRef, 'k1');
+    expect(winner.current.content).to.equal('not-based-on-current');
+    expect(winner.relevance).to.equal(0.9);
   });
 
   it('rejects foreign request scopeRef without writing', async () => {
