@@ -134,8 +134,9 @@ export const messageApi = {
     apiRequest<ChatRequestStatus>(apiClient.post(`/chat/requests/${request_id}/retry`)),
 
   // 获取指定消息及其之前的 N 条消息（用于 SSE 完成后获取真实消息，包括 tool 消息）
+  // issue #1195：后端已改为统一分页结构 { items, pagination }，消息数组在 items 里
   getMessagesWithBefore: (expert_id: string, message_id: string, params?: { limit?: number }) =>
-    apiRequest<Message[]>(apiClient.get(`/messages/expert/${expert_id}/with-before/${message_id}`, { params })),
+    apiRequest<PaginatedResponse<Message>>(apiClient.get(`/messages/expert/${expert_id}/with-before/${message_id}`, { params })),
 
   // 增量获取指定游标之后的消息
   getMessagesSince: (expert_id: string, params?: { after_message_id?: string; limit?: number }) =>

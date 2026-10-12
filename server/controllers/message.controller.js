@@ -13,6 +13,7 @@
 
 import logger from '../../lib/logger.js';
 import { Op } from 'sequelize';
+import { buildPaginatedResponse } from '../../lib/query-builder.js';
 
 // 工具结果摘要阈值（字符数），与 chat-service.saveToolMessage 保持一致
 const TOOL_RESULT_SUMMARY_THRESHOLD = 5000;
@@ -354,10 +355,15 @@ class MessageController {
    * 用于 SSE 完成后获取真实消息（包括 tool 消息）
    */
   async listWithBefore(ctx) {
+    const startTime = Date.now();
     try {
       const { expertId, messageId } = ctx.params;
       const { limit = 10 } = ctx.query;
       const userId = ctx.state.session.id;
+      // issue #1195：本接口是「锚点 messageId + limit」的窗口，没有翻页概念，
+      // 固定 page=1、size=limit；分页字段一律由 buildPaginatedResponse() 生成。
+      const size = parseInt(limit);
+      const pagination = { page: 1, size };
 
       logger.info('[listWithBefore] Params:', { expertId, messageId, limit, userId });
 
@@ -382,14 +388,17 @@ class MessageController {
       logger.info('[listWithBefore] Query params:', { expertId, userId });
 
       if (!targetMessage) {
-        // 找不到参考消息，返回空数组
+        // 找不到参考消息：统一分页形状，items 是空数组（issue #1195 前这里是裸数组 []）
         logger.warn('[listWithBefore] Target message not found:', messageId);
-        ctx.success([]);
+        const result = { rows: [], count: 0 };
+        ctx.success(buildPaginatedResponse(result, pagination, startTime));
         return;
       }
 
       // 获取该消息及其之前的消息（按时间倒序获取，然后反转为正序）
-      const messages = await this.Message.findAll({
+      // issue #1195：改用 findAndCountAll —— rows 仍按 limit 截断、where/order 逐字未动
+      // （筛选语义不变），多出来的 count 是不受 limit 影响的匹配总数，只喂 pagination.total。
+      const found = await this.Message.findAndCountAll({
         where: {
           expert_id: expertId,
           user_id: userId,
@@ -401,16 +410,18 @@ class MessageController {
           'inner_voice', 'tool_calls', 'error_info', 'created_at', 'latency_ms'
         ],
         order: [['created_at', 'DESC']],
-        limit: parseInt(limit),
+        limit: size,
         raw: true,
       });
 
-      logger.info('[listWithBefore] Found messages:', messages.length);
+      logger.info('[listWithBefore] Found messages:', found.rows.length);
 
       // 反转为正序（最早的在前）
-      const sortedMessages = messages.reverse();
+      const sortedMessages = [...found.rows].reverse();
 
-      ctx.success(sortedMessages.map(m => this.formatMessage(m)));
+      // 统一分页形状（AGENTS.md §2.3）：{ items, pagination } (+ 开发环境 summary)
+      const result = { rows: sortedMessages.map(m => this.formatMessage(m)), count: found.count };
+      ctx.success(buildPaginatedResponse(result, pagination, startTime));
     } catch (error) {
       console.error('Get messages with before error:', error.stack || error);
       ctx.error('获取消息失败', 500);
