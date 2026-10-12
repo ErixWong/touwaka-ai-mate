@@ -1,8 +1,9 @@
 /**
  * Notes 基础设施单测：DB Store / Adapter / Facade / Policy
- * 覆盖 issue #1132 决策 3 修订：CAS 冲突、TTL 不续期、过期过滤与惰性删除、
+ * 覆盖 issue #1132 决策 3 修订：TTL 不续期、过期过滤与惰性删除、
  * forget 后无 record、scope 稳定性、门面不两栖、revoked→物理删除、
- * complete/janitor no-op、expires_at 对齐。
+ * complete/janitor no-op、expires_at 对齐；
+ * 以及 issue #1203：同 key 并发 = 后写覆盖（LWW），无版本冲突；唯一键仍是硬约束。
  */
 
 import { expect } from 'chai';
@@ -68,7 +69,7 @@ describe('DbNoteRecordStore', () => {
     const { db, store } = makeStore();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
 
-    const stored = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+    const stored = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }));
     expect(stored.record_version).to.be.a('string').with.length(20);
     const row = rowOf(db, scopeRef, 'k1');
     expect(row.id).to.match(/^nr_[0-9a-zA-Z]{20}$/);
@@ -79,7 +80,7 @@ describe('DbNoteRecordStore', () => {
     expect(read.current.content).to.equal('hello');
     expect(read.record_version).to.equal(stored.record_version);
 
-    await store.write(scopeRef, 'k2', sampleRecord({ key: 'k2', scopeRef }), { expectedVersion: null });
+    await store.write(scopeRef, 'k2', sampleRecord({ key: 'k2', scopeRef }));
     expect((await store.list(scopeRef)).map(r => r.key).sort()).to.deep.equal(['k1', 'k2']);
 
     expect(await store.delete(scopeRef, 'k1')).to.equal(true);
@@ -89,38 +90,82 @@ describe('DbNoteRecordStore', () => {
     expect(await store.delete(scopeRef, 'k1')).to.equal(false);
   });
 
-  it('rejects create when record exists and update on version mismatch (CAS conflict)', async () => {
-    const { store } = makeStore();
+  it('same-key writes are last-write-wins: no conflict, later content is final', async () => {
+    let now = Date.now();
+    const { db, store } = makeStore({ clock: () => now });
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
-    const first = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+
+    const first = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, content: 'first' }));
+    const firstUpdatedAt = rowOf(db, scopeRef, 'k1').updated_at;
+
+    // #1203：没有「期望版本」这个概念——同 key 再写一次不抛错、不需要基准
+    now += 1000; // 时钟前移，便于断言 updated_at 前移
+    const second = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, content: 'second' }));
+    expect(second.current.content).to.equal('second');
+
+    // 第二次的内容就是最终内容
+    const stored = await store.read(scopeRef, 'k1');
+    expect(stored.current.content).to.equal('second');
+    expect(stored.record_version).to.equal(second.record_version);
+
+    // updated_at 前移；record_version 列继续写（新串）但不再参与判断
+    const row = rowOf(db, scopeRef, 'k1');
+    expect(row.updated_at).to.equal(now);
+    expect(row.updated_at).to.be.greaterThan(firstUpdatedAt);
+    expect(row.record_version).to.be.a('string').with.length(20);
+    expect(row.record_version).to.not.equal(first.record_version);
+    expect(JSON.parse(row.record).current.content).to.equal('second');
+
+    // 唯一键 uk_scope_ref_key 仍是硬约束：一个 key 只有一行
+    expect(db.rows.size).to.equal(1);
+  });
+
+  it('create race still hits uk_scope_ref_key and reports it without any version wording', async () => {
+    const { db, store } = makeStore();
+    const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
+    const storedRef = canonicalizeNotesScopeRef(scopeRef);
+    const realExecute = db.execute.bind(db);
+    let rivalInjected = false;
+
+    // 并发创建竞态：我们的 UPDATE 扑空之后、INSERT 之前，对手把同一 key 落了库
+    db.execute = async (sql, params) => {
+      if (!rivalInjected && /^UPDATE/i.test(String(sql))) {
+        rivalInjected = true;
+        db.rows.set(`${storedRef}|k1`, {
+          id: 'nr_rival',
+          scope: 'run',
+          scope_ref: storedRef,
+          note_key: 'k1',
+          record: JSON.stringify(sampleRecord({ key: 'k1', scopeRef, content: 'rival' })),
+          record_version: 'rival0000000000000000',
+          expires_at: Date.now() + 60000,
+          created_at: Date.now(),
+          updated_at: Date.now(),
+        });
+        return { affectedRows: 0, changedRows: 0 };
+      }
+      return realExecute(sql, params);
+    };
 
     let conflict;
     try {
-      await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+      await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, content: 'mine' }));
     } catch (error) {
       conflict = error;
     }
+
+    // 唯一键是「一个 key 一行」的硬约束，仍显式报错；但它不是乐观锁：code 与文案都不提版本
     expect(conflict).to.be.instanceOf(NotesStoreError);
-    expect(conflict.code).to.equal('notes_cas_conflict');
-
-    let conflict2;
-    try {
-      await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: 'not_the_version' });
-    } catch (error) {
-      conflict2 = error;
-    }
-    expect(conflict2?.code).to.equal('notes_cas_conflict');
-
-    // 正确版本可更新
-    const updated = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: first.record_version });
-    expect(updated.record_version).to.be.a('string').not.equal(first.record_version);
-    expect((await store.read(scopeRef, 'k1')).record_version).to.equal(updated.record_version);
+    expect(conflict.code).to.equal('notes_unique_key_conflict');
+    expect(conflict.message).to.not.match(/record_version|version|版本|CAS/i);
+    expect(db.rows.size).to.equal(1);
+    expect((await store.read(scopeRef, 'k1')).current.content).to.equal('rival');
   });
 
   it('read does not renew TTL (no touch, expires_at unchanged)', async () => {
     const { db, store } = makeStore();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
-    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }));
 
     const before = rowOf(db, scopeRef, 'k1').expires_at;
     await new Promise(resolve => setTimeout(resolve, 5));
@@ -135,16 +180,16 @@ describe('DbNoteRecordStore', () => {
     const { db, store } = makeStore({ clock: () => now });
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
 
-    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }));
     now += (NOTES_TTL_SECONDS + 1) * 1000; // 快进过期
 
     expect(await store.read(scopeRef, 'k1')).to.equal(undefined);
     expect(rowOf(db, scopeRef, 'k1')).to.equal(null); // read 命中过期行时惰性 DELETE
 
     // list 同样过滤并惰性删除过期行
-    await store.write(scopeRef, 'k2', sampleRecord({ key: 'k2', scopeRef }), { expectedVersion: null });
+    await store.write(scopeRef, 'k2', sampleRecord({ key: 'k2', scopeRef }));
     const lateExpiry = new Date(now + NOTES_TTL_SECONDS * 1000).toISOString();
-    await store.write(scopeRef, 'k3', sampleRecord({ key: 'k3', scopeRef, expires_at: lateExpiry }), { expectedVersion: null });
+    await store.write(scopeRef, 'k3', sampleRecord({ key: 'k3', scopeRef, expires_at: lateExpiry }));
     now += 2 * (NOTES_TTL_SECONDS + 1) * 1000;
 
     expect(await store.list(scopeRef)).to.deep.equal([]);
@@ -157,40 +202,40 @@ describe('DbNoteRecordStore', () => {
     const { db, store } = makeStore({ clock: () => now });
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
 
-    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }));
     now += (NOTES_TTL_SECONDS + 1) * 1000;
 
     // 过期行未被惰性删除（无 read/list 触发）时，create 仍可成功
-    const recreated = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, content: 'reborn' }), { expectedVersion: null });
+    const recreated = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, content: 'reborn' }));
     const row = rowOf(db, scopeRef, 'k1');
     expect(row.record_version).to.equal(recreated.record_version);
     expect((await store.read(scopeRef, 'k1')).current.content).to.equal('reborn');
     expect(db.rows.size).to.equal(1); // 原位替换，无重复行
   });
 
-  it('delete honors the expected version (CAS delete)', async () => {
+  it('deletes by key with no version concept; a missed delete is just false', async () => {
     const { store } = makeStore();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
-    const stored = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+    const stored = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }));
 
-    let conflict;
-    try {
-      await store.delete(scopeRef, 'k1', { expectedVersion: `${stored.record_version}x` });
-    } catch (error) {
-      conflict = error;
-    }
-    expect(conflict?.code).to.equal('notes_cas_conflict');
-    expect(await store.read(scopeRef, 'k1')).to.not.equal(undefined);
-
-    expect(await store.delete(scopeRef, 'k1', { expectedVersion: stored.record_version })).to.equal(true);
+    // #1203：删除不带版本号，「版本对不上」这个概念已不存在——第一次就直删成功
+    expect(await store.delete(scopeRef, 'k1')).to.equal(true);
     expect(await store.read(scopeRef, 'k1')).to.equal(undefined);
+
+    // 再删一次：没删到只是 false，不包装成冲突错误
+    expect(await store.delete(scopeRef, 'k1')).to.equal(false);
+
+    // 旧 record_version 不再参与任何判断：写回同一 key 照常成功
+    const rewritten = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, content: 'again' }));
+    expect(rewritten.record_version).to.not.equal(stored.record_version);
+    expect((await store.read(scopeRef, 'k1')).current.content).to.equal('again');
   });
 
   it('persists expires_at taken from record.expires_at (adapter-injected)', async () => {
     const { db, store } = makeStore();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
     const expiresIso = new Date(Date.now() + 3600 * 1000).toISOString();
-    const stored = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, expires_at: expiresIso }), { expectedVersion: null });
+    const stored = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, expires_at: expiresIso }));
     expect(rowOf(db, scopeRef, 'k1').expires_at).to.equal(Date.parse(expiresIso));
     expect(stored.expires_at).to.equal(expiresIso);
   });
@@ -227,7 +272,7 @@ describe('ErixNotesStoreAdapter', () => {
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
     const adapter = new ErixNotesStoreAdapter({ store, scopeRef });
 
-    const existing = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+    const existing = await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }));
     const ts = new Date().toISOString();
     await adapter.write({
       scope: 'run', scopeRef, key: 'k1',
@@ -247,7 +292,7 @@ describe('ErixNotesStoreAdapter', () => {
 
     expect((await adapter.revoke({ scope: 'run', scopeRef, key: 'missing' })).status).to.equal('missing');
 
-    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }));
     expect((await adapter.revoke({ scope: 'run', scopeRef, key: 'k1' }))).to.deep.equal({ status: 'found', revoked: 1 });
     expect(await store.read(scopeRef, 'k1')).to.equal(undefined);
     expect(rowOf(db, scopeRef, 'k1')).to.equal(null);
@@ -257,7 +302,7 @@ describe('ErixNotesStoreAdapter', () => {
     const { db, store } = makeStore();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
     const adapter = new ErixNotesStoreAdapter({ store, scopeRef });
-    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }), { expectedVersion: null });
+    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef }));
 
     // erix 契约硬义务（#1185 ①）：complete 把本 scope 的 active 记录置 done 并计数
     expect(await adapter.complete({ scope: 'run', scopeRef })).to.deep.equal({ status: 'found', completed: 1 });
@@ -286,8 +331,8 @@ describe('ErixNotesStoreAdapter', () => {
     expect(Math.abs(Date.parse(stored.expires_at) - expectedExpiry)).to.be.lessThan(2000);
   });
 
-  it('port no longer judges lineage; a real race still throws notes_cas_conflict (store CAS ②)', async () => {
-    const { store } = makeStore();
+  it('port no longer judges lineage; same-key writers resolve by LWW with no conflict (②)', async () => {
+    const { db, store } = makeStore();
     const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
     const adapter = new ErixNotesStoreAdapter({ store, scopeRef });
     const ts = new Date().toISOString();
@@ -295,8 +340,8 @@ describe('ErixNotesStoreAdapter', () => {
     // 首次创建（无 predecessor）
     await adapter.write({ scope: 'run', scopeRef, key: 'k1', record: sampleRecord({ key: 'k1', scopeRef }) });
 
-    // ① 已删：端口不再从 superseded/current 反推「是否基于存储当前记录」。
-    // 谱系对不上的写入不再被端口拦下，照常交给存储层裁决。
+    // ① 已删（上一个 commit）：端口不再从 superseded/current 反推「是否基于存储当前记录」，
+    // 谱系对不上的写入照常交给存储层落库。
     await adapter.write({
       scope: 'run', scopeRef, key: 'k1',
       record: {
@@ -307,16 +352,23 @@ describe('ErixNotesStoreAdapter', () => {
     });
     expect((await store.read(scopeRef, 'k1')).current.content).to.equal('not-based-on-current');
 
-    // ② 仍在：适配器 read 之后、write 之前有对手抢先推进 record_version → 真竞态。
+    // ② #1203：同 key 并发不再有版本号可对——对手先落一条完整记录，我们后写照样成功
+    let rivalWritten = false;
     const racingStore = {
-      read: async (ref, key) => {
-        const current = await store.read(ref, key);
-        if (current) {
-          await store.write(ref, key, { ...current, relevance: 0.9 }, { expectedVersion: current.record_version });
+      read: (ref, key) => store.read(ref, key),
+      write: async (ref, key, record, options) => {
+        if (!rivalWritten) {
+          rivalWritten = true;
+          // 旧版本语义下这就是「期间有人推进过 record_version」；现在它只是一次普通覆盖
+          const current = await store.read(ref, key);
+          await store.write(ref, key, {
+            ...current,
+            current: { content: 'rival', provenance: { source: 'agent', verified: true, ts }, ts },
+            relevance: 0.9,
+          });
         }
-        return current;
+        return store.write(ref, key, record, options);
       },
-      write: (ref, key, record, options) => store.write(ref, key, record, options),
       delete: (ref, key, options) => store.delete(ref, key, options),
       list: (ref) => store.list(ref),
     };
@@ -328,19 +380,33 @@ describe('ErixNotesStoreAdapter', () => {
         scope: 'run', scopeRef, key: 'k1',
         record: {
           ...sampleRecord({ key: 'k1', scopeRef }),
-          current: { content: 'loser', provenance: { source: 'agent', verified: true, ts }, ts },
+          current: { content: 'later-writer', provenance: { source: 'agent', verified: true, ts }, ts },
         },
       });
     } catch (error) {
       conflict = error;
     }
-    expect(conflict).to.be.instanceOf(NotesStoreError);
-    expect(conflict?.code).to.equal('notes_cas_conflict');
+    // 不存在冲突概念：写入照常成功，不抛 NotesStoreError
+    expect(conflict).to.equal(undefined);
 
-    // 冲突必须显式而不是静默丢弃：胜者（对手那次写入）完整可读
-    const winner = await store.read(scopeRef, 'k1');
-    expect(winner.current.content).to.equal('not-based-on-current');
-    expect(winner.relevance).to.equal(0.9);
+    // 后写覆盖：最终可读的是最后落库那一方的完整记录（不是混合/半截记录）
+    const final = await store.read(scopeRef, 'k1');
+    expect(final.current.content).to.equal('later-writer');
+    expect(final.relevance).to.equal(0.5);
+
+    // 端口层的并发双写（对齐官方契约的并发那条）：两方都不被拦下，最终是其中一方的完整形状
+    const settled = await Promise.allSettled(['left', 'right'].map((content) => adapter.write({
+      scope: 'run', scopeRef, key: 'k1',
+      record: {
+        ...sampleRecord({ key: 'k1', scopeRef }),
+        current: { content, provenance: { source: 'agent', verified: true, ts }, ts },
+      },
+    })));
+    expect(settled.map((entry) => entry.status)).to.deep.equal(['fulfilled', 'fulfilled']);
+    const concurrent = await store.read(scopeRef, 'k1');
+    expect(['left', 'right']).to.include(concurrent.current.content);
+    expect(concurrent.current.provenance.verified).to.equal(true);
+    expect(db.rows.size).to.equal(1);
   });
 
   it('rejects foreign request scopeRef without writing', async () => {

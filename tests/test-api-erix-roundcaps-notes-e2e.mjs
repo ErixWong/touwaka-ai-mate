@@ -566,8 +566,7 @@ async function collectS6(token) {
     const hashedScopeInput = `notes-v1:${MARKER_RUN}`;
     const hashedKey = `${MARKER_RUN}-scopeA`;
     await store.write(hashedScopeInput, hashedKey,
-      sampleNoteRecord({ key: hashedKey, scopeRef: hashedScopeInput, content: `${MARKER_RUN} legal hashed` }),
-      { expectedVersion: null });
+      sampleNoteRecord({ key: hashedKey, scopeRef: hashedScopeInput, content: `${MARKER_RUN} legal hashed` }));
     const hashedRows = await sql(
       'SELECT scope_ref FROM note_record WHERE note_key = :key', { key: hashedKey });
     out.legal_hashed_scope_input = hashedScopeInput;
@@ -578,8 +577,7 @@ async function collectS6(token) {
     const safeScopeInput = `${MARKER_RUN}-scopeB`;
     const safeKey = `${MARKER_RUN}-scopeB`;
     await store.write(safeScopeInput, safeKey,
-      sampleNoteRecord({ key: safeKey, scopeRef: safeScopeInput, content: `${MARKER_RUN} legal safe` }),
-      { expectedVersion: null });
+      sampleNoteRecord({ key: safeKey, scopeRef: safeScopeInput, content: `${MARKER_RUN} legal safe` }));
     const safeRows = await sql(
       'SELECT scope_ref FROM note_record WHERE note_key = :key', { key: safeKey });
     out.legal_passthrough_scope_input = safeScopeInput;
@@ -590,8 +588,7 @@ async function collectS6(token) {
     let illegalError = null;
     try {
       await store.write(60, illegalKey,
-        sampleNoteRecord({ key: illegalKey, scopeRef: 'x', content: `${MARKER_RUN} illegal` }),
-        { expectedVersion: null });
+        sampleNoteRecord({ key: illegalKey, scopeRef: 'x', content: `${MARKER_RUN} illegal` }));
     } catch (error) {
       illegalError = error;
     }

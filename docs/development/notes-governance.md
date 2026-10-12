@@ -10,8 +10,11 @@
   `record.expires_at` 是同一 deadline 的镜像。读取和列表不续期。
 - **稳定作用域**：`scopeRef` 由 `user_id` 与 `expert_id` 稳定派生，供跨请求工作记忆使用；
   禁止使用 `request_id`、`run_id` 等单次请求标识。
-- **并发控制**：`record_version` 用于 CAS。版本冲突以 `notes_cas_conflict` 显式报告，
-  不静默采用最后写入覆盖。
+- **并发控制**（issue #1203 裁决）：只剩 `note_record` 的 `uk_scope_ref_key` 唯一键。
+  同 key 并发写 = **后写覆盖（LWW）**：存储层不再拿 `record_version` 做乐观锁，
+  因此不存在版本冲突；`record_version` 列保留（DDL 不动）但只作写入指纹。
+  并发创建竞态撞唯一键仍以 `notes_unique_key_conflict` 显式报告，不静默丢弃写入。
+  读-改-写由调用方（LLM 与门面）自己负责：先读出来看看再改。
 - **工具边界**：erix 内置 `note_take`、`note_read`、`note_list`、`note_forget`
   经 `ToolManager` 暴露与执行门控；仅在 minimal context 且 notes 启用时可用，
   执行时会再次检查门控，并要求上下文包含用户和专家标识。

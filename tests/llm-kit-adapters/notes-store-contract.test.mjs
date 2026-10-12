@@ -303,7 +303,7 @@ test("list returns all by default and clamps an oversized limit to 200", async (
 
   for (let index = 0; index < 205; index += 1) {
     const key = `note-${index}`;
-    await store.write(scopeRef, key, sampleRecord(key, scopeRef), { expectedVersion: null });
+    await store.write(scopeRef, key, sampleRecord(key, scopeRef));
   }
 
   const storedRef = hashScopeRef(scopeRef);

@@ -13,11 +13,14 @@
 
 引入：issue #1132 决策 3 修订（Phase 3 阶段三）。erix NoteRecord 的
 持久化存储，替代阶段二的 Redis 方案（Lua CAS + PXAT）。
+**#1132 决策 3 里的「存储层乐观锁（record_version CAS）并发校验已于 issue #1203
+废除，只留 `uk_scope_ref_key` 唯一键这一层**：notes 是小抄，语义就是 key/value +
+更新时间，不该有版本号；读-改-写由调用方（LLM）自己负责，真撞了就后写覆盖。
 
 作用：
 
 - 存储 erix `NoteRecord` 完整 JSON（`record` 列，LONGTEXT）
-- `scope_ref` + `note_key` 唯一键定位一条笔记（CAS 更新/删除的版本锚点）
+- `scope_ref` + `note_key` 唯一键定位一条笔记（唯一的并发约束，#1203 后再无其他）
 - `expires_at`（BIGINT，毫秒时间戳）为 TTL 唯一权威；read/list 不续期，
   命中过期行时惰性 DELETE
 
@@ -30,12 +33,21 @@
 | `scope_ref` | 稳定 scopeRef，`buildNotesScopeRef(user_id, expert_id)` 派生（`notes-v1:<sha256-24>`），禁用 request_id/run_id |
 | `note_key` | 笔记 key（如 `wm_<ts>_<rand>`） |
 | `record` | 完整 NoteRecord JSON（erix 协议字段 camelCase；touwaka 扩展字段如 `record_version`/`legacy_metadata` 为 snake_case） |
-| `record_version` | CAS 版本，`Utils.newID(20)` 随机串；UPDATE/DELETE 带版本条件，影响行数=0 → `notes_cas_conflict` |
+| `record_version` | 写入指纹，`Utils.newID(20)` 随机串：**列保留、每次写入照常生成新串**，但自 issue #1203 起不再作并发判据（UPDATE/DELETE 均不带版本条件），读回只供调用方对账 |
 | `expires_at` | 过期时间（ms），取自 `record.expires_at`（adapter/facade 统一注入）；`NULL` 表示不过期 |
 | `created_at` / `updated_at` | 应用侧写入的毫秒时间戳 |
 
 索引：`PRIMARY KEY (id)`，`UNIQUE KEY uk_scope_ref_key (scope_ref, note_key)`，
 `KEY idx_expires_at (expires_at)`。
+
+并发语义（issue #1203）：同 key 并发写 = **后写覆盖（LWW）**，端口与存储层都不再做
+版本/谱系校验。更新路径 `UPDATE ... WHERE scope_ref = ? AND note_key = ?
+AND (expires_at IS NULL OR expires_at > ?)`（已去掉 `AND record_version = ?`）；
+影响行数 0 = 没有活行（不存在 / 只剩过期残留 / 刚被并发删除），按原语义落回 INSERT
+创建路径，不把「没更到」包装成冲突错误。**唯一键仍是硬约束**（一个 key 一行）：
+并发创建竞态撞 `ER_DUP_ENTRY` 且残留的是活行时，显式抛
+`NotesStoreError(code: notes_unique_key_conflict)`（旧 `notes_cas_conflict` 已随
+CAS 一起退役，错误文案不再提版本）。`record_version` 列继续写，DDL 不变。
 
 访问入口：`lib/notes/db-note-record-store.js`（raw SQL，经 `lib/db.js` 的
 `query/getOne/insert/execute`）；不写 Sequelize 模型 API。

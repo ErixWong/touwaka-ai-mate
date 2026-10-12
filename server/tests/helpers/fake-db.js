@@ -87,45 +87,36 @@ export function createFakeDb() {
   };
 
   function executeUpdate(text, params) {
-    if (/AND\s+record_version\s*=\s*\?/i.test(text)) {
-      // CAS 更新：SET record=?, record_version=?, expires_at=?, updated_at=?
-      //           WHERE scope_ref=? AND note_key=? AND record_version=? AND (过期守卫)
-      const [record, recordVersion, expiresAt, updatedAt, scopeRef, noteKey, expectedVersion, nowMs] = params;
+    const [record, recordVersion, expiresAt, updatedAt, scopeRef, noteKey, nowMs] = params;
+    if (/AND\s+\(\s*expires_at\s+IS\s+NULL\s+OR\s+expires_at\s*>\s*\?\s*\)/i.test(text)) {
+      // LWW 更新（#1203）：SET record=?, record_version=?, expires_at=?, updated_at=?
+      //   WHERE scope_ref=? AND note_key=? AND (expires_at IS NULL OR expires_at > ?)
+      //   —— 已无 record_version 条件，活行一律后写覆盖
       const row = rows.get(keyOf(scopeRef, noteKey));
       if (!row) return { affectedRows: 0, changedRows: 0 };
       const live = row.expires_at === null || row.expires_at === undefined || row.expires_at > nowMs;
-      if (!live || String(row.record_version) !== String(expectedVersion)) {
-        return { affectedRows: 0, changedRows: 0 };
-      }
+      if (!live) return { affectedRows: 0, changedRows: 0 };
       rows.set(keyOf(scopeRef, noteKey), {
         ...row, record, record_version: recordVersion, expires_at: expiresAt, updated_at: updatedAt,
       });
       return { affectedRows: 1, changedRows: 1 };
     }
-    // 过期残留原位替换（创建路径唯一键冲突后）：
-    // WHERE scope_ref=? AND note_key=? AND expires_at IS NOT NULL AND expires_at <= ?
-    const [record, recordVersion, expiresAt, updatedAt, scopeRef, noteKey, nowMs] = params;
-    const row = rows.get(keyOf(scopeRef, noteKey));
-    if (!row) return { affectedRows: 0, changedRows: 0 };
-    const expired = Number.isFinite(row.expires_at) && row.expires_at <= nowMs;
-    if (!expired) return { affectedRows: 0, changedRows: 0 };
-    rows.set(keyOf(scopeRef, noteKey), {
-      ...row, record, record_version: recordVersion, expires_at: expiresAt, updated_at: updatedAt,
-    });
-    return { affectedRows: 1, changedRows: 1 };
+    if (/AND\s+expires_at\s+IS\s+NOT\s+NULL\s+AND\s+expires_at\s*<=\s*\?/i.test(text)) {
+      // 过期残留原位替换（创建路径唯一键冲突后）：
+      // WHERE scope_ref=? AND note_key=? AND expires_at IS NOT NULL AND expires_at <= ?
+      const row = rows.get(keyOf(scopeRef, noteKey));
+      if (!row) return { affectedRows: 0, changedRows: 0 };
+      const expired = Number.isFinite(row.expires_at) && row.expires_at <= nowMs;
+      if (!expired) return { affectedRows: 0, changedRows: 0 };
+      rows.set(keyOf(scopeRef, noteKey), {
+        ...row, record, record_version: recordVersion, expires_at: expiresAt, updated_at: updatedAt,
+      });
+      return { affectedRows: 1, changedRows: 1 };
+    }
+    throw new Error(`fake-db: unsupported update: ${text}`);
   }
 
   function executeDelete(text, params) {
-    if (/AND\s+record_version\s*=\s*\?/i.test(text)) {
-      // CAS 删除：WHERE scope_ref=? AND note_key=? AND record_version=?
-      const [scopeRef, noteKey, expectedVersion] = params;
-      const row = rows.get(keyOf(scopeRef, noteKey));
-      if (!row || String(row.record_version) !== String(expectedVersion)) {
-        return { affectedRows: 0, changedRows: 0 };
-      }
-      rows.delete(keyOf(scopeRef, noteKey));
-      return { affectedRows: 1, changedRows: 1 };
-    }
     if (/WHERE\s+id\s+IN/i.test(text)) {
       // 惰性清理（list）：WHERE id IN (...)
       const ids = new Set(params.map(String));
@@ -138,7 +129,7 @@ export function createFakeDb() {
       }
       return { affectedRows: affected, changedRows: affected };
     }
-    // 按 key 删除（read 惰性过期 / forget 主路径）：WHERE scope_ref=? AND note_key=?
+    // 按 key 删除（read 惰性过期 / store.delete / forget 主路径）：WHERE scope_ref=? AND note_key=?
     const [scopeRef, noteKey] = params;
     const existed = rows.delete(keyOf(scopeRef, noteKey));
     return { affectedRows: existed ? 1 : 0, changedRows: existed ? 1 : 0 };
