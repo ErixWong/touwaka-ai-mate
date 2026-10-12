@@ -474,3 +474,241 @@ describe('PsycheNotesFacade', () => {
       .to.equal(Date.parse(stored.expires_at));
   });
 });
+
+// ---------------------------------------------------------------------------
+// issue #1205：过期清理（惰性删除 / purge）必须复核过期条件
+//   旧实现「先查过期、后按 key / 按快照 id 直删」，中间另一个 writer 可以用 write()
+//   的「撞唯一键 → 原位替换过期残留」路径把同一行写成活行，随后无条件的 DELETE 会
+//   静默删掉刚被写活的记录。修复：DELETE 带上与 _isExpired 等价的谓词
+//   （expires_at IS NOT NULL AND expires_at <= ?），并沿用同一次调用的 nowMs。
+// ---------------------------------------------------------------------------
+describe('DbNoteRecordStore expired-row cleanup (#1205)', () => {
+  const START_MS = Date.parse('2026-11-05T00:00:00.000Z');
+
+  function makeClockStore(purgeBatchSize) {
+    const state = { now: START_MS };
+    const db = createFakeDb();
+    const opts = { db, clock: () => state.now };
+    if (purgeBatchSize !== undefined) opts.purgeBatchSize = purgeBatchSize;
+    const store = new DbNoteRecordStore(opts);
+    return { db, store, state };
+  }
+
+  /**
+   * 在下一次 DELETE 真正落地之前插一段代码——模拟「SELECT 已判定过期，DELETE 还没执行」
+   * 的交错窗口（fake-db 是同步落库的内存实现，只能靠这种钩子造出交错）。
+   * 钩子里的 write() 只发 UPDATE / INSERT，不会被再次拦截。
+   */
+  function beforeNextDelete(db, hook) {
+    const original = db.execute.bind(db);
+    let armed = true;
+    const seen = { sql: '' };
+    db.execute = async (sql, params) => {
+      if (armed && /^\s*DELETE/i.test(String(sql))) {
+        armed = false;
+        seen.sql = String(sql);
+        await hook(String(sql));
+      }
+      return original(sql, params);
+    };
+    return { calls: seen, restore: () => { db.execute = original; } };
+  }
+
+  it('read lazy delete re-checks expiry: a row revived mid-flight is not deleted', async () => {
+    const { db, store, state } = makeClockStore();
+    const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
+    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, content: 'old' }));
+    state.now += (NOTES_TTL_SECONDS + 1) * 1000; // k1 过期：read 判定过期，准备按 key DELETE
+
+    const rival = new DbNoteRecordStore({ db, clock: () => state.now });
+    const gate = beforeNextDelete(db, async () => {
+      // 交错点：read 已看过过期快照，DELETE 尚未执行；并发 writer 原位把这行写成活行
+      await rival.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, content: 'resurrected' }));
+    });
+
+    // 本次调用仍按它看到的快照回答 missing（不回头补读）
+    expect(await store.read(scopeRef, 'k1')).to.equal(undefined);
+    gate.restore();
+
+    // 但复活后的活行必须还在：惰性 DELETE 已复核 expires_at，删不动写活的行
+    const row = rowOf(db, scopeRef, 'k1');
+    expect(row, 'revived row must survive the lazy delete').to.not.equal(null);
+    expect(JSON.parse(row.record).current.content).to.equal('resurrected');
+    expect(gate.calls.sql).to.match(/expires_at\s+IS\s+NOT\s+NULL\s+AND\s+expires_at\s*<=\s*\?/i);
+    const reread = await store.read(scopeRef, 'k1');
+    expect(reread.current.content).to.equal('resurrected');
+  });
+
+  it('list lazy delete re-checks expiry: a row revived after the id snapshot is not deleted', async () => {
+    const { db, store, state } = makeClockStore();
+    const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
+    await store.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, content: 'old' }));
+    await store.write(scopeRef, 'k2', sampleRecord({ key: 'k2', scopeRef, content: 'alive' }));
+    state.now += (NOTES_TTL_SECONDS + 1) * 1000;
+    // k2 重新写活（LWW），k1 保持过期残留：list 的快照只会把 k1 的 id 记进 expiredIds
+    await store.write(scopeRef, 'k2', sampleRecord({ key: 'k2', scopeRef, content: 'alive-2' }));
+
+    const rival = new DbNoteRecordStore({ db, clock: () => state.now });
+    const gate = beforeNextDelete(db, async () => {
+      await rival.write(scopeRef, 'k1', sampleRecord({ key: 'k1', scopeRef, content: 'resurrected' }));
+    });
+
+    const listed = await store.list(scopeRef);
+    gate.restore();
+
+    expect(listed.map(r => r.key)).to.deep.equal(['k2']);
+    const revived = rowOf(db, scopeRef, 'k1');
+    expect(revived, 'revived row must survive the id-snapshot delete').to.not.equal(null);
+    expect(JSON.parse(revived.record).current.content).to.equal('resurrected');
+    expect(gate.calls.sql).to.match(/expires_at\s+IS\s+NOT\s+NULL\s+AND\s+expires_at\s*<=\s*\?/i);
+    expect((await store.read(scopeRef, 'k1')).current.content).to.equal('resurrected');
+    expect((await store.read(scopeRef, 'k2')).current.content).to.equal('alive-2');
+  });
+
+  it('never expires rows (expires_at IS NULL) survive read / list / purge', async () => {
+    const { db, store, state } = makeClockStore();
+    const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
+    const canonical = canonicalizeNotesScopeRef(scopeRef);
+    const forever = sampleRecord({ key: 'forever', scopeRef, content: 'keep-me' });
+    // 手工插一条 expires_at IS NULL 的行：本 store 的口径是 NULL = 永不过期
+    await db.insert(
+      `INSERT INTO note_record
+         (id, scope, scope_ref, note_key, record, record_version, expires_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ['nr_forever000000000000', 'run', canonical, 'forever', JSON.stringify(forever),
+        'vvforever00000000000', null, state.now, state.now],
+    );
+    await store.write(scopeRef, 'doomed', sampleRecord({ key: 'doomed', scopeRef, content: 'gone' }));
+    state.now += (NOTES_TTL_SECONDS + 1) * 1000; // doomed 过期，forever 依旧永不过期
+
+    // read：永不过期行照常可读，且不被清理
+    const read = await store.read(scopeRef, 'forever');
+    expect(read.current.content).to.equal('keep-me');
+    expect(rowOf(db, scopeRef, 'forever')).to.not.equal(null);
+
+    // list：永不过期行在结果里，且不被顺手删掉
+    expect(await store.read(scopeRef, 'doomed')).to.equal(undefined);
+    const listed = await store.list(scopeRef);
+    expect(listed.map(r => r.key)).to.deep.equal(['forever']);
+    expect(rowOf(db, scopeRef, 'forever')).to.not.equal(null);
+
+    // purge：NULL 无保留期约定，不参与清扫
+    await store.write(scopeRef, 'later', sampleRecord({ key: 'later', scopeRef }));
+    state.now += (NOTES_TTL_SECONDS + 1) * 1000;
+    const purged = await store.purge();
+    expect(purged.purged).to.be.greaterThan(0);
+    expect(rowOf(db, scopeRef, 'forever'), 'expires_at IS NULL must never be purged').to.not.equal(null);
+    expect((await store.read(scopeRef, 'forever')).current.content).to.equal('keep-me');
+  });
+
+  /** 数一下分批循环到底跑了几轮（SELECT = 候选拉取，DELETE = 该批有可删行）*/
+  function countSweepStatements(db) {
+    const counts = { selects: 0, deletes: 0, selectSql: [], deleteSql: [], cursors: [] };
+    const originalQuery = db.query.bind(db);
+    const originalExecute = db.execute.bind(db);
+    db.query = async (sql, params) => {
+      const text = String(sql);
+      if (/^\s*SELECT/i.test(text) && /\bid\s*>\s*\?/i.test(text)) {
+        counts.selects += 1;
+        counts.selectSql.push(text);
+        counts.cursors.push(String(params?.[0] ?? ''));
+      }
+      return originalQuery(sql, params);
+    };
+    db.execute = async (sql, params) => {
+      const text = String(sql);
+      if (/^\s*DELETE/i.test(text)) {
+        counts.deletes += 1;
+        counts.deleteSql.push(text);
+      }
+      return originalExecute(sql, params);
+    };
+    return counts;
+  }
+
+  it('purge sweeps in injected small batches until nothing is expired (live rows untouched)', async () => {
+    const { db, store, state } = makeClockStore(2); // 批大小注入：每轮只处理 2 行
+    expect(store.purgeBatchSize).to.equal(2);
+    const scopeA = buildNotesScopeRef('user_1', 'expert_1');
+    const scopeB = buildNotesScopeRef('user_1', 'expert_2');
+    const dead = [
+      [scopeA, 'dead-1'], [scopeB, 'dead-2'], [scopeA, 'dead-3'],
+      [scopeB, 'dead-4'], [scopeA, 'dead-5'],
+    ];
+    for (const [scopeRef, key] of dead) {
+      await store.write(scopeRef, key, sampleRecord({ key, scopeRef }));
+    }
+    state.now += (NOTES_TTL_SECONDS + 1) * 1000; // 5 行全过期
+    await store.write(scopeA, 'live-1', sampleRecord({ key: 'live-1', scopeRef: scopeA }));
+    await store.write(scopeB, 'live-2', sampleRecord({ key: 'live-2', scopeRef: scopeB }));
+    expect(db.rows.size).to.equal(7);
+
+    const counts = countSweepStatements(db);
+    const result = await store.purge();
+    // 7 行带 TTL 候选全扫过，过期 5 行全清，活行一行不少
+    expect(result).to.deep.equal({ scanned: 7, purged: 5 });
+    // 确实发生了多轮：ceil(7 / 2) = 4 轮候选 SELECT，至少 3 轮 DELETE（7 行里只有 2 行是活的）
+    expect(counts.selects).to.equal(4);
+    expect(counts.deletes).to.be.at.least(3);
+    expect(counts.deletes).to.be.at.most(4);
+    for (const sql of counts.selectSql) {
+      expect(sql).to.match(/expires_at\s+IS\s+NOT\s+NULL\s+AND\s+id\s*>\s*\?/i);
+      expect(sql).to.match(/ORDER BY id/i);
+      expect(sql).to.match(/LIMIT\s+\?/i);
+      expect(sql).to.not.match(/^\s*SELECT[^]*FROM note_record\s*$/i); // 不再整表 SELECT
+    }
+    for (const sql of counts.deleteSql) {
+      expect(sql).to.match(/id\s+IN\s*\(/i);
+      expect(sql).to.match(/expires_at\s+IS\s+NOT\s+NULL\s+AND\s+expires_at\s*<=\s*\?/i);
+    }
+    // keyset 游标严格递增（循环单调向后，不原地打转）
+    for (let i = 1; i < counts.cursors.length; i += 1) {
+      expect(counts.cursors[i] > counts.cursors[i - 1]).to.equal(true);
+    }
+    for (const [scopeRef, key] of dead) {
+      expect(rowOf(db, scopeRef, key), `${key} should be purged`).to.equal(null);
+    }
+    expect(rowOf(db, scopeA, 'live-1')).to.not.equal(null);
+    expect(rowOf(db, scopeB, 'live-2')).to.not.equal(null);
+
+    // 幂等：再清一次只剩活行，一轮候选 + 一轮空批就退，不误删活行
+    const again = countSweepStatements(db);
+    expect(await store.purge()).to.deep.equal({ scanned: 2, purged: 0 });
+    expect(again.selects).to.equal(2);
+    expect(again.deletes).to.equal(0);
+    expect(db.rows.size).to.equal(2);
+  });
+
+  it('purge({ batchSize }) overrides the constructor size and the loop always terminates', async () => {
+    const { db, store, state } = makeClockStore();
+    expect(store.purgeBatchSize).to.equal(500); // 默认批大小
+    const scopeRef = buildNotesScopeRef('user_1', 'expert_1');
+    for (let i = 1; i <= 6; i += 1) {
+      await store.write(scopeRef, `d${i}`, sampleRecord({ key: `d${i}`, scopeRef }));
+    }
+    state.now += (NOTES_TTL_SECONDS + 1) * 1000;
+
+    const counts = countSweepStatements(db);
+    expect(await store.purge({ batchSize: 3 })).to.deep.equal({ scanned: 6, purged: 6 });
+    expect(counts.selects).to.equal(3); // 3 + 3 + 空批退场
+    expect(counts.deletes).to.equal(2);
+    expect(db.rows.size).to.equal(0);
+
+    // 空表：一轮空候选立刻退，不会多轮空转；非法批大小回退默认值
+    const empty = countSweepStatements(db);
+    expect(await store.purge({ batchSize: 0 })).to.deep.equal({ scanned: 0, purged: 0 });
+    expect(empty.selects).to.equal(1);
+    expect(empty.deletes).to.equal(0);
+
+    // 默认 500：典型小表一轮扫完，不会多出额外的往返
+    const small = makeClockStore();
+    for (let i = 1; i <= 3; i += 1) {
+      await small.store.write(scopeRef, `s${i}`, sampleRecord({ key: `s${i}`, scopeRef: scopeRef }));
+    }
+    small.state.now += (NOTES_TTL_SECONDS + 1) * 1000;
+    const smallCounts = countSweepStatements(small.db);
+    expect(await small.store.purge()).to.deep.equal({ scanned: 3, purged: 3 });
+    expect(smallCounts.selects).to.equal(1);
+    expect(smallCounts.deletes).to.equal(1);
+  });
+});

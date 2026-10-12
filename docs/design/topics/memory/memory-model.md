@@ -77,7 +77,7 @@ flowchart TB
 
     subgraph scratch["小抄层（作用域 TTL，已有 #1132/#1133）"]
         N0["psyche working_memory（run 内寄存器，1h TTL）"]
-        N1["note_record（erix NoteRecord + CAS，跨请求 24h TTL）"]
+        N1["note_record（erix NoteRecord，同 key 并发 LWW 后写覆盖 + 唯一键 uk_scope_ref_key 硬约束，跨请求 24h TTL）"]
         N2["note_take / note_read / note_list / note_forget 工具"]
     end
 
@@ -411,7 +411,7 @@ issue（psyche TTL 绑 run、prompt 文案修正、记忆实现），子 issue �
 | ① 去 TTL 化（notes 落 DB、touch 只供排序） | ◐ | 已落地：MariaDB 持久化（#1132）+ read/list 不续期。**未落地且被决策性拒绝**："TTL 仅作软信号不做删除"——notes 是小抄，TTL 硬删是其语义的一部分（§1）；收窄为"作用域 TTL + 卫生上限"（本节结论 1） |
 | ② 注入层淘汰，不删记录 | ✅ | `PsycheManager.compress` 只裁剪注入集合，底层记录不删；记忆侧由本设计 §1/§4 承接 |
 | ③ `calculated_values` pin | ➡ | **待承接**：psyche TTL 绑定 run 存活，或关键值显式晋升 notes（本节结论 1） |
-| ④ 引用完整性 | ◐ | 已落地：CAS + 冲突显式报错。**未落地**：注入侧对不可读引用的降级（refs 指向已过期笔记时降级为"未记录"而非悬空）——并入本节结论 2 一并修 |
+| ④ 引用完整性 | ◐ | 已落地：唯一键 `uk_scope_ref_key` 硬约束（一个 key 一行）+ 撞唯一键显式报 `notes_unique_key_conflict`；同 key 并发写是 LWW 后写覆盖（原判定里的「CAS」已随 #1203/#1207 废除乐观锁而作废，现在的硬约束只有唯一键）。**未落地**：注入侧对不可读引用的降级（refs 指向已过期笔记时降级为"未记录"而非悬空）——并入本节结论 2 一并修 |
 | ⑤ 来源标注 | ◐ | 已落地：`provenance: {source, verified, ts}` + `superseded` 历史。**缺**：#1123 要求的 `round/toolUseId` 维度，随记忆实现（`source_round_ids`）补齐 |
 | ⑥ 显式 forget | ✅ | erix 原生 `note_forget`，adapter 层物理删除语义 |
 | 记忆治理（TTL 软信号化、注入层选择等"记忆"部分） | ➡ | 迁出至本设计，实现另开 issue |
