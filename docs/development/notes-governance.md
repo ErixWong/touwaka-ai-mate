@@ -25,9 +25,10 @@ erix-agent 0.14.0 根据 issue #136 退役了 `note_take` 写入侧的凭据形�
 使写入与回读遵循一致契约；写入不再按 key 或 content 的形状拦截疑似凭据。
 
 **Touwaka 决策：接受退役（方案 a，2026-10-04，Eric）。** Notes 是宿主自身的工作记忆：
-作用域由 `user_id` 与 `expert_id` 稳定派生，TTL 由宿主统一注入，并由
-`record_version` CAS 控制并发。写入和回读保持一致，是 erix 0.14.0 此项修复的目标；
-本任务不在宿主侧补加凭据拦截。
+作用域由 `user_id` 与 `expert_id` 稳定派生，TTL 由宿主统一注入，并发由 `note_record`
+的唯一键 `uk_scope_ref_key` 兜底（同 key 并发写 = 后写覆盖 LWW；issue #1132 决策 3 里的
+`record_version` CAS 已于 #1203/#1207 废除，该列保留但只写不判）。写入和回读保持一致，
+是 erix 0.14.0 此项修复的目标；本任务不在宿主侧补加凭据拦截。
 
 若未来产品要求拦截，应在宿主工具调用层实现，例如 `ToolManager` 的 note 工具包装处
 （`executeErixNotesTool()`），并由 Touwaka 自行维护凭据形状规则；不恢复引擎侧行为。

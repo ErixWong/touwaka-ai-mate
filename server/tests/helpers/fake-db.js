@@ -38,6 +38,21 @@ export function createFakeDb() {
         const row = rows.get(keyOf(params[0], params[1]));
         return row ? [snapshot(row)] : [];
       }
+      // 分批清扫候选拉取（purge，#1205）：
+      //   WHERE expires_at IS NOT NULL AND id > ? ORDER BY id ASC LIMIT ?
+      //   —— keyset 分页：按主键 id 游标向后翻页，已删/未删都不影响游标单调前进
+      if (/expires_at\s+IS\s+NOT\s+NULL/i.test(text) && /\bid\s*>\s*\?/i.test(text)) {
+        const cursor = params[0];
+        const limitFromText = text.match(/LIMIT\s+(\d+)/i);
+        const rawLimit = params.length > 1 ? params[1] : Number(limitFromText?.[1] ?? Number.POSITIVE_INFINITY);
+        const size = Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : Number.POSITIVE_INFINITY;
+        return [...rows.values()]
+          .filter(row => row.expires_at !== null && row.expires_at !== undefined)
+          .filter(row => String(row.id) > String(cursor))
+          .sort((a, b) => (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0))
+          .slice(0, Number.isFinite(size) ? size : undefined)
+          .map(snapshot);
+      }
       // 跨 scope 全量扫描（purge）：不带 scope_ref 谓词 → 全表
       if (!/WHERE\s+scope_ref\s*=\s*\?/i.test(text)) {
         return [...rows.values()].map(snapshot);
@@ -117,22 +132,34 @@ export function createFakeDb() {
   }
 
   function executeDelete(text, params) {
+    // 惰性清理复核（#1205）：三处清理 DELETE 都尾随 `AND expires_at IS NOT NULL AND
+    // expires_at <= ?`（与 _isExpired 等价，参数是最后一个值）；fake 必须真的按这个
+    // 谓词二次判定，否则「复活竞态」回归测不出差别。无该子句 = 无条件删除（delete()）。
+    const rechecked = /expires_at\s+IS\s+NOT\s+NULL\s+AND\s+expires_at\s*<=\s*\?/i.test(text);
+    const deadline = rechecked ? Number(params[params.length - 1]) : Number.POSITIVE_INFINITY;
+    const stillExpired = (row) => Number.isFinite(row?.expires_at) && Number(row.expires_at) <= deadline;
+
     if (/WHERE\s+id\s+IN/i.test(text)) {
-      // 惰性清理（list）：WHERE id IN (...)
-      const ids = new Set(params.map(String));
+      // 惰性清理（list / purge）：WHERE id IN (...) [AND 过期复核]
+      const ids = new Set(params.slice(0, rechecked ? -1 : params.length).map(String));
       let affected = 0;
       for (const [key, row] of rows) {
-        if (ids.has(String(row.id))) {
+        if (ids.has(String(row.id)) && stillExpired(row)) {
           rows.delete(key);
           affected += 1;
         }
       }
       return { affectedRows: affected, changedRows: affected };
     }
-    // 按 key 删除（read 惰性过期 / store.delete / forget 主路径）：WHERE scope_ref=? AND note_key=?
+    // 按 key 删除（read 惰性过期 / store.delete / forget 主路径）：
+    //   WHERE scope_ref=? AND note_key=? [AND 过期复核（#1205：read 惰性清理带）]
     const [scopeRef, noteKey] = params;
-    const existed = rows.delete(keyOf(scopeRef, noteKey));
-    return { affectedRows: existed ? 1 : 0, changedRows: existed ? 1 : 0 };
+    const row = rows.get(keyOf(scopeRef, noteKey));
+    if (!row || !stillExpired(row)) {
+      return { affectedRows: 0, changedRows: 0 };
+    }
+    rows.delete(keyOf(scopeRef, noteKey));
+    return { affectedRows: 1, changedRows: 1 };
   }
 
   return fake;
