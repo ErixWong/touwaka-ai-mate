@@ -142,11 +142,14 @@ export function useSSEHandler(options: UseSSEHandlerOptions) {
     if (!expertId || !assistant) return false
 
     try {
-      const messagesFromDb = await messageApi.getMessagesWithBefore(
+      const response = await messageApi.getMessagesWithBefore(
         expertId,
         messageId,
         { limit: 10 }
       )
+      // issue #1195：端点改为统一分页结构 { items, pagination }，只把数据源换成 items，
+      // 下面的 findIndex / slice / merge 行为逐字不变
+      const messagesFromDb = response?.items
 
       if (!messagesFromDb || messagesFromDb.length === 0) return false
 

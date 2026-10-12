@@ -72,11 +72,14 @@ export function useMessageSending(options: UseMessageSendingOptions) {
     }
 
     try {
-      const messagesFromDb = await messageApi.getMessagesWithBefore(
+      const response = await messageApi.getMessagesWithBefore(
         expert_id,
         assistantMessageId,
         { limit: 10 }
       )
+      // issue #1195：端点改为统一分页结构 { items, pagination }，只把数据源换成 items，
+      // 下面的查找/合并行为逐字不变
+      const messagesFromDb = response?.items
 
       if (!messagesFromDb?.length) {
         return false
