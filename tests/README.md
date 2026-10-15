@@ -15,6 +15,8 @@
 | `test-query-builder.js` | 测试 Query Builder 的 `parseFilter`、`parseSort`、`parsePage`、`parseFields` 等方法 |
 | `workspace-context-renderer.test.js` | 测试 `BaseContextOrganizer`/`MinimalContextOrganizer` 对 workspace 上下文的渲染（task/skill/chat 模式） |
 | `workspace-view-model.test.js` | 测试 `buildWorkspacePromptViewModel()` 构建 workspace 展示视图模型 |
+| `psyche-reflection-json-tolerance.test.mjs` | issue #1214：`ReflectionService` 对「JSON + 解释文字 / 围栏外尾 text」等形状的容错提取，以及「作废 ⇒ 返回 null 且不写假反思」口径（19 例，离线） |
+| `reflection-service-call-reflective.test.js` | `ReflectionService` 走 `callReflective`、`response_format` 与 lookback 裁剪（#1214 起登记进 `npm run test:llm-kit`） |
 
 ## LLM / AI 能力测试
 
