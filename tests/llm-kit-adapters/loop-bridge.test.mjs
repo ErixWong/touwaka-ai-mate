@@ -383,9 +383,15 @@ test("builds an erix loop with structured tool execution and canonical results",
   assert.equal(result.rounds, 2);
   assert.equal(result.finalText, "done");
   assert.equal(toolResult.content, "echo: hi");
-  assert.equal(toolResult.success, true);
-  assert.deepEqual(toolResult.atomic_steps, ["echo"]);
-  assert.equal(toolResult.toolMessageId, "tool-message-1");
+  // #1212 / erix-agent 0.20（上游 #284/#285 T2）：引擎 canonical 块的成败/耗时事实住在
+  // erix.*，宿主 executor 扩展键住在 metadata.*，顶层摊平名已停写（实测块形：顶层只剩
+  // type/tool_use_id/content(+is_error)）。断言逐键改读新命名空间，强度不降：
+  // 断言的仍是同一个值，只换读点。
+  assert.equal(toolResult.erix?.success, true, "成败事实读 erix.success（顶层 success 已停写）");
+  assert.equal(Object.hasOwn(toolResult, "success"), false, "顶层旧名已停写：canonical 块不得再出现顶层 success");
+  assert.deepEqual(toolResult.metadata?.atomic_steps, ["echo"], "宿主扩展键读 metadata.atomic_steps（顶层摊平已停写）");
+  assert.equal(toolResult.metadata?.toolMessageId, "tool-message-1", "宿主扩展键读 metadata.toolMessageId");
+  assert.equal(toolResult.metadata?.duration, 12, "宿主自报的 duration 只进 metadata.duration，不污染 erix.durationMs");
   // erix 0.18.0（issue #165）新增一次性终局汇总事件 run_outcome，排在 round_end
   // 之后 —— 这是 additive 的 semver minor，不是行为回归：round_end 本身仍按原形状
   // 透传。两条都钉住：round_end 形状不变 + run_outcome 作为最后一个事件透传下来。
@@ -482,7 +488,8 @@ test("failed tool execution becomes an error tool_result without breaking the lo
     .find((block) => block.type === "tool_result");
   assert.equal(provider.calls.length, 2);
   assert.equal(result.finalText, "任务完成");
-  assert.equal(toolResult.success, false);
+  // #1212：失败结果的成败事实同样只读 erix.success（0.20 起无条件写）
+  assert.equal(toolResult.erix?.success, false, "失败结果读 erix.success === false");
   assert.equal(toolResult.is_error, true);
   assert.equal(toolResult.content, "tool exploded");
 });
@@ -509,8 +516,10 @@ test("measured duration is included in failed tool_result and persisted RoundRec
     .flatMap((message) => message.content ?? [])
     .find((block) => block.type === "tool_result");
   assert.equal(toolResult.is_error, true);
-  assert.equal(Number.isSafeInteger(toolResult.duration), true);
-  assert.ok(toolResult.duration > 0);
+  // #1212：实测耗时读 erix.durationMs（executor settle 时刻捕获，六种返回形态都带）；
+  // 断言强度不变：仍是「安全整数且 > 0」，只换读点。
+  assert.equal(Number.isSafeInteger(toolResult.erix?.durationMs), true, "耗时事实读 erix.durationMs");
+  assert.ok(toolResult.erix.durationMs > 0, "真实测得的耗时必须 > 0");
 
   const savedRecord = calls.appendRound
     .map(([, record]) => record)
@@ -524,7 +533,7 @@ test("measured duration is included in failed tool_result and persisted RoundRec
   const savedToolResult = savedRecord.messages
     .flatMap((message) => message.content ?? [])
     .find((block) => block.type === "tool_result");
-  assert.equal(savedToolResult.duration, toolResult.duration);
+  assert.equal(savedToolResult.erix?.durationMs, toolResult.erix?.durationMs, "落库 RoundRecord 里的 erix.durationMs 与返回块一致");
 });
 
 test("supports the positional executor and forwards the result hook", async () => {
