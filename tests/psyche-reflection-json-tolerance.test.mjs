@@ -328,14 +328,19 @@ test("reflectBatch：作废批次保留 null 占位，下一批种子回退到�
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 已知残留：共享提取器的花括号匹配是贪婪的
+// 原「已知残留：贪婪花括号匹配」——已由 #1216 平衡扫描修复，断言从「判作废」翻成「解析成功」
 // ─────────────────────────────────────────────────────────────────────────────
 
-test("已知残留（钉住，不是放宽）：尾部解释文字里带花括号时判作废，而不是造默认反思", async () => {
+test("残留已修（#1216）：尾部解释文字里带花括号时提取出正确反思对象，而不是判作废", async () => {
+  // 旧断言（#1215 钉住）：`{"score":7,…}\n补充：字段 {next_action} 需要人工确认。`
+  // 在贪婪正则下取不出 ⇒ result === null + 「反思作废」日志。
+  // #1216 把 lib/json-parse-utils.js 的提取换成字符串感知平衡扫描，这正是本单目标行为：
+  // 同一个输入现在必须提取出模型真正吐出的反思对象，且不再报作废。
   const { service } = createService(`${JSON_TEXT}\n补充：字段 {next_action} 需要人工确认。`);
   const { result, lines } = await withCapturedLogs(() =>
     service.reflect({}, RECENT_MESSAGES, [], { userId: "u1", expertId: "e1" })
   );
-  assert.equal(result, null, "lib/json-parse-utils.js 的 {…} 提取是贪婪匹配，这种形状仍取不出");
-  assert.ok(lines.some((line) => line.includes("反思作废")), "至少是可见的作废，不是不可见的污染");
+  assert.deepStrictEqual(result, REAL_REFLECTION, "平衡扫描后这种形状必须提取出正确反思对象，不能再作废");
+  assert.equal(result._parse_failed, undefined, "不得把 _parse_failed 哨兵当反思结果");
+  assert.ok(!lines.some((line) => line.includes("反思作废")), "能提取就不该报作废");
 });
