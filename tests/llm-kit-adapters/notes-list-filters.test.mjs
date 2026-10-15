@@ -7,7 +7,9 @@
  *      minRelevance / filters 本体，以及「合法值归一成什么」的正向矩阵）；
  *   ② 合法 filters **真生效**（state 集合 / tag / source=current.provenance.source /
  *      minRelevance，含 source 缺失归 agent、relevance 缺失按 0.5 两条上游同口径的边角），
- *      且过滤发生在 limit 截断**之前**；非法 filters 在触达存储层之前就抛。
+ *      且过滤发生在 limit 截断**之前**；非法 filters 在触达存储层之前就抛；
+ *   ③ purge 的 scanned 口径：端口 = 扫描的 scope 数，宿主 DbNoteRecordStore.purge = 行次，
+ *      两者并存互不覆盖（宿主默认返回形状一字不改，只有 withScopeCount 才多一个 scope_count）。
  *
  * 全部离线（注入内存 fake db / duck-type store），不需要 MariaDB。
  */
@@ -306,4 +308,116 @@ test("adapter.list 在读到任何数据之前就拒掉非法 filters（与 limi
   assert.deepEqual(store.calls.list, []);
   await adapter.list({ scope: "run", scopeRef: SCOPE, limit: 1, filters: { state: "active" } });
   assert.deepEqual(store.calls.list, [SCOPE]);
+});
+
+// ---------------------------------------------------------------------------
+// ③ purge：端口 scanned = 扫描的 scope 数，宿主 scanned = 行次，两条口径并存
+// ---------------------------------------------------------------------------
+
+test("adapter.purge 报 scope 数（多行同 scope 只算一个），宿主 purge 仍报行次", async () => {
+  const { db, store, adapterFor, advance } = makeHarness();
+  const left = adapterFor("notes-v1:0123456789abcdef01234567");
+  const right = adapterFor("notes-v1:fedcba9876543210fedcba98");
+  for (const key of ["a1", "a2", "a3"]) {
+    await left.write({ scope: "run", scopeRef: left.scopeRef, key, record: sampleRecord(key, left.scopeRef) });
+  }
+  await right.write({ scope: "run", scopeRef: right.scopeRef, key: "b1", record: sampleRecord("b1", right.scopeRef) });
+  assert.equal(db.rows.size, 4);
+
+  // 保留期内：一行不删，但两个 scope 都扫过
+  assert.deepEqual(await left.purge({ scope: "run" }), { status: "found", scanned: 2, purged: 0 });
+  assert.equal(db.rows.size, 4);
+
+  // before 只能缩小窗口：10 年前的 before 让一切豁免
+  const tenYearsAgo = new Date(START_MS - 10 * 365 * 24 * 60 * 60 * 1000).toISOString();
+  assert.deepEqual(await left.purge({ before: tenYearsAgo }), { status: "found", scanned: 2, purged: 0 });
+  assert.deepEqual(keysOf(await left.list({ scope: "run", scopeRef: left.scopeRef })), ["a1", "a2", "a3"]);
+  assert.deepEqual(keysOf(await right.list({ scope: "run", scopeRef: right.scopeRef })), ["b1"]);
+
+  // TTL 到点：4 行全清，但端口只报 2 个 scope
+  advance(TTL_SECONDS * 1000 + 1);
+  assert.deepEqual(await left.purge(), { status: "found", scanned: 2, purged: 4 });
+  assert.equal(db.rows.size, 0);
+  // 幂等：没有候选行 = 一个 scope 也没扫到
+  assert.deepEqual(await left.purge(), { status: "found", scanned: 0, purged: 0 });
+});
+
+test("adapter.purge 的 before 只能缩小窗口：行已到期但 before 更早时一行不删", async () => {
+  // 上游用例拿「全部新鲜行」测这条，对我们的 TTL 口径是**空过**（没东西可删时 min/max 看不出来）；
+  // 这里补一个「行已过期 + before 落在 deadline 之前」的场景，把 min(before, now) 钉死。
+  const { db, adapterFor, advance } = makeHarness();
+  const adapter = adapterFor(SCOPE);
+  await adapter.write({ scope: "run", scopeRef: SCOPE, key: "k1", record: sampleRecord("k1", SCOPE) });
+  advance(TTL_SECONDS * 1000 + 1);
+
+  // before 早于 deadline → 窗口被缩小 → 一行不删（把 cutoff 改成 max 就会在这里变红）
+  assert.deepEqual(
+    await adapter.purge({ before: new Date(START_MS + 1000).toISOString() }),
+    { status: "found", scanned: 1, purged: 0 },
+  );
+  assert.equal(db.rows.size, 1);
+
+  // before 晚于 deadline → cutoff 落到 now → 照删
+  assert.deepEqual(
+    await adapter.purge({ before: new Date(START_MS + 3600 * 1000).toISOString() }),
+    { status: "found", scanned: 1, purged: 1 },
+  );
+  assert.equal(db.rows.size, 0);
+});
+
+test("DbNoteRecordStore.purge 的公共形状不变：默认不带 scope_count，withScopeCount 才附加且不改 scanned 行次", async () => {
+  const { store, adapterFor, advance } = makeHarness();
+  const left = adapterFor("notes-v1:0123456789abcdef01234567");
+  const right = adapterFor("notes-v1:fedcba9876543210fedcba98");
+  for (const key of ["a1", "a2"]) {
+    await left.write({ scope: "run", scopeRef: left.scopeRef, key, record: sampleRecord(key, left.scopeRef) });
+  }
+  await right.write({ scope: "run", scopeRef: right.scopeRef, key: "b1", record: sampleRecord("b1", right.scopeRef) });
+  advance(TTL_SECONDS * 1000 + 1);
+
+  // 宿主默认返回：仍是 #1205 钉着的 {scanned: 行次, purged: 行次}，多一个键都会打红 notes-infra 的 deep.equal
+  assert.deepEqual(await store.purge(), { scanned: 3, purged: 3 });
+  assert.deepEqual(Object.keys(await store.purge({ batchSize: 2 })).sort(), ["purged", "scanned"]);
+
+  // 要了才附加 scope_count：3 行 / 2 scope，两个口径同时在场
+  const reported = await store.purge({ withScopeCount: true });
+  assert.deepEqual(reported, { scanned: 0, purged: 0, scope_count: 0 });
+});
+
+test("DbNoteRecordStore.purge 的 scope_count 只统计进入候选的 scope（expires_at IS NULL 不参与）", async () => {
+  const { db, store, adapterFor, advance } = makeHarness();
+  const scoped = adapterFor(SCOPE);
+  await scoped.write({ scope: "run", scopeRef: SCOPE, key: "ttl", record: sampleRecord("ttl", SCOPE) });
+  // 另建一个只有「永不过期」行的 scope：把 expires_at 拨成 NULL（模拟宿主里不带 TTL 的历史行）
+  const foreverScope = "forever-scope";
+  await store.write(foreverScope, "forever", sampleRecord("forever", foreverScope));
+  const row = db.rows.get(`${foreverScope}|forever`);
+  assert.ok(row);
+  row.expires_at = null;
+  advance(TTL_SECONDS * 1000 + 1);
+
+  const reported = await store.purge({ withScopeCount: true });
+  assert.deepEqual(reported, { scanned: 1, purged: 1, scope_count: 1 });
+  assert.equal(db.rows.get(`${foreverScope}|forever`) === undefined, false, "expires_at IS NULL 的行不得被清扫");
+});
+
+test("adapter.purge 对不实现 scope 回报的 duck-type store 退回行次（不编一个 0）", async () => {
+  const store = countingStore();
+  store.purge = async (request) => {
+    store.calls.purge.push(request);
+    return { scanned: 7, purged: 5 }; // 旧 duck-type：没有 scope_count
+  };
+  const adapter = new ErixNotesStoreAdapter({ store, scopeRef: SCOPE });
+  assert.deepEqual(await adapter.purge(), { status: "found", scanned: 7, purged: 5 });
+  // adapter 明确要了 scope 回报，并继续把 before 的解析结果透传给宿主
+  assert.deepEqual(store.calls.purge, [{ beforeMs: undefined, withScopeCount: true }]);
+
+  const withBefore = new Date(START_MS + 1000).toISOString();
+  await adapter.purge({ before: withBefore });
+  assert.equal(store.calls.purge[1].beforeMs, Date.parse(withBefore));
+  assert.equal(store.calls.purge[1].withScopeCount, true);
+
+  // 非法 before 仍在一开始就抛，且绝不触达存储层
+  await assert.rejects(adapter.purge({ before: "not-a-date" }), TypeError);
+  assert.equal(store.calls.purge.length, 2);
 });
