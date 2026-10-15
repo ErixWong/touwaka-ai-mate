@@ -15,6 +15,20 @@
   因此不存在版本冲突；`record_version` 列保留（DDL 不动）但只作写入指纹。
   并发创建竞态撞唯一键仍以 `notes_unique_key_conflict` 显式报告，不静默丢弃写入。
   读-改-写由调用方（LLM 与门面）自己负责：先读出来看看再改。
+- **list 过滤**（issue #1210）：erix NotesStore 端口的 `filters`（`state` / `tag` /
+  `source` / `minRelevance`）语义与 `limit` 一样落在 `notes-policy.js`
+  （`normalizeListFilters` / `matchesListFilters`），端口出口先过滤后截断。
+  非法值一律 `TypeError`（`filters.state: []` 的空数组既不是「全不过滤」也不是「静默清空」），
+  不静默降级。上游把这两个 helper 放在 `src/store/notes-port.js` 且没有从包根导出，
+  所以宿主自己实现同一份语义——改语义时两侧要一起对齐，别在 adapter 里再抄一份。
+- **清理的两个口径**（issue #1210）：`DbNoteRecordStore.purge()` 的 `scanned` 是**行次**
+  （宿主自有 API，#1205 起按行次钉着）；erix 端口 `purge` 的 `scanned` 是**扫描的 scope 数**。
+  换算在 `ErixNotesStoreAdapter.purge`：它以 `withScopeCount: true` 要宿主在同一次清扫里
+  顺带回报 `scope_count` 并只取该字段，宿主默认返回形状与语义一字不动。
+  注意本宿主的保留期权威是**每行 `expires_at`**（不是上游的 scope 时钟）：
+  scope 内某行到期就删该行，不整本豁免——上游套件里「刚写入 scope 豁免」那条过，
+  是因为这些行的 deadline 还没到，不是因为我们实现了 scope 级豁免。
+
 - **工具边界**：erix 内置 `note_take`、`note_read`、`note_list`、`note_forget`
   经 `ToolManager` 暴露与执行门控；仅在 minimal context 且 notes 启用时可用，
   执行时会再次检查门控，并要求上下文包含用户和专家标识。
