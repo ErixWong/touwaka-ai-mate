@@ -198,6 +198,52 @@ if (!creds) {
     assert.deepEqual((await store.load(id))[0], record);
   });
 
+  // #1212 守门用例：erix-agent 0.20 起引擎 canonical tool_result 只写 erix.durationMs
+  //（顶层 duration 停写）。本用例钉住三件事，任何一件退回去都要在这里变红：
+  //   1. 只有 erix.durationMs 的新形状必须能落库（读点若退回 .duration 就落 NULL）；
+  //   2. 两侧都有且不相等时 erix.durationMs 赢（命名空间优先，不是顶层优先）；
+  //   3. 两侧都没有时落 NULL，绝不折算成 0（缺失 = 未知，不是「瞬间完成」）。
+  // 回退方向（只有顶层旧 duration 的旧记录仍可读）由上一用例「实测耗时落库并保真」钉住。
+  test("#1212 守门：引擎 canonical 块的时长只能从 erix.durationMs 读到", async () => {
+    const store = createErixStore({ db, requestContext });
+    const id = runId("erix-duration-guard");
+    await store.appendRound(id, {
+      round: 1,
+      ts: "2026-10-15T00:00:00.000Z",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "guard-erix", name: "t", input: {} },
+            { type: "tool_use", id: "guard-both", name: "t", input: {} },
+            { type: "tool_use", id: "guard-absent", name: "t", input: {} },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            // 0.20 现行形状：只有 erix.durationMs，顶层没有 duration
+            { type: "tool_result", tool_use_id: "guard-erix", content: "a", erix: { durationMs: 42, success: true } },
+            // 过渡形状：两侧都有且不相等 —— erix.* 必须赢
+            { type: "tool_result", tool_use_id: "guard-both", content: "b", duration: 999, erix: { durationMs: 42, success: true } },
+            // 两侧都没有（judge 拦截 / 未 settle 就中止）：NULL，不是 0
+            { type: "tool_result", tool_use_id: "guard-absent", content: "c", erix: { success: true } },
+          ],
+        },
+      ],
+    });
+
+    const [rows] = await db.sequelize.query(
+      "SELECT tool_use_id, duration_ms FROM chat_tool_calls WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    assert.equal(rows.length, 3);
+    const rowsById = new Map(rows.map((row) => [row.tool_use_id, row]));
+    assert.equal(rowsById.get("guard-erix").duration_ms, 42, "erix.durationMs 是唯一读点：只读旧名 .duration 会落 NULL");
+    assert.equal(rowsById.get("guard-both").duration_ms, 42, "两侧都有时 erix.durationMs 赢，不是顶层 duration");
+    assert.equal(rowsById.get("guard-absent").duration_ms, null, "两侧都没有落 NULL：缺失=未知，不得折算成 0");
+  });
+
   test("乱序容忍：tool_result 先于 tool_use 到达也能配对", async () => {
     const store = createTouwakaTranscriptStore({ db, requestContext });
     const id = runId("reorder");
