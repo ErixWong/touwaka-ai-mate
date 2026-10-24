@@ -265,11 +265,22 @@
 > 只记本机环境事实，不涉及产品代码。`~/AGENTS.md` 由平台 materializer 生成、会被对账重物化覆盖，
 > 因此**环境类约定一律沉淀在本文件**，不要写进 `~/AGENTS.md`。
 
-**出口网络（实测 2026-10-24）**：容器 DNS 把 `github.com` / `api.github.com` 解析到 `140.82.121.x`，其 443 被出口封掉，直连一律超时；而其它 GitHub 边缘 IP（`140.82.112/113/114/116.3`、`20.205.243.166`）可用。容器内**没有 `ssh` 客户端**，`gitclone.com` / `kgithub` / `githubfast` 等镜像均不可用。绕行方式是本地 CONNECT 代理（只改 TCP 目的 IP，TLS 端到端、证书照验）。
+**出口网络（实测 2026-10-24）**：容器 DNS 把 `github.com` / `api.github.com` 解析到 `140.82.121.x`，其 443 被出口封掉，直连一律超时。其它 GitHub 边缘 IP 可用但**时通时断**：`api.github.com` 用 `140.82.112/113/114/116.5` 实测均 200（`118.5` 与 `121.5` 不通）；`github.com`（git 协议）同一批 `.3` 地址在不同时刻时好时坏，**大体积 pack 传输常在半途中断**（`GnuTLS recv error -110`）。容器内**没有 `ssh` 客户端**，`gitclone.com` / `kgithub` / `githubfast` 等镜像均不可用。
+
+**首选绕行：`--resolve` 直接钉到可用 IP**（实测最稳，不需常驻进程）：
+
+```bash
+curl --resolve api.github.com:443:140.82.114.5 -H "Authorization: Bearer $GH_TOKEN" \
+     https://api.github.com/repos/ErixWong/touwaka-ai-mate/pulls/1221
+```
+
+**备选：本地 CONNECT 代理**（只改 TCP 目的 IP，TLS 端到端、证书照验）。两个必须遵守的点：① **只能单实例**（残留实例会让经代理的请求全变 `000`）；② 必须用 `setsid --fork` 起——普通 `nohup … &` 起的后台进程会被平台连同进程组一起杀掉。
 
 ```bash
 source ~/fde-tools/github-proxy-on   # 起代理(127.0.0.1:18080) + 导出 https_proxy / GH_CONFIG_DIR
 ```
+
+> `gh` / `git` 只认代理、不认 `--resolve`；纯 API 操作（建分支、改文件、开 issue / PR）能用 `--resolve` + curl 就用它，比代理可靠得多。
 
 | 类别 | 写到哪里 | 约定 |
 |------|----------|------|
@@ -280,7 +291,9 @@ source ~/fde-tools/github-proxy-on   # 起代理(127.0.0.1:18080) + 导出 https
 | 一次性草稿 | 项目内 `temp/`（已在 `.gitignore`） | §3.5 的多行 issue/PR 正文写这里，**用后删除** |
 | 交付物 | 项目目录内 | 见 §4 留痕要求 |
 
-另注：`gh` 在本构建里**没有 `--device` 开关**，`--web` 流程要回调本地端口、容器内必失败；设备码流程需直接打 `https://github.com/login/device/code`（走上述代理）。
+另注：`gh` 在本构建里**没有 `--device` 开关**，`--web` 流程要回调本地端口、容器内必失败；设备码流程需直接打 `https://github.com/login/device/code`（走上述任一通道）。
+
+服务端建分支的坑：Contents API 的 `PUT /contents/{path}` **不会**自动创建不存在的分支（直接 404 `Branch not found`），必须先 `POST /repos/{owner}/{repo}/git/refs` 把 `refs/heads/<branch>` 建到基线 commit 上，再 PUT 文件。本地仓库没有上游历史时，这条路径能绕开大体积 pack 传输，直接基于真 `master` 开干净历史的 PR。
 
 ---
 
