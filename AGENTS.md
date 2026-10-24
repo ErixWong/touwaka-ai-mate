@@ -260,6 +260,28 @@
 | `docs/development/` | 开发标准与代码审查清单 |
 | `docs/tasks/` | 任务跟踪、审查、归档 |
 
+### 8.1 开发容器（FDE）环境事实与「写到哪里」归属
+
+> 只记本机环境事实，不涉及产品代码。`~/AGENTS.md` 由平台 materializer 生成、会被对账重物化覆盖，
+> 因此**环境类约定一律沉淀在本文件**，不要写进 `~/AGENTS.md`。
+
+**出口网络（实测 2026-10-24）**：容器 DNS 把 `github.com` / `api.github.com` 解析到 `140.82.121.x`，其 443 被出口封掉，直连一律超时；而其它 GitHub 边缘 IP（`140.82.112/113/114/116.3`、`20.205.243.166`）可用。容器内**没有 `ssh` 客户端**，`gitclone.com` / `kgithub` / `githubfast` 等镜像均不可用。绕行方式是本地 CONNECT 代理（只改 TCP 目的 IP，TLS 端到端、证书照验）。
+
+```bash
+source ~/fde-tools/github-proxy-on   # 起代理(127.0.0.1:18080) + 导出 https_proxy / GH_CONFIG_DIR
+```
+
+| 类别 | 写到哪里 | 约定 |
+|------|----------|------|
+| 长期工具脚本 | `~/fde-tools/`（`pinproxy.py`、`github-proxy-on`、`README.md`） | 不放 `/tmp`，`/tmp` 会被清 |
+| gh 凭据 | `~/.fde/gh/hosts.yml`（0600） | **`~/.config` 属 `erix:erix drwxr-x---`，工具进程跑在 `erix-worker` 上写不进去** ⇒ 用 `GH_CONFIG_DIR=$HOME/.fde/gh` 指路，已在 `~/.bashrc` / `~/.profile` 导出 |
+| git 走代理 | `~/.gitconfig` | 已配 `http.https://github.com/.proxy=http://127.0.0.1:18080` 与 lowSpeed 阈值，故 `git clone/fetch` 无需临时 `-c` |
+| 运行期状态 | `~/.fde/`（`pinproxy.pid`、`pinproxy.log`、`gh_token.bak`） | pid / 日志 / 凭据备份 |
+| 一次性草稿 | 项目内 `temp/`（已在 `.gitignore`） | §3.5 的多行 issue/PR 正文写这里，**用后删除** |
+| 交付物 | 项目目录内 | 见 §4 留痕要求 |
+
+另注：`gh` 在本构建里**没有 `--device` 开关**，`--web` 流程要回调本地端口、容器内必失败；设备码流程需直接打 `https://github.com/login/device/code`（走上述代理）。
+
 ---
 
 ## 9. 相关文档
