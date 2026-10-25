@@ -187,7 +187,7 @@ test("stream callbacks and events preserve delta, reasoning, tool fragments, and
       },
     ],
     stopReason: "tool_use",
-    usage: { input_tokens: 8, output_tokens: 5 },
+    usage: { input_tokens: 8, output_tokens: 5, total_tokens: 13 },
   });
 });
 
@@ -257,7 +257,7 @@ test("chat bridges the existing non-streaming LLMClient.call when available", as
       { type: "tool_use", id: "call-1", name: "finish", input: {} },
     ],
     stopReason: "tool_use",
-    usage: { input_tokens: 2, output_tokens: 3 },
+    usage: { input_tokens: 2, output_tokens: 3, total_tokens: 5 },
   });
   assert.equal(llmClient.chatCall.messages[0].content, "start");
 });

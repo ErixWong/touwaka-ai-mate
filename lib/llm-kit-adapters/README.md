@@ -161,6 +161,32 @@ provider 调用与 transcript persistence 写入重试。Agent 流式路径直�
 `tool_result` 正文。`persistence_capability_degraded` 是可选 store 能力未实现的预期降级，
 只记 warn，不视为持久化失败。
 
+## 与 erix-agent 0.22 / 0.23 的行为变化（touwaka 侧知悉项，issue #1220）
+
+**0.23.0 是「存储收敛」版：一个 run 的正文不再存在轮行里。** 引擎改成**一条消息一行、一成型就落盘**
+（`<runId>:msg:<n>:<seq>`、`kind:"message"`、`seq` 轮内从 0 递增，且写在它描述的那次工具执行**之前**），
+轮行（`<runId>:engine:round:<n>`）只留元数据、**根本没有 `messages` 这个键**。一句话口径：
+**`store.load()` 就是正文 API**，以前「从 journal 行里读正文」成立的事，现在只对 `load()` 的返回值成立。
+
+- **已适配**：`transcript-store.js` 导出 `foldMessageRows()`，`load()` 的 `new`（canonical）与 `legacy`
+  两条读路径返回前都把消息行折回轮行，所以 `records.flatMap(r => r.messages ?? [])` 仍是模型当时看到的
+  序列（引擎 `resume-manager#restoreResume` 重建上下文的唯一口径）。上游 `src/store/message-rows.js`
+  **未从包入口导出**（包 `exports` 只放 `.` / `./tools` / `./contract-tests`，深路径 import 会
+  `ERR_PACKAGE_PATH_NOT_EXPORTED`），故折叠是宿主侧等价实现；口径逐条对齐上游：同轮取**第一条**载体、
+  `rowKey` 取 `dedupKey ?? roundKey` 且必须非空、无载体行时消息行原样保留（崩溃点矩阵）、无可折叠消息行时
+  返回**入参同一引用**（0.23 之前的账本逐字不变）、只有带 `seq` 的行参与（`:input:` 行被吸走会让
+  `appendUserTurn` 幂等失效）、`partOf` 分片拼回同一条消息。唯一刻意的本地差异：载体自带 `messages` 时
+  **取并集而不是覆盖**（legacy 档里宿主预写的用户行就是该轮第一条载体，覆盖会丢用户问题）。
+- **不受影响（grep 已核）**：全仓不消费 `onRound(record).messages`（§3，0.23 起它是 `undefined`）、
+  不从 `snapshot.messages` 恢复上下文（§4，那份现在只是**落后副本**，恢复只取执行状态）、
+  不调 `projectTranscriptForDisplay`（§5，喂原始行会重复条目且 `durationMs` 变 `undefined`）。
+- **未翻的语义（待 Eric 拍）**：0.22.0 要求「同 `dedupKey` 但 payload 不同」抛
+  `TranscriptDedupConflictError`；本店仍是 `INSERT IGNORE`「先到先得、后到忽略」，因为文件头明文写着这是
+  与旧表逐字对齐的刻意设计，而能证伪它的 `transcriptStoreContract` 在无库凭据时是 skip——盲改语义不做。
+- **护栏**：`tests/llm-kit-adapters/transcript-message-rows-fold.test.mjs` 是**纯函数级**回归（不连库、
+  不需要凭据，所以始终会跑到），守上游 `docs/host-upgrade-guide-0.23.0_cn.md` §6 四问里的问 1、问 2，
+  外加崩溃点、老账本透传、`:input:` 不吸走、同 key 幂等重跑、无 key 行不当载体。
+
 ## 测试
 
 契约测试消费已发布的 `erix-agent` 包，通过
@@ -181,6 +207,9 @@ npm run test:llm-kit   # 不要用目录形式 node --test tests/llm-kit-adapter
 
 0.17.0 快路径探针的回归（差异对等 / 零 load / 成对语义 / 类型违约 / 残缺 record 负控）在
 `tests/llm-kit-adapters/transcript-store-fastpath.test.mjs`。
+
+0.23.0 消息行折叠的回归（纯函数、不连库）在
+`tests/llm-kit-adapters/transcript-message-rows-fold.test.mjs`，已列入 `npm run test:llm-kit`。
 
 测试会在 `llm_kit_test` 库内建/删 `providers` 与 `ai_models` 两表（sequelize sync 真实模型定义），
 **不要**把凭据指向 touwaka_mate 生产库。
