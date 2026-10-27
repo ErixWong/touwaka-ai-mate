@@ -1269,6 +1269,7 @@ skillManager.register({
   "psyche_config": {
     "max_tokens_ratio": 0.3,
     "reflection_lookback": 4,     // 反思时查看过去 4 轮
+    "reflection_max_tokens": 8192, // 反思输出预算（请求体 max_tokens），缺省 8192；可配范围 4000-32768
     "enable_notes": true
   }
 }

@@ -201,12 +201,13 @@ test("LLM 调用本身失败（#1214 里另外 4 次 HTTP 404）⇒ 同样作废
   );
 });
 
-test("response_format 语义未动（红线）：仍然要求 json_object 且透传 max_output_tokens", async () => {
+test("response_format 语义未动（红线）：仍然要求 json_object 且透传 max_tokens（#1224：键名不是 max_output_tokens）", async () => {
   const { service, llm } = createService(JSON_TEXT);
   await service.reflect({}, RECENT_MESSAGES, [], { userId: "u1", expertId: "e1" });
   assert.equal(llm.calls.length, 1);
   assert.deepStrictEqual(llm.calls[0].options.response_format, { type: "json_object" });
-  assert.equal(llm.calls[0].options.max_output_tokens, 1200);
+  assert.equal(llm.calls[0].options.max_tokens, 1200);
+  assert.equal(llm.calls[0].options.max_output_tokens, undefined);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
