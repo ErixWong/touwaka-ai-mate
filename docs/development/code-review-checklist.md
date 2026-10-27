@@ -21,7 +21,7 @@ cd frontend && npm run build
 ```
 
 **检查项**：
-- [ ] `npm run lint` 通过（检查 buildPaginatedResponse 参数）
+- [ ] `npm run lint` 通过（`check-buildPaginatedResponse` 参数检查 + `check-unimported-identifiers` 未导入标识符检查）
 - [ ] 后端启动无报错
 - [ ] 前端构建成功
 
