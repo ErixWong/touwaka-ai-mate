@@ -34,4 +34,6 @@
 
 **两处口径更正（早前口头汇报有误，以本节为准）**：
 - 已装 `erix-agent@0.23.0`（入口 `src/index.js`）**不导出** `truncateToolMessageContent`、`normalizeToolName`、`normalizeToolResultName`、`MAX_TOOL_RESULT_CHARS`（实测 `typeof === "undefined"`），且 `lib/` 全仓**没有任何地方引用**它们。⇒ #447 的「持久/回喂文本被朴素 `slice` 截断」在**持久层没有落地面**（本副本持久层不截断工具输出，也没有 journal 层）；`truncateMultisafe` 目前是**待接线原语**，唯一现实候选接线点是 `lib/agent/agent-loop.js` 的日志/错误串 clamp（`safeLogField` 等 4 处 `slice(0, 200)`，属可观测性而非正确性）。同理 #458 在 0.23.0 无引擎侧对应物，本副本的 tool 名匹配面不依赖引擎归一函数。
-- 因此**剩余上游差集的真实边界**是：#439 B（`load()` / `loadByDedupKey()` 出口剥档案信封 `ts` —— 两条路径必须同步改，否则破坏 #1150 的读对等不变式）、#416（有界 journal，本副本无 journal 层 ⇒ 需要的是持久层新语义，改的是写侧数据形状）。两者都改读写路径，**必须**在有 PG/Redis 的环境以 `npm run test:runtime` 建基线后才可动。
+- 因此**剩余上游差集的真实边界**是：#439 B（`load()` / `loadByDedupKey()` 出口剥档案信封 `ts` —— 两条路径必须同步改，否则破坏 #1150 的读对等不变式）、#416（有界 journal，本副本无 journal 层 ⇒ 需要的是持久层新语义，改的是写侧数据形状）。两者都改读写路径，**必须**在有 PG/Redis 的环境建基线后才可动。
+
+**更正（2026-10-25 复核）**：本文件与 issue #1222 早前写的验收命令 `npm run test:runtime` **在本仓库不存在** —— `package.json` 只有 `test`（占位）/ `test:llm-kit` / `lint` / `init-db` / `api` / `start` / `dev` / `postinstall` / `postversion`。真环境基线的**实际入口**是：给 `npm run test:llm-kit` 提供库凭据（`/home/erix/.config/mcp/creds/touwaka-test-db.json`，库名 `llm_kit_test`），此前 28 个 runtime-gated 用例会从 SKIP 变成真跑；无凭据时它们按设计跳过、不打假绿灯。
