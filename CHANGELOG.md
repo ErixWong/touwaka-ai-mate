@@ -5,6 +5,77 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-27
+
+> 本轮跨度 339 个提交（v0.4.0 之后），主线是 **erix 引擎接入与消息面第一性重构**（epic #1094 / #1156），
+> 以及文档平台、标准管理 App、App 平台 runtime 的成体系落地。以下按主题归并，条目末尾为 issue/PR 号。
+
+### Added
+
+**erix 引擎与消息面**（epic #1094 / #1156）
+- **Provider 适配层（L3-M1）** - 桥接 `LLMClient` 到 erix provider 契约，零业务侧改动
+- **`runToolLoop` 装配层（L3-M2）** - tool executor 适配 + completion/retry/context 配置 + store 接线 (#1112)
+- **`AgentLoop.runErix`（L3-M3a）** - 由 erix `runToolLoop` 承载专家循环，平行实现不动原 `run` (#1113)
+- **切流量（L3-M3b）** - `ERIX_LOOP` 开关 + 观测日志 + attempt 对齐 + 复用 `execute_tools` (#1114)
+- **消息面 Stage A** - 新增 `agent_transcript_rounds` 与 `llm_kit_run_checkpoint`（仅 DDL）(#1156)
+- **消息面 Stage B** - `appendRound` 单事务写入并落 canonical 真相 + 回填与全量比对脚本 (#1156)
+- **消息面 Stage C** - 读侧 `ERIX_TRANSCRIPT_READ_MODE` 开关与两模式等价比对 (#1156)
+- **消息面 Stage D** - 读侧默认切 canonical(new) + dedup 竞态守卫 + 升级手册 (#1187)
+- **erix-agent 0.23.0 存储收敛适配** - 轮行不再携带 `messages`，宿主侧 `foldMessageRows()` 把消息行折回轮（canonical 与 legacy 两条读路径同步）；同批落地上游差集：`usage.total` 按 provider 族派生、只回 reasoning 时打 `providerThinkingOnly` 标记、压缩有界化 `stillOverBudget`、逐条 `ts` 与多字节安全截断原语 (#1223)
+- **erix-agent 升级链** - 0.2.0 → 0.3.x → 0.10.0 → 0.14.0 → 0.16.0 → 0.17.0 → 0.18.0 → 0.19.0 → 0.20.0 → 0.23.0，逐版契约对齐与回归（#1108 / #1122 / #1129 / #1133 / #1138 / #1148 / #1150 / #1202 / #1211 / #1213）
+- **judge 决策增强** - judge 接入反思模型（reflective，fallback 主模型）(#1118)、judge task 简报 + 三态开关 (#1119)
+- **`system-bot` 平台通用系统账户** - 后台任务身份，登录禁用 (#1101)
+
+**文档平台**
+- **文档集合（Collection）统一管理** - 可见性、归属与检索闭环 (#774)
+- **检索真原子化 Phase 1** - 6 原子 tool 名实一致 + handle 交接 + 消费层数据驱动 (#967)
+- **检索 Phase 2** - parser 锚点识别集成 + 四维 rerank + 证据覆盖统计 (#968)
+- **版本管理完整闭环** - 检索版本感知 (#1028)
+- **MinerU v2 OCR 流程** - 吸收 TaskID 导入 (#996)、OCR 闭环与真实 task_id + 后台任务隔离 (#803)、新增 OCR 工具应用 (#754)
+- **集合卡片视觉重做 + 页宽放宽** (#1076)、**CSV 预览与任务文件类型放宽** (#885)、**CJK 字体支持** (@pdf-lib/fontkit, #762)
+
+**标准管理 App**
+- **标准管理全量落地 + 审计修复** (#1047)
+- 反向引用视图 (#1098)、跨标准 gap 聚合清单 (#1097)、清洗进度可见 + 增量清洗/断点续洗 (#1099)、一键重洗新版本 + 失效锚点可见性 (#1103)、筛选能力并入左树 (#1100)
+
+**App 平台与业务 App**
+- **App 平台 runtime 架构重构 Phase 1-6** (#891)、**路由前缀规范化 + 声明式 apis + legacy 兼容层** (#894)、**CFA app 迁移与增强恢复** (#922)
+- invoice-mgr 专属界面与配置 (#775)、架构审计（共享模块 / tick 拆分 / 前端重构）(#769)
+- contract-mgr-v2 前端接入 Doc Platform 处理状态 / 重试 / revisions / 分类建议 (#791)
+- ELS study workspace (#815)
+
+**记忆与上下文**
+- notes 兼容别名 `note_*` + 文案对齐（Phase 3 阶段一）(#1131)
+- `messages.meta_json` 列，保住 message 级 meta（erix 0.16 store 保真最后一处缺口）(#1149)
+- CFA 压缩框架升级 - minimax 最优分段转正默认 + LLM 输入重构 (#974)、前端本地压缩 + 后端 LLM 阶段识别 (#930)
+
+### Changed
+
+- **持久化表结构重构** - run / round / message / tool_call 三层物化，退役 `llm_kit_transcripts` (#1135)
+- **退役 `llm_kit_run_state`** - drop 表并删除老建表迁移步骤 (#1136)
+- **读侧默认真相源切换** - `ERIX_TRANSCRIPT_READ_MODE` 默认 `new`（canonical）(#1187)
+- **notes 存储层废除乐观锁** - `record_version` CAS 移除，同 key 并发改 LWW (#1207)
+- **内置 Notes 工具名去点号** - `notes.take/read/list` → `notes_*`，修严格 provider 400 (#1125)
+- **上下文压缩与 recall 治理** - legacy 检查降频、压缩锁与归档器分组纳入 task 维度 (#1037 / #1145)
+- **运行时与部署** - 基础镜像 Node 20 → 22（对齐 erix-agent `engines>=22`）(#1110)；compose 定义入库并改名为 `dev`、密钥插值、依赖 mtime 判定修「升级静默不生效」；`upgrade-database` 支持 `--dry-run` / `--step` (#1158)
+- **`xlsx` 启动期硬依赖移除** (#903)、**execute script runner 重设计** (#870)、**设置页个人安全配置拆分** (#983)
+
+### Fixed
+
+- **消息面** - 工具调用 `duration_ms` 静默落 NULL (#1213)；删除三条坏 226 天且无消费方的消息读接口 + `attributes` 列守卫 (#1188)；`max_tool_rounds` 服务端校验与运行时共用夹取 (#1166)；tool context 仅透传 string，结构化 context 不再崩前端 (#1120)
+- **持久化** - 上游诊断事件与持久化失败可见化 (#1155)；补持久化落库与生产包装层真实覆盖 (#1154)；MCP 管理 i18n 消息含未转义 `@`/花括号致页面崩溃 (#1105)
+- **反思与记忆** - 反思解析改容错提取，作废返回 null、不再往 psyche 写假反思 (#1215)；反思输出预算改用 `max_tokens` 并按实测分位数定值 (#1224)；notes 过期清理复核过期谓词并分批 purge (#1209)；notes 端口补 list filters 校验与生效、purge scanned 换算 scope 数 (#1211)；notes 请求级 `scopeRef` 校验 + 上游一致 canonicalize + 幂等迁移 (#1153)
+- **数据库与迁移** - 空库首跑 upgrade 三个建表步骤按 FK 父表顺序重排 (#1190)；新装库补齐 erix 持久化表并在 init 收尾跑 upgrade (#1179)；`llm_kit_transcripts` 建表迁移补充 (#1115)；迁移脚本 check 先判表存在
+- **文档与检索** - 回填脚本生产路径改用 mysql 驱动 (#1156)；`fapiao` 返回结构补 `pages` 字段修商品明细未入库；standard-mgr 重装被表名安全校验拦截加 legacy 豁免 (#1080)
+- **前端** - 登录页视觉重构 + i18n 全量覆盖 (#801)；聊天消息状态与渲染稳定性收敛；OCR 工具界面左右布局与识别计时
+- **测试与守卫** - 消息面行级 SQL 不变式闸门 + parity 三分类修 exit 语义 (#1196)；破坏性测试前硬断言目标必须是测试库 (#1167)；接入上游契约套件（executeTool / engineApi / modelConfigProvider，#1152）；删除死导出并补未导入标识符守卫 (#1219)
+
+### 未包含（本次发版不处理的已知项）
+
+- `frontend` 的 `npm audit` 仍有 27 条告警（high 含 `axios ≤1.19.0` 的 NO_PROXY 绕过 CVE-2026-42043）。服务端不使用 axios，该 CVE 属 Node 侧机制、浏览器侧不可利用，故本次**不做**依赖跳跃；第三方扫描器提交的自动修复 PR 经评估已关闭（目标版本 1.18.0 仍在受影响区间）。
+- 默认 admin 密码仍由 seed 脚本硬编码（`password123`，仅影响**新装库**）。已播种库是否仍为该口令属**数据**问题，需运维侧核实与改密；代码侧改法（`DEFAULT_ADMIN_PASSWORD` 强制注入 + 生产不播种 `test`）留待独立变更。
+- erix 消息面上游差集的剩余项未开工：#439 B（`load()` 出口剥档案信封 `ts`）、#416（有界 journal）、#458（工具名归一，0.23.0 无对应物）、0.22.0 的 dedup 冲突抛错语义（需先拍板），均需真环境基线（详见 #1222 / #1220）。
+
 ## [0.4.0] - 2026-05-26
 
 ### Added
