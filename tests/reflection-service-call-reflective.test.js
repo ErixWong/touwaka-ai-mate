@@ -57,7 +57,7 @@ const reflection = await service.reflect(
 
 assert(!!callReflectiveArgs, '调用 callReflective');
 assert(callReflectiveArgs.messages[0].role === 'user', '以 messages 格式发送 prompt');
-assert(callReflectiveArgs.options.max_output_tokens === 1234, '传递 max_output_tokens');
+assert(callReflectiveArgs.options.max_tokens === 1234, '传递 max_tokens（#1224：base-llm 只读这个键）');
 assert(callReflectiveArgs.options.response_format?.type === 'json_object', '要求 JSON object 响应');
 assert(reflection.session_meta?.current_topic === '测试话题', '解析 reflective 响应 JSON');
 
