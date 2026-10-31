@@ -252,12 +252,103 @@ test('runErix persists a real tool round in all transcript tables', {
     assert.equal(result.llmCallsCount, 2);
     assert.equal(result.fullContent, 'Need tool任务完成 Final answer');
 
-    const [rounds] = await testDb.sequelize.query(
-      'SELECT id, round_no FROM agent_rounds WHERE request_id = :requestId ORDER BY round_no ASC',
+    // issue #1227：erix 0.23 起「一条消息一落盘」⇒ 展示表 agent_rounds **一轮多行**
+    //（载体轮行 + 每条消息一行，见 erix-agent `src/store/message-rows.js` 文件头与
+    // `docs/host-upgrade-guide-0.23.0_cn.md` §2/§6）。于是「行数 == 轮数」不再是账本形状，
+    // 但**轮**仍然是账本的骨架：断言改成形状断言——行数可以随引擎分片策略变化，每轮却必须
+    // 恰好一条载体行、消息行必须自带轮内序号、且不存在「只有消息行没有载体行」的轮
+    //（那种形状折叠不回去，正文会掉）。
+    // 口径：dedup_key 命名空间（引擎身份）与 record_json 里的 kind/seq（行形状）**互证**，
+    // 只对一边照样能骗过断言。
+    const [roundRows] = await testDb.sequelize.query(
+      `SELECT id, round_no, dedup_key,
+              JSON_UNQUOTE(JSON_EXTRACT(record_json, '$.kind')) AS row_kind,
+              CAST(JSON_EXTRACT(record_json, '$.seq') AS SIGNED) AS row_seq,
+              JSON_LENGTH(JSON_EXTRACT(record_json, '$.messages')) AS inline_message_count
+       FROM agent_rounds WHERE request_id = :requestId
+       ORDER BY round_no ASC, id ASC`,
       { replacements: { requestId } },
     );
-    assert.equal(rounds.length, 3, 'the seed and both engine rounds must be persisted');
-    assert.deepEqual(rounds.map(({ round_no }) => round_no), [0, 1, 2]);
+
+    // 1. 轮号集合恰为 {0,1,2}（种子轮 + 两个引擎轮）
+    assert.deepEqual(
+      [...new Set(roundRows.map(({ round_no: roundNo }) => roundNo))].sort((a, b) => a - b),
+      [0, 1, 2],
+      'agent_rounds 的轮号集合必须恰为 {0,1,2}',
+    );
+
+    // 2. 每一行要么是载体行、要么是消息行；没有第三种形态
+    const carriersByRound = new Map();
+    const messageRowsByRound = new Map();
+    const pushTo = (map, roundNo, row) => {
+      map.set(roundNo, [...(map.get(roundNo) ?? []), row]);
+    };
+    for (const row of roundRows) {
+      const messageHit = /:msg:(\d+):(\d+)$/.exec(row.dedup_key);
+      if (messageHit) {
+        assert.equal(row.row_kind, 'message', `消息行必须带 kind:"message"：${row.dedup_key}`);
+        assert.equal(
+          Number(messageHit[1]), row.round_no,
+          `消息行 dedup_key 的轮号与 round_no 不一致：${row.dedup_key}`,
+        );
+        assert.equal(
+          Number(messageHit[2]), row.row_seq,
+          `消息行 dedup_key 的轮内序号与 record_json.seq 不一致：${row.dedup_key}`,
+        );
+        assert.equal(
+          row.inline_message_count ?? 0, 0,
+          `消息行的正文只该在 messages 行里，record_json 不得再存一份：${row.dedup_key}`,
+        );
+        pushTo(messageRowsByRound, row.round_no, row);
+        continue;
+      }
+      const carrierHit = /:round:(\d+)(?::(?:seed|resume))?$/.exec(row.dedup_key);
+      assert.ok(carrierHit, `agent_rounds 里出现既非载体行也非消息行的记录：${row.dedup_key}`);
+      assert.equal(
+        Number(carrierHit[1]), row.round_no,
+        `载体行 dedup_key 的轮号与 round_no 不一致：${row.dedup_key}`,
+      );
+      assert.equal(row.row_kind, null, `载体行不得带 kind（那是消息行的标记）：${row.dedup_key}`);
+      assert.equal(row.row_seq, null, `载体行不得带轮内序号 seq：${row.dedup_key}`);
+      if (/:seed$/.test(row.dedup_key)) {
+        assert.equal(row.round_no, 0, `种子行只允许是第 0 轮：${row.dedup_key}`);
+      }
+      pushTo(carriersByRound, row.round_no, row);
+    }
+
+    // 3. 每轮**恰有一条**载体行（正文的落点唯一，否则折叠会把同一轮正文挂两遍）
+    for (const roundNo of [0, 1, 2]) {
+      assert.equal(
+        (carriersByRound.get(roundNo) ?? []).length, 1,
+        `第 ${roundNo} 轮必须恰有一条载体行`,
+      );
+    }
+
+    // 4. 两个引擎轮都有消息行；轮内 seq 唯一且非负（0.23 起正文按消息行落盘）
+    for (const roundNo of [1, 2]) {
+      const rows = messageRowsByRound.get(roundNo) ?? [];
+      assert.ok(rows.length >= 1, `第 ${roundNo} 轮缺消息行：0.23 起正文按消息行落盘`);
+      const seqs = rows.map(({ row_seq: seq }) => seq);
+      assert.deepEqual([...new Set(seqs)], seqs, `第 ${roundNo} 轮的消息行 seq 必须唯一：${seqs.join(',')}`);
+      assert.ok(
+        seqs.every((seq) => Number.isSafeInteger(seq) && seq >= 0),
+        `第 ${roundNo} 轮的消息行 seq 必须是非负整数：${seqs.join(',')}`,
+      );
+    }
+
+    // 5. 没有任何一轮「只有消息行、没有载体行」——那种形状折叠不回去，正文会掉
+    for (const roundNo of messageRowsByRound.keys()) {
+      assert.ok(
+        carriersByRound.has(roundNo),
+        `第 ${roundNo} 轮只有消息行、没有载体行（折叠会丢正文）`,
+      );
+    }
+
+    // 6. 种子轮不拆行：round 0 的正文留在 record_json.messages（appendRound 的既有语义）
+    assert.ok(
+      (carriersByRound.get(0)[0].inline_message_count ?? 0) >= 1,
+      'round 0 种子轮的正文必须留在 record_json.messages（appendRound 有意不拆种子行）',
+    );
 
     const [messages] = await testDb.sequelize.query(
       `SELECT m.role, m.content
