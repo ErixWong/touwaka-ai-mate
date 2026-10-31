@@ -331,26 +331,30 @@ test("builds an erix loop with structured tool execution and canonical results",
     provider: provider.provider,
     executeTool,
     store: store.store,
-    runId: "run-bridge-1",
-    initialUserMessage: "say hi",
-    stream: true,
-    toolContext: { trace_id: "trace-1" },
     modelConfig: { context_window_tokens: 32768, max_output_tokens: 4096 },
     signals: ["done"],
+    // issue #1227 阶段 1：runId / initialUserMessage / stream / toolContext 的规范之家
+    // 全在 0.29 的命名空间里，扁平写法会被名称闸口当场拒。
+    config: {
+      input: { initialUserMessage: "say hi" },
+      run: { runId: "run-bridge-1", stream: true },
+      metadata: { toolContext: { trace_id: "trace-1" } },
+    },
     onEvent: (event) => events.push(event),
   });
 
   assert.equal(options.executeTool.length, 1);
-  assert.deepEqual(options.modelMetadata, {
+  assert.deepEqual(options.config.metadata.modelMetadata, {
     contextWindowTokens: 32768,
     maxOutputTokens: 4096,
   });
-  assert.deepEqual(options.retry, {
+  assert.deepEqual(options.config.timing.retry, {
     attempts: 2,
     backoffBaseMs: 1500,
     backoffMaxMs: 10000,
   });
-  assert.deepEqual(options.stallDetection, { window: 4 });
+  assert.deepEqual(options.config.run.stallDetection, { window: 4 });
+  assert.deepEqual(options.config.run.completion.signals, ["done"]);
   // erix 0.10.0 顶层选项白名单不再接受 user_id/expert_id/request_id 等宿主
   // 字段（provider 走 createTouwakaProvider 的 defaultUserId/defaultRequestId 闭包），
   // requestMeta 不得扩散到 runToolLoop 顶层选项。
@@ -371,9 +375,13 @@ test("builds an erix loop with structured tool execution and canonical results",
     name: "echo",
     input: { text: "hi" },
     // erix 0.10.0 向 executeTool context 注入宿主持久化失败上报端口。
+    // erix 0.29（上游 #617，P0）：把当前 run 的身份也递进工具上下文——新增的**只有**
+    // `runId` 一个键（派生工具据此自填父身份）。断言强度不降：仍是逐键 deepEqual，
+    // 只是把上游新增的那一个键显式钉进来（0.23 的 baseToolContext 里没有它）。
     context: {
       trace_id: "trace-1",
       round: 1,
+      runId: "run-bridge-1",
       reportPersistenceFailure: toolCalls[0].context.reportPersistenceFailure,
     },
     signal: toolCalls[0].signal,
@@ -417,7 +425,7 @@ test("requestMeta is dropped instead of leaking into top-level run options", () 
   const options = buildErixRunOptions({
     provider: {},
     executeTool: async () => "ok",
-    runId: "run-request-meta",
+    config: { run: { runId: "run-request-meta" } },
     requestMeta: {
       user_id: "user-1",
       expert_id: "expert-1",
@@ -440,9 +448,10 @@ test("completion signals stop immediately, while missing signals use the no-tool
   const completionResult = await runWith(buildErixRunOptions({
     provider: completionProvider.provider,
     executeTool: async () => "ok",
-    initialUserMessage: "start",
-    stream: true,
-    runId: "run-completion",
+    config: {
+      input: { initialUserMessage: "start" },
+      run: { runId: "run-completion", stream: true },
+    },
   }));
 
   assert.equal(completionProvider.calls.length, 2);
@@ -458,9 +467,10 @@ test("completion signals stop immediately, while missing signals use the no-tool
   const noSignalResult = await runWith(buildErixRunOptions({
     provider: noSignalProvider.provider,
     executeTool: async () => "ok",
-    initialUserMessage: "start",
-    stream: true,
-    runId: "run-no-signal",
+    config: {
+      input: { initialUserMessage: "start" },
+      run: { runId: "run-no-signal", stream: true },
+    },
   }));
 
   assert.equal(noSignalProvider.calls.length, 4);
@@ -478,9 +488,10 @@ test("failed tool execution becomes an error tool_result without breaking the lo
     executeTool: async () => {
       throw new Error("tool exploded");
     },
-    initialUserMessage: "start",
-    stream: true,
-    runId: "run-tool-error",
+    config: {
+      input: { initialUserMessage: "start" },
+      run: { runId: "run-tool-error", stream: true },
+    },
   }));
 
   const toolResult = result.messages
@@ -507,9 +518,10 @@ test("measured duration is included in failed tool_result and persisted RoundRec
       return { success: false, data: "tool failed", error: "tool failed" };
     },
     store,
-    initialUserMessage: "start",
-    stream: true,
-    runId: "run-tool-duration",
+    config: {
+      input: { initialUserMessage: "start" },
+      run: { runId: "run-tool-duration", stream: true },
+    },
   }));
 
   const toolResult = result.messages
@@ -564,4 +576,376 @@ test("supports the positional executor and forwards the result hook", async () =
   assert.equal(result.success, true);
   assert.equal(result.data, "positional");
   assert.deepEqual(result.atomic_steps, ["step-1"]);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// issue #1227 阶段 1：erix-agent 0.29 顶层选项面命名空间迁移的门禁
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * erix-agent 0.29.0 的 `runToolLoop` 顶层白名单，逐字抄自
+ * `node_modules/erix-agent/src/loop/option-normalization.js` 的
+ * `RUN_TOOL_LOOP_OPTION_NAMES`（该常量**未从包入口导出**——包 exports 只放
+ * `.` / `./tools` / `./contract-tests`，深路径 import 会 ERR_PACKAGE_PATH_NOT_EXPORTED，
+ * 所以这里只能钉一份快照）。
+ *
+ * 它的作用不是「猜引擎」，而是把「我们不再往顶层写配置键」变成一条**可断言的集合关系**；
+ * 真正的执法者仍是引擎自己的名称闸口（下面那条 `runToolLoop` 最小 run 用例证明它不抛）。
+ * 顺序与上游一致，便于升级时逐项对照。
+ */
+const RUN_TOOL_LOOP_OPTION_NAMES_0_29 = [
+  "assemblyPort",
+  "provider",
+  "tools",
+  "executeTool",
+  "finalGuard",
+  "todoStateProvider",
+  "semanticStateProvider",
+  "modelConfig",
+  "session",
+  "store",
+  "onRound",
+  "onJudge",
+  "onToolResult",
+  "onPersistenceError",
+  "diagnostics",
+  "onObserverError",
+  "signal",
+  "onDelta",
+  "onReasoningDelta",
+  "onToolCall",
+  "onUsage",
+  "onEvent",
+  "deliverables",
+  "onFoldSummary",
+  "config",
+  "capabilities",
+];
+
+/** 0.29 名称闸口会拒掉、本项目 agent-loop 曾经平铺在顶层的 15 个键（issue #1227）。 */
+const MIGRATED_FLAT_KEYS = [
+  "runId",
+  "maxRounds",
+  "completion",
+  "retry",
+  "stallDetection",
+  "toolContext",
+  "modelMetadata",
+  "initialMessages",
+  "maxTokens",
+  "temperature",
+  "topP",
+  "wrapup",
+  "reflection",
+  "stream",
+  "context",
+];
+
+/** 按 `config.run.maxRounds` 这种路径取树里的值（测试辅助）。 */
+function readPath(tree, dottedPath) {
+  return dottedPath.split(".").reduce(
+    (node, key) => (node === undefined || node === null ? undefined : node[key]),
+    tree,
+  );
+}
+
+/**
+ * 让**引擎自己**说出某个旧扁平键的新家：0.29 的未知键报错里带
+ * `(its canonical home is config.<path>; the flat spelling is rejected)`。
+ * 这样测试不需要第二张手写的「旧名 → 新家」映射表，升级时也不会两边各改各的。
+ */
+async function canonicalHomeOf(flatKey) {
+  try {
+    await runToolLoop({ [flatKey]: 1 });
+  } catch (error) {
+    const match = /canonical home is (config\.[a-zA-Z.]+)/.exec(String(error?.message ?? ""));
+    assert.ok(match, `引擎报错没有点名新家：${error?.message}`);
+    return match[1];
+  }
+  assert.fail(`0.29 的名称闸口没有拒绝扁平键 ${JSON.stringify(flatKey)}`);
+}
+
+test("载荷形状：buildErixRunOptions 的顶层键集合 ⊆ 0.29 白名单，15 个旧扁平键一个不留", () => {
+  // 用 agent-loop 的真实载荷形状（含函数/端口/回调 + 全套命名空间配置）。
+  const options = buildErixRunOptions({
+    provider: {},
+    executeTool: async () => "ok",
+    store: { appendRound: async () => {}, load: async () => [] },
+    modelConfig: { context_window_tokens: 32768, max_output_tokens: 4096 },
+    signals: ["done"],
+    config: {
+      input: {
+        messages: [{ role: "user", content: [{ type: "text", text: "go" }] }],
+        wrapup: false,
+      },
+      run: {
+        runId: "run-shape",
+        maxRounds: 12,
+        stallDetection: false,
+        completion: { maxNoToolRounds: 4 },
+        reflection: { enabled: true, roundJudge: true },
+        stream: true,
+      },
+      tuning: { maxTokens: 4096, temperature: 0.2, topP: 0.8 },
+      timing: { retry: { attempts: 3, backoffBaseMs: 10, backoffMaxMs: 20 } },
+      folding: { context: { budgetTokens: 80000, keepRounds: 6, stripHistoricalImages: true } },
+      metadata: { toolContext: { trace_id: "trace-shape" } },
+    },
+    capabilities: {
+      hooks: { onAfterFold: () => {} },
+      ports: { judgeProvider: { chat: async () => ({}) } },
+    },
+    signal: new AbortController().signal,
+    onDelta: () => {},
+    onUsage: () => {},
+    onEvent: () => {},
+  });
+
+  const allowed = new Set(RUN_TOOL_LOOP_OPTION_NAMES_0_29);
+  const offending = Object.keys(options).filter((key) => !allowed.has(key));
+  assert.deepEqual(
+    offending,
+    [],
+    `顶层出现 0.29 白名单外的键（会被名称闸口以 unknown runToolLoop option 拒掉）：${offending}`,
+  );
+  for (const flatKey of MIGRATED_FLAT_KEYS) {
+    assert.equal(
+      Object.hasOwn(options, flatKey),
+      false,
+      `旧扁平键 ${flatKey} 不得再出现在 runToolLoop 顶层`,
+    );
+  }
+  // 命名空间确实是「有货」的，不是「全清空所以没未知键」。
+  assert.equal(readPath(options, "config.run.maxRounds"), 12);
+  assert.equal(readPath(options, "config.input.wrapup"), false);
+  assert.equal(readPath(options, "config.tuning.maxTokens"), 4096);
+  assert.equal(readPath(options, "config.timing.retry.attempts"), 3);
+  assert.equal(readPath(options, "config.folding.context.keepRounds"), 6);
+  assert.equal(readPath(options, "config.metadata.toolContext.trace_id"), "trace-shape");
+  assert.equal(typeof readPath(options, "capabilities.hooks.onAfterFold"), "function");
+  assert.equal(typeof readPath(options, "capabilities.ports.judgeProvider"), "object");
+});
+
+test("载荷形状：每个旧扁平键的取值都落在引擎自己点名的那个新家里", async () => {
+  const options = buildErixRunOptions({
+    provider: {},
+    executeTool: async () => "ok",
+    modelConfig: { context_window_tokens: 32768, max_output_tokens: 4096 },
+    config: {
+      input: {
+        messages: [{ role: "user", content: [{ type: "text", text: "go" }] }],
+        wrapup: false,
+      },
+      run: {
+        runId: "run-home",
+        maxRounds: 7,
+        stallDetection: false,
+        completion: { maxNoToolRounds: 2 },
+        reflection: { enabled: false },
+        stream: true,
+      },
+      tuning: { maxTokens: 1234, temperature: 0.1, topP: 0.7 },
+      timing: { retry: { attempts: 2 } },
+      folding: { context: { budgetTokens: 4321, keepRounds: 3, stripHistoricalImages: true } },
+      metadata: { toolContext: { trace_id: "trace-home" } },
+    },
+  });
+
+  // 期望值按「引擎点名的家」逐键钉住：路径来自引擎报错，值来自我们写进去的载荷。
+  const expected = {
+    runId: "run-home",
+    maxRounds: 7,
+    completion: { signals: TOUWAKA_COMPLETION_SIGNALS, maxNoToolRounds: 2 },
+    retry: { attempts: 2, backoffBaseMs: 1500, backoffMaxMs: 10000 },
+    // 本用例显式给了 stallDetection: false（agent-loop 的实际取值），归一后仍是 false。
+    stallDetection: false,
+    toolContext: { trace_id: "trace-home" },
+    modelMetadata: { contextWindowTokens: 32768, maxOutputTokens: 4096 },
+    initialMessages: [{ role: "user", content: [{ type: "text", text: "go" }] }],
+    maxTokens: 1234,
+    temperature: 0.1,
+    topP: 0.7,
+    wrapup: false,
+    reflection: { enabled: false },
+    stream: true,
+    context: { budgetTokens: 4321, keepRounds: 3, stripHistoricalImages: true },
+  };
+  assert.deepEqual(Object.keys(expected).sort(), [...MIGRATED_FLAT_KEYS].sort());
+
+  for (const [flatKey, value] of Object.entries(expected)) {
+    const home = await canonicalHomeOf(flatKey);
+    assert.deepEqual(
+      readPath(options, home),
+      value,
+      `${flatKey} 的取值必须落在引擎点名的 ${home}`,
+    );
+  }
+});
+
+/**
+ * 带非流式 `chat` 的假 provider：撞到轮数上界时引擎会走 `forceFinalIfNeeded`（终稿兜底），
+ * 那条路径调 `provider.chat`。流式与非流式分别计数，免得「上界是否生效」的断言被兜底调用搅浑。
+ */
+function createFakeProviderWithChat(streamResponses, chatResponses) {
+  const base = createFakeProvider(streamResponses);
+  const chatCalls = [];
+  base.chatCalls = chatCalls;
+  base.provider.chat = async (request) => {
+    const index = chatCalls.length;
+    chatCalls.push(request);
+    const response = (chatResponses ?? streamResponses)[
+      Math.min(index, (chatResponses ?? streamResponses).length - 1)
+    ];
+    return response;
+  };
+  return base;
+}
+
+test("引擎侧生效：config.run.maxRounds 就是引擎的循环上界（不是只没报错）", async () => {
+  const provider = createFakeProviderWithChat([
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+  ], [textResponse("收尾")]);
+  const events = [];
+  const options = buildErixRunOptions({
+    provider: provider.provider,
+    executeTool: async () => "ok",
+    modelConfig: { context_window_tokens: 32768, max_output_tokens: 4096 },
+    config: {
+      input: { initialUserMessage: "go" },
+      run: {
+        runId: "run-max-rounds",
+        maxRounds: 2,
+        completion: { maxNoToolRounds: 2 },
+        stream: true,
+      },
+    },
+    onEvent: (event) => events.push(event),
+  });
+
+  const result = await runToolLoop(options);
+
+  // provider 每轮都要工具 ⇒ 唯一能停下来的原因是轮数上界。
+  assert.equal(result.rounds, 2, "config.run.maxRounds 必须成为引擎的循环上界");
+  assert.equal(provider.calls.length, 2, "流式调用次数必须被 config.run.maxRounds=2 卡住");
+  // 引擎在上界处发出的裁决事件（撞到 maxRounds 后发 forced_final，reason 点名是轮数上界）。
+  const forcedFinal = events.find((event) => event.type === "forced_final");
+  assert.ok(forcedFinal, "撞上 maxRounds 必须由引擎自己发 forced_final");
+  assert.equal(forcedFinal.reason, "max_rounds_cap", "上界截断的停因必须来自引擎");
+});
+
+test("引擎侧生效：config.folding.context 的预算真的驱动折叠，回调走 capabilities.hooks", async () => {
+  const provider = createFakeProviderWithChat([
+    toolResponse({ blob: "x".repeat(400) }),
+    toolResponse({ blob: "x".repeat(400) }),
+    toolResponse({ blob: "x".repeat(400) }),
+    textResponse("done"),
+  ], [textResponse("收尾")]);
+  const folds = [];
+  const options = buildErixRunOptions({
+    provider: provider.provider,
+    executeTool: async () => ({ success: true, data: "y".repeat(400) }),
+    modelConfig: { context_window_tokens: 1000, max_output_tokens: 100 },
+    config: {
+      input: { initialUserMessage: "go" },
+      run: {
+        runId: "run-folding",
+        maxRounds: 6,
+        completion: { maxNoToolRounds: 2 },
+        stream: true,
+      },
+      // 预算 300 ⇒ 工具轮把上下文顶过预算后必然折叠；keepRounds=1 决定每次折几轮。
+      folding: { context: { budgetTokens: 300, keepRounds: 1, stripHistoricalImages: true } },
+    },
+    capabilities: { hooks: { onAfterFold: (payload) => folds.push(payload) } },
+  });
+
+  await runToolLoop(options);
+
+  assert.ok(
+    folds.length > 0,
+    "config.folding.context + capabilities.hooks.onAfterFold 必须让折叠真的发生",
+  );
+  const fold = folds[0];
+  assert.ok(
+    fold.tokensBefore > 300,
+    `折叠前 tokens 必须超过 config 里的预算 300，实际 ${fold.tokensBefore}`,
+  );
+  assert.ok(
+    fold.tokensAfter <= 300,
+    `折叠后 tokens 必须落回预算内，实际 ${fold.tokensAfter}`,
+  );
+  assert.equal(fold.foldedRounds, 1, "keepRounds=1 时每次折叠 1 轮");
+  assert.ok(Array.isArray(fold.messages) && fold.messages.length > 0, "onAfterFold 必须拿到折叠后的消息");
+});
+
+test("引擎侧生效：capabilities.ports.judgeProvider 是 reflection.judge.provider 的能力槽位", async () => {
+  const provider = createFakeProviderWithChat([
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+    toolResponse(),
+  ], [textResponse("收尾")]);
+  const judgeCalls = [];
+  const options = buildErixRunOptions({
+    provider: provider.provider,
+    executeTool: async () => "ok",
+    modelConfig: { context_window_tokens: 32768, max_output_tokens: 100 },
+    config: {
+      input: { initialUserMessage: "go" },
+      run: {
+        runId: "run-judge-port",
+        maxRounds: 20,
+        stream: true,
+        reflection: { enabled: true, roundJudge: true },
+      },
+    },
+    capabilities: {
+      ports: {
+        judgeProvider: {
+          async chat(request) {
+            judgeCalls.push(request);
+            return { content: [{ type: "text", text: "{\"action\":\"accept\",\"reason\":\"ok\"}" }] };
+          },
+        },
+      },
+    },
+  });
+
+  const result = await runToolLoop(options);
+  assert.ok(result.rounds > 0);
+  assert.ok(
+    judgeCalls.length > 0,
+    "capabilities.ports.judgeProvider 必须真的被引擎当成 judge 端口调用",
+  );
+});
+
+test("旧扁平写法被引擎当场拒，且报错点名新家（迁移不是「悄悄生效」）", async () => {
+  for (const flatKey of MIGRATED_FLAT_KEYS) {
+    await assert.rejects(
+      () => runToolLoop({ [flatKey]: 1 }),
+      (error) => {
+        assert.match(String(error?.message), /unknown runToolLoop option/);
+        assert.match(String(error?.message), /canonical home is config\./);
+        return true;
+      },
+      `扁平键 ${flatKey} 必须被 0.29 的名称闸口拒绝`,
+    );
+  }
 });
