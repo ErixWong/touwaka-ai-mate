@@ -79,7 +79,7 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
 
 | 方法 | 语义 | 走的路径 |
 |---|---|---|
-| `loadByDedupKey(key, dedupKey)` | 命中返回**完整**存储记录（与 `load()` 对应轮逐字段一致），未命中 `null` | SQL 按 `request_id` 限定并用 `dedup_key` / `record_json.roundKey` 的 OR 取候选；按 `round_no DESC, id DESC` 取**最近 N 条候选**（资源上界，issue #1166；默认 `DEFAULT_DEDUP_CANDIDATE_LIMIT = 200`，环境变量 `LLM_KIT_DEDUP_CANDIDATE_LIMIT` 可覆盖），翻正后按 `round_no, id` 顺序完整装配，再用上游 `??` 判据过滤。**不能 `LIMIT 1`**（最新候选可能是必须 miss 的伪候选，会截掉真命中）；真命中落在窗口外时按“未命中”处理，判据本身不变 |
+| `loadByDedupKey(key, dedupKey)` | 命中返回**完整**存储记录（与 `load()` 对应轮逐字段一致），未命中 `null` | SQL 按 `request_id` 限定并用 `dedup_key` / `record_json.roundKey` 的 OR 取候选；按 `round_no DESC, id DESC` 取**最近 N 条候选**（资源上界，issue #1166；默认 `DEFAULT_DEDUP_CANDIDATE_LIMIT = 200`，环境变量 `LLM_KIT_DEDUP_CANDIDATE_LIMIT` 可覆盖），翻正后按 `round_no, id` 顺序完整装配，再用**与写侧同一个** `recordKey(runId, record)` 判据过滤（#1227 B1 起；= 上游 `transcript-dedup.js#recordKey`：`dedupKey ?? roundKey ?? <runId>:round:<n>`）。**不能 `LIMIT 1`**（最新候选可能是必须 miss 的伪候选，会截掉真命中）；真命中落在窗口外时按“未命中”处理，判据本身不变 |
 | `loadMaxRound(key)` | 等价于对 `load()` 结果取 `Math.max(0, …safe-integer round…)`；**空会话返回 `null`** | `idx_agent_rounds_request` 上的 `MAX(round_no)` |
 
 引擎行为与后果：
@@ -94,8 +94,9 @@ erix-llm-kit 的"驱动模型"：接口在库，DB 适配器在项目侧（ADR-0
   宁可用 JSON 函数扫本会话行也不加列）。现有会话最大 18 round，所以今日收益主要是
   契约合规 + 移除事务内全量读，而不是吞吐数字。
 - **SQL OR 仅用于候选，不是命中判据**：探针对每条候选复用 `assembleRoundRecord()`，按
-  `round_no ASC, id ASC`（与 `load()` 相同）排序装配，再严格使用上游判据
-  `(record?.dedupKey ?? record?.roundKey) === dedupKey` 并返回第一条命中。若同一条记录的
+  `round_no ASC, id ASC`（与 `load()` 相同）排序装配，再严格使用**写侧同一个**
+  `recordKey(runId, record)`（#1227 B1；= `dedupKey ?? roundKey ?? <runId>:round:<n>`，
+  与上游 `src/store/transcript-dedup.js:72-76` 同式）并返回第一条命中。若同一条记录的
   `dedupKey=A`、`roundKey=B`，查询 `B` 会 miss、查询 `A` 才会命中；JSON `null` 也由 JS 的
   nullish 语义处理，不依赖 SQL `NULL` 的不同语义。上游对该探针契约仍在
   [erix-agent issue #171](https://github.com/ErixWong/erix-agent/issues/171) 裁决。
@@ -194,6 +195,31 @@ provider 调用与 transcript persistence 写入重试。Agent 流式路径直�
   「折叠函数**就是**上游导出的那一个（宿主不另存副本）」与「#439 守卫：载体已带折好的正文（无 `ts`）
   + 消息行（带 `ts`）不重复入列」。
 
+## 与 erix-agent 0.29 的身份键口径对齐（#1227 阶段 2 切片 B1）
+
+**一句话：写侧身份键与上游 `recordKey` 对齐，写/读（含折叠）不再各算一套。**
+
+- 判据唯一入口 `transcript-store.js#recordKey(runId, record)` =
+  ``record?.dedupKey ?? record?.roundKey ?? `${String(runId)}:round:${String(record?.round)}` ``，
+  与上游 `node_modules/erix-agent/src/store/transcript-dedup.js:72-76` **逐字同式**。上游把它放在
+  引擎内部模块（包 `exports` 只有 `.` / `./tools` / `./contract-tests`，深路径 import 抛
+  `ERR_PACKAGE_PATH_NOT_EXPORTED`），故只能本地复制这一行；**上游改判据时必须同步**。
+- 共用点（此前是两套）：`agent_transcript_rounds` 插入键、`agent_rounds` 插入键、
+  `loadByDedupKey` 的 JS 判据。宿主侧不再有第二处自己拼 `<runId>:round:<n>`。
+  （`loadMaxRound` 没有身份谓词——它是 `MAX(round_no)`，不受影响。）
+- 修的缺陷：B1 之前写侧是 `dedupKey ?? <runId>:round:<n>`，**缺 `roundKey` 这一环**，而折叠侧
+  （上游 `message-rows.js#rowKey` = `dedupKey ?? roundKey`）与上游 store 都有它 ⇒ roundKey-only
+  记录（崩溃重跑时顶层 `round`/`ts` 漂移，二者在上游属 volatile）会落两行，上游 memory store
+  同序列只落一行。现在同 key + 同 payload 的重放幂等。
+- 取值域变化与存量行：只有「无 `dedupKey`、有 `roundKey`」的记录换键（隐式键 → roundKey）。
+  生产实测（2026-10-31，110 行 × 2 表）：canonical 侧 roundKey-only 行 **0** 条、
+  `recordKey` 与 `dedup_key` 列不一致的行 **0** 条；`agent_rounds` 侧 legacy 读侧身份与列值不一致
+  的行 **0** 条；roundKey 值撞上任何已有 `dedup_key` 的 **0** 处，跨 request_id 复用的 roundKey **0** 个。
+  ⇒ **存量行不会被新口径重写成第二行**；列宽 `varchar(255)`（现存键长 35–59、roundKey 最长 28）
+  富余，**零 DDL**。
+- **仍未做（B2）**：同 key 异 payload 的冲突指纹。本店写侧仍是 `INSERT IGNORE`「先到先得、后到忽略」，
+  上游 `dedup_payload_conflict` 那 4 格在 `npm run test:store-contract` 里仍红（就是 B2 的工作清单）。
+
 ## 测试
 
 契约测试消费已发布的 `erix-agent` 包，通过
@@ -217,6 +243,11 @@ npm run test:llm-kit   # 不要用目录形式 node --test tests/llm-kit-adapter
 
 0.23.0 消息行折叠的回归（纯函数、不连库）在
 `tests/llm-kit-adapters/transcript-message-rows-fold.test.mjs`，已列入 `npm run test:llm-kit`。
+
+`npm run test:store-contract` 是**上游契约套件 + 键形状矩阵**（真库、真适配链），故意**不进**
+`test:llm-kit`：它今天仍有 4 格红，全部是 B2 的 payload 冲突指纹（同 `dedupKey` 异 payload /
+数组顺序 / 宿主未知字段 / 回落到 roundKey 与隐式键），红就是阶段 2 的工作清单。
+`#1227 阶段 2 切片 B1` 已把矩阵里「写侧身份键缺 roundKey 回落」两格翻绿（现为回归守卫）。
 
 测试会在 `llm_kit_test` 库内建/删 `providers` 与 `ai_models` 两表（sequelize sync 真实模型定义），
 **不要**把凭据指向 touwaka_mate 生产库。
