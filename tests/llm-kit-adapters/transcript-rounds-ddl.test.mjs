@@ -547,3 +547,137 @@ test("两条新步骤都在 MIGRATIONS 里注册且 check 以表存在为幂等�
     [...ATR_STEPS].sort(),
   );
 });
+
+// ==================== #1227：agent_rounds 的行形状生成列（对齐 erix 0.23 逐消息行） ====================
+
+/**
+ * 为什么这三列存在（issue #1227 取证结论）：erix 0.23 起「一条消息一落盘」，展示表
+ * agent_rounds 变成**一轮多行**——载体轮行 `<runId>:engine:round:<n>`（无 kind/seq）+
+ * 消息行 `<runId>:msg:<n>:<seq>`（`kind:"message"` + 轮内递增 `seq`）+ 分片行（再用
+ * `partOf` 指回同一逻辑消息首片行的 dedupKey）。上游形状见 erix-agent
+ * `src/store/message-rows.js` 文件头与 `docs/host-upgrade-guide-0.23.0_cn.md` §2/§6。
+ *
+ * 这三列是**从 record_json 派生的 VIRTUAL 生成列**，不是写入端多写一份：
+ * 判定「这行是载体还是消息」「消息行的轮内次序」「分片挂在谁身上」原本只能靠
+ * JSON_EXTRACT 现场解析（无索引、每个消费者各写一遍）。生成列让形状可索引、且
+ * **物理上不可能与 record_json 漂移**（显式写生成列会被服务端拒绝，下面有断言）。
+ */
+test("agent_rounds 的 kind/seq/part_of 是从 record_json 派生的 VIRTUAL 生成列", runWhenCreds, async () => {
+  const expected = [
+    ["kind", "varchar"],
+    ["seq", "int"],
+    ["part_of", "varchar"],
+  ];
+  for (const [column, dataType] of expected) {
+    const info = await columnInfo("agent_rounds", column);
+    assert.ok(info, `agent_rounds.${column} 不存在（#1227 的 schema 对齐未落地）`);
+    assert.equal(info.DATA_TYPE, dataType, `agent_rounds.${column} 类型必须是 ${dataType}`);
+    assert.match(
+      String(info.EXTRA ?? ""),
+      /VIRTUAL GENERATED/i,
+      `agent_rounds.${column} 必须是 VIRTUAL 生成列：写入端多写一列就是第二份真相`,
+    );
+    assert.equal(
+      info.IS_NULLABLE,
+      "YES",
+      `agent_rounds.${column} 必须允许 NULL（载体行/种子行本来就没有这些字段）`,
+    );
+  }
+
+  const idx = await indexRows("agent_rounds", "idx_agent_rounds_request_kind");
+  assert.ok(idx.length > 0, "agent_rounds.idx_agent_rounds_request_kind 不存在");
+  assert.deepEqual(
+    idx.map((row) => row.COLUMN_NAME),
+    ["request_id", "kind", "seq"],
+    "索引列必须是 (request_id, kind, seq)",
+  );
+  assert.equal(idx[0].NON_UNIQUE, 1, "同轮多行是合法形状，这个索引绝不许建成 UNIQUE");
+});
+
+test("agent_rounds 生成列由 record_json 派生（消息行/分片行/载体行三种形状）", runWhenCreds, async () => {
+  const requestId = `ddl-shape-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const now = new Date();
+  const shapes = [
+    {
+      dedupKey: `${requestId}:msg:1:0`,
+      record: { roundKey: `${requestId}:engine:round:1`, kind: "message", seq: 0 },
+      expected: { kind: "message", seq: 0, part_of: null },
+    },
+    {
+      dedupKey: `${requestId}:msg:1:1`,
+      record: {
+        roundKey: `${requestId}:engine:round:1`,
+        kind: "message",
+        seq: 1,
+        partOf: `${requestId}:msg:1:0`,
+      },
+      expected: { kind: "message", seq: 1, part_of: `${requestId}:msg:1:0` },
+    },
+    {
+      dedupKey: `${requestId}:engine:round:1`,
+      record: { roundKey: `${requestId}:engine:round:1`, response: { stopReason: "tool_use" } },
+      expected: { kind: null, seq: null, part_of: null },
+    },
+  ];
+  const insertSql = `
+    INSERT INTO agent_rounds
+      (id, request_id, round_no, dedup_key, folded, record_json, ts, created_at)
+    VALUES
+      (:id, :requestId, :roundNo, :dedupKey, b'0', :recordJson, :ts, :createdAt)
+  `;
+  try {
+    for (const [index, shape] of shapes.entries()) {
+      await db.sequelize.query(insertSql, {
+        replacements: {
+          id: `round_shape${index}_${now.getTime().toString(36)}`,
+          requestId,
+          roundNo: 1,
+          dedupKey: shape.dedupKey,
+          recordJson: JSON.stringify(shape.record),
+          ts: now.toISOString(),
+          createdAt: now,
+        },
+      });
+    }
+
+    const [rows] = await db.sequelize.query(
+      `SELECT dedup_key, kind, seq, part_of FROM agent_rounds
+        WHERE request_id = :requestId ORDER BY dedup_key ASC`,
+      { replacements: { requestId } },
+    );
+    assert.deepEqual(
+      rows.map(({ dedup_key: dedupKey, kind, seq, part_of: partOf }) => ({
+        dedupKey, kind, seq, part_of: partOf,
+      })),
+      shapes
+        .map((shape) => ({ dedupKey: shape.dedupKey, ...shape.expected }))
+        .sort((a, b) => (a.dedupKey < b.dedupKey ? -1 : 1)),
+      "生成列必须逐行等于 record_json 里的 kind/seq/partOf",
+    );
+
+    // 生成列不可显式写：能写进去就意味着有第二份真相、可以漂移。
+    await assert.rejects(
+      () => db.sequelize.query(`
+        INSERT INTO agent_rounds
+          (id, request_id, round_no, dedup_key, folded, record_json, ts, created_at, kind)
+        VALUES
+          (:id, :requestId, 1, :dedupKey, b'0', :recordJson, :ts, :createdAt, 'message')
+      `, {
+        replacements: {
+          id: `round_shapex_${now.getTime().toString(36)}`,
+          requestId,
+          dedupKey: `${requestId}:msg:1:9`,
+          recordJson: JSON.stringify({ kind: "message", seq: 9 }),
+          ts: now.toISOString(),
+          createdAt: now,
+        },
+      }),
+      /generated column/i,
+      "显式写生成列必须被服务端拒绝（否则列值与 record_json 可漂移）",
+    );
+  } finally {
+    await db.sequelize.query("DELETE FROM agent_rounds WHERE request_id = :requestId", {
+      replacements: { requestId },
+    });
+  }
+});

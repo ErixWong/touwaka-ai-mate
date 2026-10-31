@@ -180,6 +180,38 @@ async function getAnyExistingUserId(connection) {
 }
 
 /**
+ * agent_rounds 的行形状生成列（issue #1227）。
+ *
+ * 对齐 erix-agent 0.23 起的逐消息行形状（`src/store/message-rows.js` 文件头、
+ * `docs/host-upgrade-guide-0.23.0_cn.md` §2/§6）：消息行带 `kind:"message"` + 轮内递增
+ * `seq`，分片行再用 `partOf` 指回同一逻辑消息首片行的 dedupKey；引擎轮行/载体行三者全无。
+ *
+ * 为什么是**生成列**而不是写入端多写一列：这三个字段本来就随 RoundRecord 进
+ * agent_rounds.record_json（SUMMARY_FIELDS 只剔 round/dedupKey/ts/messages/folded/
+ * foldedRoundRange），从 record_json 派生 ⇒ 只有一份真相、永不漂移，也不需要回填。
+ * 不选 STORED：VIRTUAL 不占行空间且 MariaDB 支持在 VIRTUAL 列上建索引（本库 11.7.2 实测）。
+ * 列定义必须与 scripts/init-database.js 基线逐字一致（tests/llm-kit-adapters/
+ * init-database-baseline.test.mjs 断言 5 逐字段比对）。
+ */
+const AGENT_ROUNDS_SHAPE_COLUMNS = Object.freeze([
+  {
+    name: 'kind',
+    after: 'record_json',
+    ddl: "kind VARCHAR(16) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(record_json, '$.kind'))) VIRTUAL COMMENT 'erix 0.23 行形状：消息行=\"message\"，载体行/种子行=NULL（生成列，不写第二份真相）'",
+  },
+  {
+    name: 'seq',
+    after: 'kind',
+    ddl: "seq INT GENERATED ALWAYS AS (CAST(JSON_EXTRACT(record_json, '$.seq') AS SIGNED)) VIRTUAL COMMENT 'erix 0.23 行形状：消息行轮内序号（从 0 递增），载体行=NULL'",
+  },
+  {
+    name: 'part_of',
+    after: 'seq',
+    ddl: "part_of VARCHAR(255) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(record_json, '$.partOf'))) VIRTUAL COMMENT 'erix 0.23 行形状：分片行指回同一逻辑消息首片行的 dedupKey，非分片行=NULL'",
+  },
+]);
+
+/**
  * 迁移定义
  * 每个迁移包含检查函数和执行函数
  * 所有迁移都是幂等的：check 返回 true 表示已存在，跳过迁移
@@ -4060,14 +4092,42 @@ const MIGRATIONS = [
           folded BIT(1) NOT NULL DEFAULT b'0' COMMENT '是否已折叠（compaction）',
           folded_range JSON NULL COMMENT '折叠范围',
           record_json JSON NULL COMMENT 'RoundRecord 其余字段（load() 重组往返保真）',
+          kind VARCHAR(16) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(record_json, '$.kind'))) VIRTUAL COMMENT 'erix 0.23 行形状：消息行="message"，载体行/种子行=NULL（生成列，不写第二份真相）',
+          seq INT GENERATED ALWAYS AS (CAST(JSON_EXTRACT(record_json, '$.seq') AS SIGNED)) VIRTUAL COMMENT 'erix 0.23 行形状：消息行轮内序号（从 0 递增），载体行=NULL',
+          part_of VARCHAR(255) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(record_json, '$.partOf'))) VIRTUAL COMMENT 'erix 0.23 行形状：分片行指回同一逻辑消息首片行的 dedupKey，非分片行=NULL',
           ts VARCHAR(32) NOT NULL COMMENT 'erix record.ts ISO 字符串原样存',
           created_at DATETIME NOT NULL COMMENT '应用侧写入',
           PRIMARY KEY (id),
           UNIQUE KEY uk_agent_rounds_dedup_key (dedup_key),
-          KEY idx_agent_rounds_request (request_id)
+          KEY idx_agent_rounds_request (request_id),
+          KEY idx_agent_rounds_request_kind (request_id, kind, seq)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
       console.log('  ✓ Created agent_rounds table');
+    }
+  },
+  {
+    // #1227：存量库补建生成列（新建库走上一条建表步骤，已是同一形状）。
+    // 为什么不写写入端：kind/seq/partOf 本来就随 record_json 落盘（SUMMARY_FIELDS 不剔它们），
+    // 生成列从 record_json 派生 ⇒ 永远不可能与记录本体漂移，也不需要回填（存量行读时自动算）。
+    name: 'agent_rounds message-row shape columns (#1227)',
+    check: async (conn) => await hasColumn(conn, 'agent_rounds', 'kind')
+      && await hasColumn(conn, 'agent_rounds', 'seq')
+      && await hasColumn(conn, 'agent_rounds', 'part_of')
+      && await hasIndex(conn, 'agent_rounds', 'idx_agent_rounds_request_kind'),
+    migrate: async (conn) => {
+      // AFTER 让存量库的列顺序与新建库（建表语句里的位置）一致，避免“同结构不同列序”。
+      for (const { name, ddl, after } of AGENT_ROUNDS_SHAPE_COLUMNS) {
+        if (await hasColumn(conn, 'agent_rounds', name)) continue;
+        await conn.execute(`ALTER TABLE agent_rounds ADD COLUMN ${ddl} AFTER ${after}`);
+        console.log(`  ✓ Added agent_rounds.${name} generated column`);
+      }
+      if (!await hasIndex(conn, 'agent_rounds', 'idx_agent_rounds_request_kind')) {
+        await conn.execute(
+          'ALTER TABLE agent_rounds ADD INDEX idx_agent_rounds_request_kind (request_id, kind, seq)',
+        );
+        console.log('  ✓ Added agent_rounds.idx_agent_rounds_request_kind index');
+      }
     }
   },
   {

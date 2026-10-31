@@ -326,3 +326,49 @@ test('补进 init 基线的两张投影表守红线：无 TINYINT、布尔是 BI
   assert.match(initBaseline.get('agent_transcript_rounds'), /UNIQUE KEY uk_atr_dedup_key \(dedup_key\)/);
   assert.match(initBaseline.get('agent_transcript_rounds'), /KEY idx_atr_request_round \(request_id, round_no\)/);
 });
+
+// ==================== 7. #1227：agent_rounds 的行形状生成列（两侧都钉住） ====================
+
+/**
+ * erix 0.23 起展示表 agent_rounds 是「一轮多行」（载体轮行 + 逐条消息行 + 分片行），
+ * 三者的区别只能从 record_json 里看出来：#1227 把 `kind` / `seq` / `part_of` 做成
+ * **VIRTUAL 生成列**（从 record_json 派生，不写第二份真相），并给 (request_id, kind, seq)
+ * 建普通索引。这里钉住的是**形状**，不是行为：
+ *   · 必须仍是生成列（若有人改成写入端手写列，列值与 record_json 就能漂移）；
+ *   · 必须 VIRTUAL 且可空（载体行/种子行没有这三个字段）；
+ *   · 索引必须存在且非唯一（同轮多行合法）。
+ * 断言 5 已经保证 init 基线 == upgrade 建表步骤，故只钉 init 侧即可两侧生效。
+ */
+test('#1227 agent_rounds 的 kind/seq/part_of 是从 record_json 派生的 VIRTUAL 生成列', () => {
+  const ddl = initBaseline.get('agent_rounds');
+  assert.ok(ddl, 'agent_rounds 不在 init 基线里');
+
+  const generatedColumns = [
+    ["kind", /kind VARCHAR\(16\) GENERATED ALWAYS AS \(JSON_UNQUOTE\(JSON_EXTRACT\(record_json, '\$\.kind'\)\)\) VIRTUAL/],
+    ["seq", /seq INT GENERATED ALWAYS AS \(CAST\(JSON_EXTRACT\(record_json, '\$\.seq'\) AS SIGNED\)\) VIRTUAL/],
+    ["part_of", /part_of VARCHAR\(255\) GENERATED ALWAYS AS \(JSON_UNQUOTE\(JSON_EXTRACT\(record_json, '\$\.partOf'\)\)\) VIRTUAL/],
+  ];
+  for (const [column, pattern] of generatedColumns) {
+    assert.match(
+      ddl,
+      pattern,
+      `agent_rounds.${column} 必须是从 record_json 派生的 VIRTUAL 生成列（#1227）`,
+    );
+    assert.doesNotMatch(
+      ddl,
+      new RegExp(`\\b${column}\\s+(VARCHAR|INT)[^,]*NOT NULL`),
+      `agent_rounds.${column} 必须可空：载体行/种子行没有这个字段`,
+    );
+  }
+
+  assert.match(
+    ddl,
+    /KEY idx_agent_rounds_request_kind \(request_id, kind, seq\)/,
+    'agent_rounds 缺 (request_id, kind, seq) 普通索引',
+  );
+  assert.doesNotMatch(
+    ddl,
+    /UNIQUE KEY[^,]*\([^)]*\bkind\b/,
+    '同轮多行是合法形状：kind 相关索引绝不许建成 UNIQUE',
+  );
+});

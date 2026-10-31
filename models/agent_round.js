@@ -53,6 +53,21 @@ export default class agent_round extends Model {
       allowNull: true,
       comment: "RoundRecord 其余字段（load() 重组往返保真）"
     },
+    kind: {
+      type: DataTypes.STRING(16),
+      allowNull: true,
+      comment: "erix 0.23 行形状：消息行=\"message\"，载体行\/种子行=NULL（生成列，不写第二份真相）"
+    },
+    seq: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: "erix 0.23 行形状：消息行轮内序号（从 0 递增），载体行=NULL"
+    },
+    part_of: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: "erix 0.23 行形状：分片行指回同一逻辑消息首片行的 dedupKey，非分片行=NULL"
+    },
     ts: {
       type: DataTypes.STRING(32),
       allowNull: false,
@@ -90,6 +105,15 @@ export default class agent_round extends Model {
         using: "BTREE",
         fields: [
           { name: "request_id" },
+        ]
+      },
+      {
+        name: "idx_agent_rounds_request_kind",
+        using: "BTREE",
+        fields: [
+          { name: "request_id" },
+          { name: "kind" },
+          { name: "seq" },
         ]
       },
     ]
