@@ -280,6 +280,12 @@ test("appendRound dedup 并发竞态：INSERT IGNORE 未写入时在子行前 fa
         const statement = String(sql);
         assert.equal(options.transaction, tx, "点查与 INSERT 必须沿用同一事务");
         if (/SELECT id FROM agent_rounds WHERE dedup_key/.test(statement)) return [[], []];
+        // #1227 阶段 2 切片 B2：canonical 写入提前到**任何投影写之前**（冲突判据必须先跑）。
+        // 本用例的靶子是「agent_rounds 撞键时在子行之前 fail-fast」，故这里让 canonical
+        // 写入成功（affectedRows=1，没有既有行可比对）。断言一字未改，只补了这条桩。
+        if (/INSERT IGNORE INTO agent_transcript_rounds/.test(statement)) {
+          return [{ affectedRows: 1 }, []];
+        }
         if (/INSERT IGNORE INTO agent_rounds/.test(statement)) return [{ affectedRows: 0 }, []];
         if (/INSERT INTO chat_tool_calls/.test(statement)) childWrites.push(statement);
         throw new Error(`意外的数据库查询：${statement}`);
