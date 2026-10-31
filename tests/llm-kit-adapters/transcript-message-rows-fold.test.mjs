@@ -114,11 +114,20 @@ test("宿主 appendUserTurn 的 :input: 行（无 seq）不被折叠吸走", () 
   );
 });
 
-test("同 dedupKey 的消息行重跑只入列一次（persist 重试幂等）", () => {
-  const rows = engineRows023();
-  const messageRow = rows[1];
-  const folded = foldMessageRows([rows[3], { ...messageRow }, { ...messageRow }]);
-  assert.equal(pick(folded, `${RUN}:engine:round:1`).messages.length, 1);
+// #1227 阶段 2 切片 B0：折叠**委托上游**，宿主侧不再保留第二份实现。
+// 原先这里钉的是"同 dedupKey 的消息行重跑只入列一次"——那是本地副本自加的行级去重。
+// 该形状在库里落不出来（`agent_rounds` / `agent_transcript_rounds` 的 dedup_key 都是唯一键，
+// `INSERT IGNORE` 先到先得），而在折叠层静默丢一行会把「同 key 异 payload」的冲突行藏起来
+//（那是 B1/B2 的靶子，上游契约格 `同 dedupKey 异 payload 明确报冲突`）。故这层去重随本地副本一起删除，
+// 本格改成**锁住委托本身**：折叠函数必须**是**上游导出的那一个（防止有人再补一份副本）。
+test("折叠实现 = 上游导出的 foldMessageRows（宿主侧不另存副本，#1227 B0）", async () => {
+  const upstream = await import("erix-agent");
+  assert.equal(typeof upstream.foldMessageRows, "function", "上游 0.29 必须从包根导出折叠函数");
+  assert.equal(
+    foldMessageRows,
+    upstream.foldMessageRows,
+    "宿主必须直接委托上游（import 别名），不得再写一份本地折叠（两份实现 = 静默漂移）",
+  );
 });
 
 test("同轮多载体行时正文只挂第一条载体（上游口径），并保留载体自带的用户问题", () => {
@@ -167,16 +176,31 @@ test("折叠后的每条消息带它自己那一行的 ts（上游 #439）", () 
   );
 });
 
-test("同正文不同 ts 不重复入列（#439 守卫：比较两侧都剥掉信封 ts）", () => {
-  const carrier = { dedupKey: `${RUN}:engine:round:2`, round: 2 };
+// #1227 阶段 2 切片 B0：本格改成**升级现场**（旧载体已带折好的正文、消息行又带着自己的 ts），
+// 这才是上游 issue #439 守卫真正要防的形态。原先是"两条正文相同的独立消息行只入列一条"——
+// 那是本地副本按内容签名去重的副作用（会把"同一句话说了两遍"的两条逻辑消息吞成一条，静默丢正文），
+// 上游不做这层去重（正文相同 ≠ 身份相同），故本格随之改为钉上游的**逐字段深比较 + 剥掉信封 ts**。
+test("#439 守卫：载体已带折好的正文（无 ts）+ 消息行（带 ts）不重复入列", () => {
+  const carrier = {
+    dedupKey: `${RUN}:engine:round:2`,
+    round: 2,
+    // ≤0.24 折出来的载体：消息上没有信封 ts
+    messages: [
+      { role: "user", content: [{ type: "text", text: "同一条" }] },
+      { role: "assistant", content: [{ type: "text", text: "同一条回答" }] },
+    ],
+  };
   const folded = foldMessageRows([
     carrier,
     { dedupKey: `${RUN}:msg:2:0`, round: 2, kind: "message", seq: 0, ts: "2026-01-01T00:00:01.000Z", messages: [{ role: "user", content: [{ type: "text", text: "同一条" }] }] },
-    { dedupKey: `${RUN}:msg:2:1`, round: 2, kind: "message", seq: 1, ts: "2026-01-01T00:00:02.000Z", messages: [{ role: "user", content: [{ type: "text", text: "同一条" }] }] },
+    { dedupKey: `${RUN}:msg:2:1`, round: 2, kind: "message", seq: 1, ts: "2026-01-01T00:00:02.000Z", messages: [{ role: "assistant", content: [{ type: "text", text: "同一条回答" }] }] },
   ]);
+  const out = folded.find((r) => r.dedupKey === `${RUN}:engine:round:2`);
+  assert.equal(out.messages.length, 2, "信封 ts 不参与身份判定：已折过的正文不得因 ts 差异再折一遍");
   assert.equal(
-    folded.find((r) => r.dedupKey === `${RUN}:engine:round:2`).messages.length,
-    1,
-    "正文相同即视为已折过，ts 不参与身份判定",
+    folded.filter((record) => record.kind === "message").length,
+    0,
+    "消息行是重复副本，不得作为独立行留在结果里",
   );
+  assert.deepEqual(out.messages.map((m) => m.content[0].text), ["同一条", "同一条回答"]);
 });

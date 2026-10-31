@@ -168,15 +168,20 @@ provider 调用与 transcript persistence 写入重试。Agent 流式路径直�
 轮行（`<runId>:engine:round:<n>`）只留元数据、**根本没有 `messages` 这个键**。一句话口径：
 **`store.load()` 就是正文 API**，以前「从 journal 行里读正文」成立的事，现在只对 `load()` 的返回值成立。
 
-- **已适配**：`transcript-store.js` 导出 `foldMessageRows()`，`load()` 的 `new`（canonical）与 `legacy`
-  两条读路径返回前都把消息行折回轮行，所以 `records.flatMap(r => r.messages ?? [])` 仍是模型当时看到的
-  序列（引擎 `resume-manager#restoreResume` 重建上下文的唯一口径）。上游 `src/store/message-rows.js`
-  **未从包入口导出**（包 `exports` 只放 `.` / `./tools` / `./contract-tests`，深路径 import 会
-  `ERR_PACKAGE_PATH_NOT_EXPORTED`），故折叠是宿主侧等价实现；口径逐条对齐上游：同轮取**第一条**载体、
-  `rowKey` 取 `dedupKey ?? roundKey` 且必须非空、无载体行时消息行原样保留（崩溃点矩阵）、无可折叠消息行时
-  返回**入参同一引用**（0.23 之前的账本逐字不变）、只有带 `seq` 的行参与（`:input:` 行被吸走会让
-  `appendUserTurn` 幂等失效）、`partOf` 分片拼回同一条消息。唯一刻意的本地差异：载体自带 `messages` 时
-  **取并集而不是覆盖**（legacy 档里宿主预写的用户行就是该轮第一条载体，覆盖会丢用户问题）。
+- **已适配（#1227 阶段 2 切片 B0 起为委托）**：`transcript-store.js` 导出 `foldMessageRows()`，`load()` 的
+  `new`（canonical）与 `legacy` 两条读路径返回前都把消息行折回轮行，所以
+  `records.flatMap(r => r.messages ?? [])` 仍是模型当时看到的序列（引擎 `resume-manager#restoreResume`
+  重建上下文的唯一口径）。0.23 时上游 `src/store/message-rows.js` **未从包入口导出**（包 `exports` 只放
+  `.` / `./tools` / `./contract-tests`，深路径 import 会 `ERR_PACKAGE_PATH_NOT_EXPORTED`），故当时是宿主侧
+  等价实现；**erix-agent 0.29.0 起上游把它提升为公共 API 并从包根导出**
+  （`node_modules/erix-agent/src/index.js:53`、实现 `src/store/message-rows.js:152`），宿主副本已删除，
+  `transcript-store.js` 的 `foldMessageRows` 现在是**上游函数本身的别名**（无包装层）。
+  口径（均由上游实现提供）：同轮取**第一条**载体、`rowKey` 取 `dedupKey ?? roundKey` 且必须非空、无载体行时
+  消息行原样保留（崩溃点矩阵）、无可折叠消息行时返回**入参同一引用**（0.23 之前的账本逐字不变）、只有带
+  `seq` 的行参与（`:input:` 行被吸走会让 `appendUserTurn` 幂等失效）、`partOf` 分片拼回同一条消息、
+  载体自带 `messages` 时**取并集而不是覆盖**（legacy 档里宿主预写的用户行就是该轮第一条载体，覆盖会丢
+  用户问题）。上游独有的**折叠守卫**（issue #401 R3 / #439）随之到位：载体行已经带着该轮折好的正文时，
+  这一轮的消息行按**重复副本**丢弃（比较两侧都剥掉信封 `ts`），宿主「两份都留」不再让正文翻倍。
 - **不受影响（grep 已核）**：全仓不消费 `onRound(record).messages`（§3，0.23 起它是 `undefined`）、
   不从 `snapshot.messages` 恢复上下文（§4，那份现在只是**落后副本**，恢复只取执行状态）、
   不调 `projectTranscriptForDisplay`（§5，喂原始行会重复条目且 `durationMs` 变 `undefined`）。
@@ -185,7 +190,9 @@ provider 调用与 transcript persistence 写入重试。Agent 流式路径直�
   与旧表逐字对齐的刻意设计，而能证伪它的 `transcriptStoreContract` 在无库凭据时是 skip——盲改语义不做。
 - **护栏**：`tests/llm-kit-adapters/transcript-message-rows-fold.test.mjs` 是**纯函数级**回归（不连库、
   不需要凭据，所以始终会跑到），守上游 `docs/host-upgrade-guide-0.23.0_cn.md` §6 四问里的问 1、问 2，
-  外加崩溃点、老账本透传、`:input:` 不吸走、同 key 幂等重跑、无 key 行不当载体。
+  外加崩溃点、老账本透传、`:input:` 不吸走、无 key 行不当载体，以及 #1227 B0 之后新增的两条：
+  「折叠函数**就是**上游导出的那一个（宿主不另存副本）」与「#439 守卫：载体已带折好的正文（无 `ts`）
+  + 消息行（带 `ts`）不重复入列」。
 
 ## 测试
 

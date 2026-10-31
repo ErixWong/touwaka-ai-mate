@@ -30,8 +30,8 @@
  *       `const key = dedupKey ?? `${runId}:round:${record?.round}``
  *   - 上游身份键：`node_modules/erix-agent/src/store/transcript-dedup.js:72-76`
  *       `recordKey = record?.dedupKey ?? record?.roundKey ?? `${runId}:round:${round}``
- *   - 我们折叠侧：`lib/llm-kit-adapters/transcript-store.js:264-267` `rowKeyOf`
- *       `dedupKey ?? roundKey`
+ *   - 折叠侧（#1227 阶段 2 切片 B0 起**委托上游**，不再是本地副本）：上游
+ *       `node_modules/erix-agent/src/store/message-rows.js` 的 `rowKey` = `dedupKey ?? roundKey`
  * 后果：同一条逻辑记录（roundKey 相同、payload 相同，只有 `round`/`ts` 漂移）在写侧被算成
  * 两个不同的 key ⇒ 落两行；而折叠侧与上游都认它们是同一个身份。`load()` 因此重复正文，
  * 且上游「崩溃重跑形状仍判幂等」的判据在这里失效。
