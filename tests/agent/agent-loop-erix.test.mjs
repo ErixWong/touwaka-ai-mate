@@ -898,3 +898,211 @@ test('run routes to runErix by default and to the legacy loop with ERIX_LOOP=0',
   ));
   assert.equal(legacyResult.fullContent, '任务完成 Final answer');
 });
+
+// ── #1227 阶段 2 切片 B2：同 key 异 payload 冲突的**宿主兜底** ────────────────────────────
+// 引擎对 `store.appendRound` 抛错的反应是「重试 retry.attempts 次 → 仍失败 ⇒ persistence_failed
+// 终局」（erix-agent `src/loop/orchestrator.js:1341-1370`）。对 dedup 冲突这两个反应都不对：
+// 重试必然再撞同一条既有行，整轮失败更会把「canonical 里已有同身份键的事实」当成故障。
+// 包装层 `createDedupConflictTolerantStore` 负责把它降级成「丢弃本次写入 + 记一笔」。
+
+import { createDedupConflictTolerantStore } from '../../lib/agent/agent-loop.js';
+import {
+  DEDUP_CONFLICT_CODE,
+  dedupConflictError,
+  payloadFingerprint,
+} from '../../lib/llm-kit-adapters/transcript-payload-fingerprint.js';
+
+function makeConflictError() {
+  const existing = { round: 1, messages: [{ role: 'user', content: [{ type: 'text', text: '甲' }] }] };
+  const incoming = { round: 1, messages: [{ role: 'user', content: [{ type: 'text', text: '乙' }] }] };
+  return dedupConflictError({
+    runId: 'run-b2-host',
+    key: 'run-b2-host:engine:round:1',
+    existing,
+    incoming,
+    existingFingerprint: payloadFingerprint(existing),
+    incomingFingerprint: payloadFingerprint(incoming),
+  });
+}
+
+test('createDedupConflictTolerantStore：冲突被丢弃、只记一笔日志、绝不重试', async () => {
+  const calls = [];
+  const logs = [];
+  const store = {
+    appendRound: async (runId, record) => {
+      calls.push({ runId, record });
+      throw makeConflictError();
+    },
+    load: async () => ['loaded'],
+    loadByDedupKey: async () => null,
+    loadMaxRound: async () => 3,
+  };
+  const wrapped = createDedupConflictTolerantStore(store, {
+    request_id: 'req-b2',
+    logger: { error: (message, fields) => logs.push({ message, fields }) },
+  });
+
+  const outcome = await wrapped.appendRound('run-b2-host', { round: 1, messages: [] });
+
+  assert.equal(outcome, undefined, '冲突必须被丢弃（不向上抛，也不返回伪结果）');
+  assert.equal(calls.length, 1, '宿主包装层不得重试（重试由引擎做，这里必须一次都不多）');
+  assert.equal(logs.length, 1, '必须恰好记一笔 error');
+  assert.match(logs[0].message, /冲突/);
+  const fields = logs[0].fields;
+  assert.equal(fields.event, 'erix.transcript_dedup_conflict');
+  assert.equal(fields.error_code, DEDUP_CONFLICT_CODE);
+  assert.equal(fields.request_id, 'req-b2');
+  assert.equal(fields.runId, 'run-b2-host');
+  assert.equal(fields.key, 'run-b2-host:engine:round:1');
+  assert.match(fields.existing_fingerprint, /^sha256:[0-9a-f]{24}$/u);
+  assert.match(fields.incoming_fingerprint, /^sha256:[0-9a-f]{24}$/u);
+  assert.deepEqual(fields.differing_fields, ['messages']);
+
+  // 其余方法原样透传（包装层不得吞掉读面）
+  assert.deepEqual(await wrapped.load('run-b2-host'), ['loaded']);
+  assert.equal(await wrapped.loadByDedupKey('run-b2-host', 'k'), null);
+  assert.equal(await wrapped.loadMaxRound('run-b2-host'), 3);
+});
+
+test('createDedupConflictTolerantStore：非冲突错误必须原样抛出（真故障不许被吃掉）', async () => {
+  const boom = new Error('deadlock found when trying to get lock');
+  boom.code = 'ER_LOCK_DEADLOCK';
+  const wrapped = createDedupConflictTolerantStore({
+    appendRound: async () => { throw boom; },
+    load: async () => [],
+  }, { request_id: 'req-b2', logger: { error: () => { throw new Error('日志实现抛错也不许掩盖原错'); } } });
+
+  await assert.rejects(
+    () => wrapped.appendRound('run-b2-host', { round: 1 }),
+    (error) => {
+      assert.equal(error, boom, '非冲突错误必须原样抛回引擎（走它自己的重试 + persistence_failed 路径）');
+      return true;
+    },
+  );
+});
+
+test('createDedupConflictTolerantStore：日志实现抛错不得让 run 失败', async () => {
+  const wrapped = createDedupConflictTolerantStore({
+    appendRound: async () => { throw makeConflictError(); },
+  }, {
+    request_id: 'req-b2',
+    logger: { error: () => { throw new Error('logger boom'); } },
+  });
+
+  const outcome = await wrapped.appendRound('run-b2-host', { round: 1 });
+  assert.equal(outcome, undefined, '日志实现抛错也必须吞掉（记录失败不是 run 失败）');
+});
+
+test('createDedupConflictTolerantStore：没有 appendRound 的 store 原样返回', () => {
+  const store = { load: async () => [] };
+  assert.equal(createDedupConflictTolerantStore(store), store);
+  assert.equal(createDedupConflictTolerantStore(undefined), undefined);
+});
+
+test('runErix 的 store 装配处包了冲突兜底（源码级接线断言）', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../../lib/agent/agent-loop.js', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /createDedupConflictTolerantStore\(createErixStore\(/,
+    'runErix 必须把 createErixStore 的产物交给 createDedupConflictTolerantStore 包装'
+      + '（否则引擎的重试 + persistence_failed 会把一次冲突升级成整轮失败）',
+  );
+});
+
+test('runErix 遇同 key 异 payload 冲突：丢弃本次写入、不重试、run 正常收尾', {
+  skip: creds ? false : `缺少凭据 ${CREDS_PATH}`,
+}, async () => {
+  const requestId = `run-${randomUUID()}`;
+  const conflictKey = `${requestId}:engine:round:1`;
+  const seeded = {
+    round: 1,
+    dedupKey: conflictKey,
+    roundKey: conflictKey,
+    ts: '2026-10-31T00:00:00.000Z',
+    messages: [{ role: 'user', content: [{ type: 'text', text: '盘上已有的那一版（伪造）' }] }],
+  };
+
+  const logged = [];
+  const originalError = logger.error;
+  try {
+    // 先把「同一身份键、不同 payload」的事实塞进 canonical：引擎这一轮的写入必然冲突。
+    await testDb.sequelize.query(
+      `INSERT INTO agent_transcript_rounds
+         (id, request_id, round_no, dedup_key, record_json, created_at, updated_at)
+       VALUES
+         (:id, :requestId, 1, :dedupKey, :recordJson, NOW(), NOW())`,
+      {
+        replacements: {
+          id: `atr_${randomUUID().replace(/-/g, '').slice(0, 20)}`,
+          requestId,
+          dedupKey: conflictKey,
+          recordJson: JSON.stringify(seeded),
+        },
+      },
+    );
+
+    logger.error = (message, fields) => logged.push({ message, fields });
+    const result = await createLoop({ db: testDb }).runErix(
+      createFakeExpertService({ noTool: true }),
+      createInput({
+        user_id: testUserId,
+        expert_id: testExpertId,
+        topic_id: null,
+        request_id: requestId,
+        tools: [],
+      }),
+    );
+    logger.error = originalError;
+
+    // 1. run 正常收尾（不是 persistence_failed）
+    assert.equal(result.fullContent, '任务完成 Final answer');
+    assert.equal(result.llmCallsCount, 1);
+
+    // 2. 恰好记了一笔 dedup 冲突日志（引擎没有因为「失败」而重试）
+    const conflicts = logged.filter(
+      (item) => item.fields?.event === 'erix.transcript_dedup_conflict',
+    );
+    assert.equal(conflicts.length, 1, `必须恰好一次冲突日志，实际=${JSON.stringify(logged.map((l) => l.fields?.event))}`);
+    assert.equal(conflicts[0].fields.key, conflictKey);
+    assert.equal(conflicts[0].fields.error_code, DEDUP_CONFLICT_CODE);
+    // 差异字段清单由上游 differingTopLevelFields 算：这里是「伪造的既有行 vs 引擎真实一轮」，
+    // 必然多于一个字段；只钉住最关键的那条（正文）。
+    assert.ok(
+      conflicts[0].fields.differing_fields.includes('messages'),
+      `差异字段必须点名 messages，实际=${JSON.stringify(conflicts[0].fields.differing_fields)}`,
+    );
+    assert.ok(conflicts[0].fields.differing_fields.length <= 8, '差异字段清单最多 8 项（上游同口径）');
+    assert.match(conflicts[0].fields.existing_fingerprint, /^sha256:[0-9a-f]{24}$/u);
+    assert.match(conflicts[0].fields.incoming_fingerprint, /^sha256:[0-9a-f]{24}$/u);
+    assert.equal(
+      conflicts[0].fields.existing_fingerprint,
+      payloadFingerprint(seeded),
+      '日志里的既有指纹必须能由盘上那行重算出来',
+    );
+
+    // 3. 盘上原行一字未改（既不覆盖），且投影面没有为这条冲突键写下任何行
+    const [canonicalRows] = await testDb.sequelize.query(
+      'SELECT record_json FROM agent_transcript_rounds WHERE request_id = :requestId AND dedup_key = :dedupKey',
+      { replacements: { requestId, dedupKey: conflictKey } },
+    );
+    assert.equal(canonicalRows.length, 1, '冲突不得落第二行');
+    assert.deepEqual(JSON.parse(canonicalRows[0].record_json), seeded, '冲突不得覆盖原 record_json');
+
+    const [roundRows] = await testDb.sequelize.query(
+      'SELECT COUNT(*) AS n FROM agent_rounds WHERE request_id = :requestId AND dedup_key = :dedupKey',
+      { replacements: { requestId, dedupKey: conflictKey } },
+    );
+    assert.equal(Number(roundRows[0].n), 0, '冲突先于投影写：agent_rounds 不得为这条键留下行');
+
+    // 4. run 仍然可读（canonical 里那一行就是这一轮的账本）
+    const [allRows] = await testDb.sequelize.query(
+      'SELECT dedup_key FROM agent_transcript_rounds WHERE request_id = :requestId ORDER BY round_no ASC',
+      { replacements: { requestId } },
+    );
+    assert.ok(allRows.length >= 1, 'canonical 至少要有这一轮的事实');
+  } finally {
+    logger.error = originalError;
+    await cleanupRun(requestId);
+  }
+});

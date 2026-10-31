@@ -48,11 +48,16 @@
  *     数组顺序 / 宿主未知字段 / roundKey 回落）；
  *   - 0.17 成对快路径探针 2 格（loadByDedupKey / loadMaxRound 与 load 事实一致；nullish 判据）。
  *
- * ── 为什么单独一个 npm 脚本、暂不进 test:llm-kit ────────────────────────────────────
- * 今天**必然有若干格是红的**，那些红就是阶段 2 的实现工作清单（已知：同 key 异 payload
- * 我们仍是 `INSERT IGNORE` 静默，上游要求 `code:"dedup_payload_conflict"`）。把它并进
- * `test:llm-kit` 会让「回归门禁」长期红着，失去门禁意义；因此先独立成
- * `npm run test:store-contract`，等实现补齐（红转绿）后再并入 `test:llm-kit`。
+ * ── 两个 npm 脚本、同一份判据（切片 A 单独成脚本 → 切片 B2 并入主清单）─────────────
+ * 切片 A 落地时这里**必然有若干格是红的**（同 key 异 payload 我们仍是 `INSERT IGNORE`
+ * 静默，上游要求 `code:"dedup_payload_conflict"`），并进 `test:llm-kit` 会让回归门禁长期
+ * 红着，故先独立成 `npm run test:store-contract`。
+ * **#1227 阶段 2 切片 B2 起 4 格红全转绿**，本文件与本目录的
+ * `transcript-store-key-shape-matrix.test.mjs` 已并入 `test:llm-kit` 的文件清单 ⇒
+ * 「上游改落盘形状时我们 CI 先红」真正接上了。
+ * `test:store-contract` 脚本**保留**（只想跑这 33 格时用，不必等全套）。
+ * 两个脚本共用**同一份** `--test-skip-pattern`（下面 7 个可选 capability 用例名）：
+ * 缺了它，那 7 格会在 `test:llm-kit` 里以红出现——它们是**合法降级**，不是缺陷。
  *
  * ── 禁止事项（本文件的设计约束）────────────────────────────────────────────────────
  * · 不放宽上游断言、不 skip、不改 lib/ 运行代码；

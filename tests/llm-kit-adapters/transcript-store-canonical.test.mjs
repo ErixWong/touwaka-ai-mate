@@ -8,8 +8,10 @@
  *   ② 三张表同事务回滚：注入一次 chat_tool_calls 写入失败 → agent_rounds / messages /
  *      chat_tool_calls / agent_transcript_rounds **全部无残留**。旧实现逐条自提交，这条
  *      会留下「有轮无工具」的孤儿态（#1168 那类缺陷的根因证明）。
- *   ③ dedup_key 重复写：先到先得，不产生第二行、不覆盖原 record_json（与旧表
- *      INSERT IGNORE 语义逐字一致；改成 REPLACE / UPDATE 覆盖就会变红）。
+ *   ③ dedup_key 重复写：同 payload 先到先得，不产生第二行、不覆盖原 record_json；
+ *      异 payload **明确报冲突**（#1227 阶段 2 切片 B2：`code:"dedup_payload_conflict"`，
+ *      与上游 `src/store/transcript-dedup.js:150` 同形状）。改成 REPLACE / UPDATE 覆盖会变红，
+ *      改回「静默丢弃后到」也会变红。
  *   ④ load() 孤儿 tool 行：**不装配**（丢弃，与基点 26a5df7 的 `WHERE round_id IN (...)`
  *      读语义零差异）**且**走项目 logger 打结构化告警（不是 console.log、也不静默）。
  *      Stage B 曾实现成“挂到首轮”，那反而是相对基点的行为回归（#1156 Stage C 修正）。
@@ -268,7 +270,7 @@ if (!creds) {
     assert.equal((await readCanonical(id, record.dedupKey)).length, 0, "canonical 不得留下半条真相");
   });
 
-  test("③ dedup_key 重复写：先到先得，不多行、不覆盖原 record_json", async () => {
+  test("③ dedup_key 重复写：同 payload 先到先得；异 payload 明确报冲突、不覆盖原 record_json", async () => {
     const store = createTouwakaTranscriptStore({ db, requestContext });
     const id = runId("firstwins");
     const dedupKey = `${id}:engine:round:3`;
@@ -281,7 +283,16 @@ if (!creds) {
     });
 
     await store.appendRound(id, first);
-    await store.appendRound(id, second);
+    // #1227 阶段 2 切片 B2 改判：同 dedup_key 异 payload 从「静默丢弃后到」升级为
+    // **明确冲突**（上游 `src/store/transcript-dedup.js:150` 的 dedupConflictError；契约格
+    // `同 dedupKey 异 payload 明确报冲突，既不覆盖也不静默丢弃`）。旧断言只要求“不覆盖”，
+    // 方向不对：静默丢弃正是 #326 要消灭的形状，宿主与引擎都拿不到任何信号。
+    // 「不覆盖」这一半不变，且现在更强：抛错 + 整事务回滚。
+    await assert.rejects(
+      () => store.appendRound(id, second),
+      (error) => error?.code === "dedup_payload_conflict" && error.key === dedupKey,
+      "同 dedup_key 异 payload 必须明确报冲突（既不覆盖也不静默丢）",
+    );
 
     const [canonicalRows] = await db.sequelize.query(
       `SELECT COUNT(*) AS n FROM \`${CANONICAL_TABLE}\` WHERE request_id = :rid`,
