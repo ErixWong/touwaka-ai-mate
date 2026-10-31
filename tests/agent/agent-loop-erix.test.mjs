@@ -239,7 +239,8 @@ test('runErix persists a real tool round in all transcript tables', {
       executeTool: async () => 'unused',
       modelConfig: input.modelConfig,
     });
-    assert.deepEqual(engineOptions.modelMetadata, {
+    // issue #1227 阶段 1：erix 0.29 里 modelMetadata 的规范之家是 config.metadata.modelMetadata
+    assert.deepEqual(engineOptions.config.metadata.modelMetadata, {
       contextWindowTokens: 32768,
       maxOutputTokens: 2048,
     });
