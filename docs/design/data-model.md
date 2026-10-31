@@ -100,6 +100,38 @@ DDL 双侧：`scripts/upgrade-database.js`（存量库，步骤名含 `#1156 Sta
 `scripts/init-database.js`（新装库基线）逐字段一致，`tests/llm-kit-adapters/transcript-rounds-ddl.test.mjs`
 断言两侧不漂移。
 
+### 4. `agent_rounds`（展示面投影；#1227 增行形状生成列）
+
+对应模型：`models/agent_round.js`（sequelize-auto 生成物，禁止手改）。
+**未注册进 `models/init-models.js`**，访问走裸 SQL（`lib/llm-kit-adapters/transcript-store.js`）。
+
+引入：issue #1134。写入侧一轮一次 `appendRound`；erix 0.23 起引擎「一条消息一落盘」，
+于是**同轮多行**：载体轮行 `<runId>:engine:round:<n>`（无 `kind`/`seq`）+ 消息行
+`<runId>:msg:<n>:<seq>`（`kind:"message"` + 轮内递增 `seq`）+ 分片行（再用 `partOf`
+指回同一逻辑消息首片行的 `dedupKey`）。行形状的上游定义见 erix-agent
+`src/store/message-rows.js` 文件头与 `docs/host-upgrade-guide-0.23.0_cn.md` §2/§6。
+
+issue #1227 把这三个形状字段做成**从 `record_json` 派生的 VIRTUAL 生成列**
+（不是写入端多写一列，因此物理上不可能与记录本体漂移；显式写这些列会被服务端拒绝）：
+
+| 字段 | 说明 |
+|------|------|
+| `kind` | `VARCHAR(16)`，生成列 `JSON_UNQUOTE(JSON_EXTRACT(record_json, '$.kind'))`；消息行为 `'message'`，载体行/种子行为 `NULL` |
+| `seq` | `INT`，生成列 `CAST(JSON_EXTRACT(record_json, '$.seq') AS SIGNED)`；消息行轮内序号（从 0 递增），载体行为 `NULL` |
+| `part_of` | `VARCHAR(255)`，生成列 `JSON_UNQUOTE(JSON_EXTRACT(record_json, '$.partOf'))`；分片行指回首片行的 `dedup_key`，非分片行为 `NULL` |
+
+索引：`PRIMARY KEY (id)`、`UNIQUE KEY uk_agent_rounds_dedup_key (dedup_key)`、
+`KEY idx_agent_rounds_request (request_id)`、`KEY idx_agent_rounds_request_kind (request_id, kind, seq)`
+（普通索引：同轮多行合法，绝不许 UNIQUE）。
+
+存量库零回填：生成列在读取时按 `record_json` 现算，`ALTER TABLE ... ADD COLUMN ... AFTER`
+只改元数据（列顺序与新建库一致）。回滚 = `DROP INDEX idx_agent_rounds_request_kind` +
+`DROP COLUMN part_of, seq, kind`，`record_json` 一个字节不动（这三列不是真相）。
+DDL 双侧：`scripts/init-database.js` 基线建表语句与 `scripts/upgrade-database.js` 的
+`create agent_rounds table` 步骤逐字段一致（步骤名 `agent_rounds message-row shape columns (#1227)`
+只负责给存量库补列）；护栏断言见 `tests/llm-kit-adapters/transcript-rounds-ddl.test.mjs` 与
+`tests/llm-kit-adapters/init-database-baseline.test.mjs`。
+
 ## ID 前缀登记
 
 | 前缀 | 用途 | 生成位置 |

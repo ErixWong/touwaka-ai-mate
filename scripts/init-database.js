@@ -613,6 +613,8 @@ const TABLES = [
   // 与 scripts/upgrade-database.js 里 'create agent_rounds table' / 'create chat_tool_calls table'
   // 两步逐字段一致。历史上这两步**只在** upgrade 里，而空库路径根本不跑 upgrade（#1179），
   // 于是新装库变成「有 canonical（#1156 Stage A 已进基线）、没有投影两张」的畸形形态。
+  // #1227：agent_rounds 的 kind/seq/part_of 是**生成列**（从 record_json 派生），对齐 erix 0.23
+  // 起的逐消息行形状（`<runId>:msg:<n>:<seq>` + 分片锚点 partOf），存量行零回填、零第二份真相。
   `CREATE TABLE IF NOT EXISTS agent_rounds (
     id VARCHAR(32) NOT NULL,
     request_id VARCHAR(64) NOT NULL COMMENT 'erix runId，即 chat_requests.request_id',
@@ -624,11 +626,15 @@ const TABLES = [
     folded BIT(1) NOT NULL DEFAULT b'0' COMMENT '是否已折叠（compaction）',
     folded_range JSON NULL COMMENT '折叠范围',
     record_json JSON NULL COMMENT 'RoundRecord 其余字段（load() 重组往返保真）',
+    kind VARCHAR(16) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(record_json, '$.kind'))) VIRTUAL COMMENT 'erix 0.23 行形状：消息行="message"，载体行/种子行=NULL（生成列，不写第二份真相）',
+    seq INT GENERATED ALWAYS AS (CAST(JSON_EXTRACT(record_json, '$.seq') AS SIGNED)) VIRTUAL COMMENT 'erix 0.23 行形状：消息行轮内序号（从 0 递增），载体行=NULL',
+    part_of VARCHAR(255) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(record_json, '$.partOf'))) VIRTUAL COMMENT 'erix 0.23 行形状：分片行指回同一逻辑消息首片行的 dedupKey，非分片行=NULL',
     ts VARCHAR(32) NOT NULL COMMENT 'erix record.ts ISO 字符串原样存',
     created_at DATETIME NOT NULL COMMENT '应用侧写入',
     PRIMARY KEY (id),
     UNIQUE KEY uk_agent_rounds_dedup_key (dedup_key),
-    KEY idx_agent_rounds_request (request_id)
+    KEY idx_agent_rounds_request (request_id),
+    KEY idx_agent_rounds_request_kind (request_id, kind, seq)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 
   `CREATE TABLE IF NOT EXISTS chat_tool_calls (
