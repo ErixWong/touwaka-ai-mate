@@ -107,13 +107,21 @@ if (!creds) {
   }, () => {});
 } else {
   const provider = createTouwakaModelConfigProvider({ db });
-  modelConfigProviderContract("touwaka ModelConfigProvider", async () => ({
-    provider,
-    slot: "m-fold",
-    expect: {
-      defaultModel: "qwen3-default",
-      slotModel: "qwen3-fold",
-      materializedKey: "fold-secret-key",
-    },
-  }));
+  // erix-agent 0.29（上游 issue #518）：第三参 `unknownSlot` 变成**必填**，并按适配器
+  // 形态二分。touwaka 的槽位是真实的 ai_model.id 图（default 槽是图里的默认项）⇒
+  // 槽位图形态：未知槽名必须抛，并点名该槽名与可用槽位（不许静默回落 default）。
+  // 0.23 的契约套件里那条 `resolve(不存在的槽) 回落 default` 已被上游删除。
+  modelConfigProviderContract(
+    "touwaka ModelConfigProvider",
+    async () => ({
+      provider,
+      slot: "m-fold",
+      expect: {
+        defaultModel: "qwen3-default",
+        slotModel: "qwen3-fold",
+        materializedKey: "fold-secret-key",
+      },
+    }),
+    { mode: "throws", name: "no-such-slot", available: MODEL_IDS },
+  );
 }
