@@ -188,20 +188,53 @@ if (!creds) {
     const store = createTouwakaTranscriptStore({ db, requestContext });
     const id = runId('first-match');
     const sharedRoundKey = `${id}:input:m-shared`;
-    // 两条都没有写入 dedupKey（宿主补的列值不会被回填）→ 判据回落到 roundKey，两条都能命中
+    // #1227 B1 之后这个形状**已经无法由 appendRound 造出来**：写侧身份键统一成
+    // `recordKey = dedupKey ?? roundKey ?? <runId>:round:<n>`，两条都没有 dedupKey 的记录
+    // roundKey 相同 ⇒ 算出的 dedup_key 也相同，而两表都是 UNIQUE(dedup_key)，第二次写会被
+    // INSERT IGNORE 吞掉（这正是 B1 的靶子：上游 memory store 同样只落一行）。
+    //
+    // 但“同一个身份对应多条行”在**存量数据**里真实存在：B1 之前写入的 roundKey-only 行，
+    // dedup_key 列是隐式键（`<runId>:round:<n>`，彼此不同、能共存），而读侧判据回落到
+    // roundKey（相同）⇒ 探针能同时命中多条，取哪一条由“翻正后按 load() 顺序”决定。
+    // 所以这里按 **B1 之前的旧行形状** 直接落库（dedup_key 是隐式键、record_json 带
+    // #1150 的宿主合成标记 ⇒ 读侧把列值删掉、身份回落到 roundKey）。不是“为了绿而造形状”，
+    // 而是把“候选窗口倒序取回后必须翻正”这条窗口语义钉在它现在唯一还活着的场景上。
+    const legacySynthesizedMarker = {
+      version: 1,
+      fields: ['dedupKey', 'ts', 'folded'],
+      originalHostKey: { present: false },
+      originalFields: { dedupKey: { present: false }, ts: { present: false }, folded: { present: false } },
+    };
     for (const round of [3, 4]) {
-      await store.appendRound(id, {
-        round,
-        roundKey: sharedRoundKey,
-        ts: `2026-10-01T00:0${round}:00.000Z`,
-        messages: [{ role: 'assistant', content: [{ type: 'text', text: `第 ${round} 轮` }] }],
+      await db.sequelize.query(`
+        INSERT INTO agent_rounds
+          (id, request_id, round_no, dedup_key, stop_reason, \`usage\`, latency_ms,
+           folded, folded_range, record_json, ts, created_at)
+        VALUES
+          (:id, :runId, :roundNo, :dedupKey, NULL, NULL, NULL, b'0', NULL, :recordJson, :ts, :now)
+      `, {
+        replacements: {
+          id: `round_${ns}_firstmatch_${String(round)}`,
+          runId: id,
+          roundNo: round,
+          dedupKey: `${id}:round:${String(round)}`,
+          recordJson: JSON.stringify({
+            roundKey: sharedRoundKey,
+            __hostSynthesizedColumns: legacySynthesizedMarker,
+          }),
+          ts: `2026-10-01T00:0${round}:00.000Z`,
+          now: new Date(),
+        },
       });
     }
 
     const loaded = await store.load(id);
     const matches = loaded.filter((record) => (record.dedupKey ?? record.roundKey) === sharedRoundKey);
-    assert.equal(matches.length, 2, '本用例需要两条都能被判据命中');
+    assert.equal(matches.length, 2, '本用例需要两条都能被判据命中（旧行形状：身份相同、列值不同）');
     assert.equal(matches[0].round, 3);
+    // 判别面自证：两条候选真能进 SQL 候选集（roundKey 支路），不是只命中一条
+    assert.ok(await countCandidates(id, sharedRoundKey) >= 2,
+      '候选 SQL 必须真能把两条旧行都捞回来，否则翻正逻辑无从验证');
 
     assert.deepStrictEqual(await store.loadByDedupKey(id, sharedRoundKey), matches[0],
       '必须与全量路径一致：取 load() 顺序里的第一条，而不是最新一条');

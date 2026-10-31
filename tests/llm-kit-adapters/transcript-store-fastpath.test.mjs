@@ -715,7 +715,17 @@ if (!creds) {
       "SELECT dedup_key FROM agent_rounds WHERE request_id = :id",
       { replacements: { id } },
     );
-    assert.equal(await store.loadByDedupKey(id, rows[0].dedup_key), null,
-      "宿主补进列的 dedup_key 不能替代 record 的 nullish ?? 判据");
+    // #1227 B1：探针判据与写侧共用 `recordKey = dedupKey ?? roundKey ?? <runId>:round:<n>`
+    // （上游 node_modules/erix-agent/src/store/transcript-dedup.js:72-76）。这条 record 的
+    // dedupKey 是**显式 null**、又没有 roundKey ⇒ 它的身份就是写侧当时算出的隐式键
+    // （= 列值），所以按列值探必须命中同一条记录；否则读侧永远无法用“存储自己的身份”
+    // 找回它（B1 修的就是这类读写身份分叉）。
+    // 原本要钉的东西一字未改：列值不得被回填成 record.dedupKey（上一行 deepStrictEqual + 下面两条），
+    // 也不能被别的键命中。
+    const probed = await store.loadByDedupKey(id, rows[0].dedup_key);
+    assert.deepStrictEqual(probed, loaded,
+      "身份键 = recordKey 的隐式回落 ⇒ 按写侧算出的键必须命中同一条记录");
+    assert.equal(probed.dedupKey, null,
+      "宿主补进列的 dedup_key 不能变成 record 的 dedupKey（列值可补齐、读回不发明）");
   });
 }

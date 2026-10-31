@@ -24,9 +24,9 @@
  *     `src/store/append-user-turn.js:161-167` 的**正确**形状）及其错误形状
  *     （多带 `kind:"message"` / 多带安全整数 `seq` / 两者都带）
  *
- * ── 已知缺陷（本文件钉成**会红**的用例，不 skip、不放宽）──────────────────────────
- * **写侧身份键缺 `roundKey` 回落**：
- *   - 我们写侧（canonical）：`lib/llm-kit-adapters/transcript-store.js:150`
+ * ── 曾经的已知缺陷（#1227 阶段 2 切片 B1 已修复，现为**回归守卫**）──────────────────────
+ * **写侧身份键缺 `roundKey` 回落**（B1 之前）：
+ *   - 当时我们写侧（canonical）：`lib/llm-kit-adapters/transcript-store.js`
  *       `const key = dedupKey ?? `${runId}:round:${record?.round}``
  *   - 上游身份键：`node_modules/erix-agent/src/store/transcript-dedup.js:72-76`
  *       `recordKey = record?.dedupKey ?? record?.roundKey ?? `${runId}:round:${round}``
@@ -35,16 +35,16 @@
  * 后果：同一条逻辑记录（roundKey 相同、payload 相同，只有 `round`/`ts` 漂移）在写侧被算成
  * 两个不同的 key ⇒ 落两行；而折叠侧与上游都认它们是同一个身份。`load()` 因此重复正文，
  * 且上游「崩溃重跑形状仍判幂等」的判据在这里失效。
- * 该缺陷由 `roundKey-only 记录写两次（round/ts 漂移）应幂等` 与
- * `第二次显式带 dedupKey===roundKey 应幂等` 两格钉住；两格都**预期红**。
- * 参照系：同一序列喂上游 `createMemoryTranscriptStore` 应只落一行（绿格，证明是「我们缺回落」
- * 而不是「上游也这样」）。
+ * **B1 起**写侧与读侧共用同一个 `recordKey(runId, record)`（与上游逐字同式），于是
+ * `roundKey-only 记录写两次（round/ts 漂移）应幂等` 与 `第二次显式带 dedupKey===roundKey 应幂等`
+ * 两格由「预期红」变成**必须保持绿的回归守卫**（再退回去就重红）。
+ * 参照系：同一序列喂上游 `createMemoryTranscriptStore` 只落一行（绿格，证明这是上游语义）。
  *
- * ── 一个与上游不一致、但**不是**缺陷的观察（不改断言方向）──────────────────────────
- * 对「只有 roundKey」的行，探针 `loadByDedupKey(runId, <写侧隐式键>)` 会 miss：
- * 候选行是 SQL `dedup_key = :probe` 命中的，但 JS 判据 `(dedupKey ?? roundKey) === probe`
- * 用的是 roundKey ⇒ miss。这与上游**一致**（上游 recordKey 也优先 roundKey，探针同样按
- * roundKey 命中），所以本文件把它断言成「miss」，不当作缺陷。
+ * ── 一个与上游不一致、但**不是**缺陷的观察（不改断言方向）─────────────────────────
+ * 对「只有 roundKey」的行，探针 `loadByDedupKey(runId, <隐式键 <runId>:round:<n>>)` 会 miss：
+ * 候选行是 SQL `dedup_key = :probe` 命中的，但 JS 判据（B1 起 `recordKey`）优先 roundKey
+ * ⇒ miss。这与上游**一致**（上游 recordKey 也优先 roundKey，探针同样按 roundKey 命中），
+ * 所以本文件把它断言成「miss」，不当作缺陷。
  *
  * 凭据：~/.config/mcp/creds/touwaka-test-db.json（600，不入库）；缺失则 skip。
  */
@@ -437,8 +437,13 @@ if (!creds) {
     assert.equal(round4.length, 1, "非载体形状的 roundKey-only 行原样独立留存");
     assert.equal(round4[0].roundKey, rkInput);
 
-    // 写侧实际落库的 dedup_key 是**隐式键**，不是 roundKey —— 这就是「写侧缺 roundKey 回落」
-    // 的可见证据（上游 recordKey 会写 roundKey）。
+    // 写侧落库的 dedup_key = `recordKey`（#1227 阶段 2 切片 B1）
+    //   = `dedupKey ?? roundKey ?? <runId>:round:<n>`
+    // 上游坐标：node_modules/erix-agent/src/store/transcript-dedup.js:72-76。
+    // 这里两条轮行恰好能区分「有没有 roundKey 回落」：
+    //   · round 3 的 roundKey 与隐式键同值（`<r>:round:3`）⇒ 新旧口径落库值相同；
+    //   · round 4 的 roundKey 是 `<r>:input:rk-only` ⇒ 旧口径（B1 前）落 `<r>:round:4`，
+    //     B1 之后必须落 roundKey。
     const [columns] = await db.sequelize.query(
       "SELECT round_no, dedup_key FROM agent_transcript_rounds WHERE request_id = :r ORDER BY round_no ASC",
       { replacements: { r } },
@@ -449,13 +454,18 @@ if (!creds) {
       .map((row) => [row.round_no, row.dedup_key]);
     assert.deepEqual(
       carrierKeys,
-      [[3, `${r}:round:3`], [4, `${r}:round:4`]],
-      "写侧身份键 = dedupKey ?? <runId>:round:<n>；roundKey 不参与（上游是 dedupKey ?? roundKey ?? 派生）",
+      [[3, `${r}:round:3`], [4, rkInput]],
+      "写侧身份键 = dedupKey ?? roundKey ?? <runId>:round:<n>（上游 recordKey 口径）",
     );
     assert.equal(
       columns.some((row) => row.dedup_key === rkInput),
+      true,
+      "只有 roundKey 的记录，写侧身份键必须是 roundKey（B1 前这里落隐式键，缺回落）",
+    );
+    assert.equal(
+      columns.some((row) => row.dedup_key === `${r}:round:4`),
       false,
-      "roundKey 的值没有成为写侧身份键（缺回落）",
+      "隐式键不得再成为 roundKey-only 记录的写侧身份（B1 的靶子）",
     );
 
     // 探针：按 roundKey 都能命中（上游 nullish 判据）
@@ -564,9 +574,9 @@ if (!creds) {
   });
 
   // ────────────────────────────────────────────────────────────────────────────────
-  // 8. 已知缺陷（预期红）：写侧身份键缺 roundKey 回落
+  // 8. 回归守卫（#1227 阶段 2 切片 B1 修复后**必须保持绿**）：写侧身份键按上游 recordKey 回落
   // ────────────────────────────────────────────────────────────────────────────────
-  test("缺陷·写侧身份键缺 roundKey 回落：同 roundKey-only 记录写两次（round/ts 漂移）应幂等", async () => {
+  test("回归守卫·写侧身份键按上游 recordKey 回落：同 roundKey-only 记录写两次（round/ts 漂移）应幂等", async () => {
     const r = runId("roundkey-write-identity");
     const s = store();
     const roundKey = `${r}:input:k1`;
@@ -582,11 +592,11 @@ if (!creds) {
       loaded.length,
       1,
       "上游 recordKey 会回落到 roundKey：同 key + 同 payload（round/ts 是 volatile）应幂等；"
-        + `实测落 ${String(loaded.length)} 行 ⇒ 写侧身份键缺 roundKey 回落（transcript-store.js:150）`,
+        + `实测落 ${String(loaded.length)} 行 ⇒ 写侧身份键又退回了「缺 roundKey 回落」`,
     );
   });
 
-  test("缺陷·写侧身份键缺 roundKey 回落：第二次显式带 dedupKey===roundKey 也应幂等", async () => {
+  test("回归守卫·写侧身份键按上游 recordKey 回落：第二次显式带 dedupKey===roundKey 也应幂等", async () => {
     const r = runId("roundkey-explicit-dedup");
     const s = store();
     const roundKey = `${r}:input:k2`;
@@ -600,7 +610,7 @@ if (!creds) {
       loaded.length,
       1,
       "同一条逻辑记录（dedupKey 是 volatile，payload 只有 messages）写两次应幂等；"
-        + `实测落 ${String(loaded.length)} 行（第一次按隐式键 ${r}:round:4、第二次按 roundKey）`,
+        + `实测落 ${String(loaded.length)} 行（第一次按隐式键 ${r}:round:4、第二次按 roundKey —— 即写侧又缺了 roundKey 回落）`,
     );
   });
 
