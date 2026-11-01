@@ -53,6 +53,21 @@
  *   而 `is_error`/`folded` 是列真、canonical 被 2026-10-09 的回填污染。
  *   判据写在 `lib/llm-kit-adapters/README.md`「两个方向的判据」。
  *
+ * 写前备份前置闸（#1246，**所有真写路径共用**）
+ *   `--fix-is-error` / `--fix-folded` / `--fix-reasoning` / `--rewrite-record-json` / `--apply`
+ *   只要**真写**（非 `--dry-run`），第一条写语句发出之前必须先落一份备份到
+ *   `/docker/touwaka-backups/verify-transcript-projection-<YYMMDD>/`：
+ *     `<表>.json`（逐行原值，整表 dump）+ `<表>.rollback.sql`（首行 `SET NAMES utf8mb4;`，
+ *     每行一条 `UPDATE ... WHERE <主键>`）+ `backup-manifest.json`。
+ *   落盘后**回读校验**：JSON 可解析、行数 == 表内实际行数、`UPDATE` 条数 == 行数、
+ *   首行确实是 `SET NAMES utf8mb4;`。任一项不过 ⇒ 抛 `BackupError`（exit 1）且**零次写**。
+ *   `--dry-run` 不建目录、不写备份（不写就不必备份）。
+ *   备份范围按**实际会写的表**定：canonical 清洗 ⇒ `agent_transcript_rounds` 全表；
+ *   `--fix-reasoning` ⇒ `messages` 全表；`--rewrite-record-json` ⇒ `agent_rounds` 全表；
+ *   `--apply` ⇒ `agent_rounds` + `messages` + `chat_tool_calls`。
+ *   备份根默认 `/docker/touwaka-backups`；演练/测试用 `TOUWAKA_BACKUP_ROOT=<dir>` 覆盖
+ *   （不加 CLI 参数：`parseArgs()` 的返回形状被既有用例逐格钉住，本单不动老断言）。
+ *
  * 退出码
  *   0 = 无缺陷（只剩 `host_enriched_reasoning` 这类“非投影缺陷”的信息项，或 legacy 探针的
  *       块顺序差）
@@ -107,11 +122,17 @@ const {
   summarizeToolErrorDirections,
 } = await import("../lib/llm-kit-adapters/transcript-projection.js");
 const { CANONICAL_TABLE } = await import("../lib/llm-kit-adapters/transcript-store.js");
+const { planBackupTables, resolveBackupRoot, runWithPreWriteBackup } = await import(
+  "../lib/llm-kit-adapters/transcript-backup.js"
+);
 const { openTestDatabase, assertTestDatabase, ALLOW_ENV_VAR } = await import(
   "../tests/helpers/test-db-guard.mjs"
 );
 
 const DEFAULT_REPORT_PATH = "temp/verify-transcript-projection.json";
+
+/** 备份目录名里的脚本名（`/docker/touwaka-backups/<这个>-<YYMMDD>/`）。 */
+export const BACKUP_SCRIPT_NAME = "verify-transcript-projection";
 
 /** 「非投影缺陷」的信息项：不触发 exit=3（但照旧列出来，不静默）。 */
 export const INFORMATIONAL_DIFF_KINDS = Object.freeze(["host_enriched_reasoning"]);
@@ -463,6 +484,31 @@ export function renderRecordJsonPlan(plans) {
   return lines.join("\n");
 }
 
+/**
+ * 写前备份摘要（#1246）：目录 / 每张表的整表行数 / UPDATE 条数 / 校验状态。
+ *
+ * 刻意把 `plan=` 与整表行数并列打印：两者不相等才是常态（备份范围是**整张表**，
+ * 不是"计划要写的那些行"），一眼能看出实现有没有偷偷按计划行裁剪。
+ */
+export function renderBackupSummary(backup) {
+  if (!backup) {
+    return "== 写前备份（#1246）：未写 ⇒ 不备份（dry-run / 无写开关；不建目录、不产生任何备份文件）";
+  }
+  const lines = [
+    "== 写前备份（#1246）：整表 dump + 回读校验通过后才发出第一条写语句",
+    `  目录：${backup.directory}`,
+    `  清单：${backup.manifest_path}`,
+  ];
+  for (const entry of backup.tables) {
+    lines.push(
+      `  ${entry.table}\t整表 ${entry.row_count} 行\tUPDATE ${entry.update_count} 条`
+      + `\tplan=${entry.plan_rows ?? "-"} 行\tprimary_key=${entry.primary_key}`
+      + `\tverified=${entry.verified}\t${entry.sql_path}`,
+    );
+  }
+  return lines.join("\n");
+}
+
 export async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
@@ -473,6 +519,21 @@ export async function main() {
   }
 
   const { sequelize, database, source } = await resolveConnection();
+  try {
+    return await runAgainstDatabase({ sequelize, database, source, options });
+  } finally {
+    // 备份闸会从中间抛出（备份不可信 ⇒ 零写）。连接池会 hold 住事件循环，不在这里关掉的话
+    // 进程会**挂着不退出**——"备份失败"就退化成了"没有退出码"，正是本单要消灭的形态。
+    await sequelize.close().catch(() => {});
+  }
+}
+
+/**
+ * 连上库之后的全部流程（备份闸 → 计划 → 写 → 报告）。
+ *
+ * 拆成独立函数只为让 `main()` 能用 `try/finally` 保证 `sequelize.close()`（见上）。
+ */
+async function runAgainstDatabase({ sequelize, database, source, options }) {
   // --apply 的库名判据**先于**任何写入（生产库在这里就被拒，exit 1）。
   assertProjectionApplyAllowed({ database, apply: options.apply });
   // 存量漂移清洗：开关本身就是写请求；--dry-run 时降级为只读预演。
@@ -492,7 +553,6 @@ export async function main() {
   const runIds = await listRequestIds(sequelize, options);
   if (runIds.length === 0) {
     console.log("没有匹配的 request_id（检查 --request-id / --since / --limit）");
-    await sequelize.close();
     return;
   }
 
@@ -517,27 +577,66 @@ export async function main() {
       toolErrorRows: directions ?? [],
       foldedRows: foldedDirections ?? [],
     });
-    if (driftWrite) canonicalApply = await applyCanonicalRecordRewrites({ sequelize, plans: canonicalPlan });
   }
   // #1237 切片 A：`--fix-reasoning` 写的是**另一张表**（`messages`），与上面两个 canonical 开关
   // 各自独立（计划不合并：写入面、判据方向、幂等夹子都不同）。
   if (options.fixReasoning) {
     reasoningDirections = await collectReasoningDirections({ sequelize, runIds });
     reasoningPlan = planReasoningRewrites({ directions: reasoningDirections });
-    if (driftWrite) reasoningApply = await applyReasoningRewrites({ sequelize, plans: reasoningPlan });
   }
   if (options.rewriteRecordJson) {
     recordJsonPlan = await planRecordJsonRewrites({ sequelize, runIds });
-    if (driftWrite) recordJsonApply = await applyRecordJsonRewrites({ sequelize, plans: recordJsonPlan });
   }
 
-  const entries = [];
+  // ② #1246 写前备份前置闸：**所有真写**都在这一个回调里，备份落盘 + 回读校验通过之前
+  //    它一次都不会被调用（`runWithPreWriteBackup` 是唯一的顺序实现点）。
+  //    备份范围按"实际会写哪张表"定（`planBackupTables`），不是"计划要写的那些行"。
+  const writeRequested = driftWrite || options.apply;
+  const writeSurface = planBackupTables({
+    apply: options.apply,
+    fixIsError: options.fixIsError,
+    fixFolded: options.fixFolded,
+    fixReasoning: options.fixReasoning,
+    rewriteRecordJson: options.rewriteRecordJson,
+  });
+  const planRowsByTable = {
+    [CANONICAL_TABLE]: canonicalPlan ? canonicalPlan.filter((plan) => plan.missing !== true).length : null,
+    [MESSAGES_TABLE]: reasoningPlan ? reasoningPlan.length : null,
+    agent_rounds: recordJsonPlan ? recordJsonPlan.length : null,
+  };
   const applyResults = [];
-  for (const runId of runIds) {
-    if (options.apply) {
-      const applied = await projectRequest({ sequelize, runId, database, apply: true });
-      applyResults.push(applied);
+  const backupRun = await runWithPreWriteBackup({
+    sequelize,
+    database,
+    tables: writeSurface,
+    scriptName: BACKUP_SCRIPT_NAME,
+    planRowsByTable,
+    // `--dry-run` 的写分支本来就是空的；`--apply` 不受 `--dry-run` 约束（既有语义），
+    // 所以只要**真的会写**（writeRequested），备份就必须先落。
+    dryRun: !writeRequested,
+    now: new Date(),
+    logger,
+    root: resolveBackupRoot(),
+  }, async () => {
+    if (driftWrite && canonicalPlan) {
+      canonicalApply = await applyCanonicalRecordRewrites({ sequelize, plans: canonicalPlan });
     }
+    if (driftWrite && reasoningPlan) {
+      reasoningApply = await applyReasoningRewrites({ sequelize, plans: reasoningPlan });
+    }
+    if (driftWrite && recordJsonPlan) {
+      recordJsonApply = await applyRecordJsonRewrites({ sequelize, plans: recordJsonPlan });
+    }
+    if (options.apply) {
+      for (const runId of runIds) {
+        applyResults.push(await projectRequest({ sequelize, runId, database, apply: true }));
+      }
+    }
+  });
+  const backup = backupRun.backup;
+
+  const entries = [];
+  for (const runId of runIds) {
     entries.push(await inspectRequest({ sequelize, runId, options }));
   }
   // 回填后复跑对账（只 reconcile，不再跑探针）：给出这两类是否归零。
@@ -562,6 +661,25 @@ export async function main() {
         ? "dry-run"
         : "off"),
     drift_gate: backfillGate,
+    backup: backup
+      ? {
+        skipped: false,
+        directory: backup.directory,
+        manifest_path: backup.manifest_path,
+        tables: backup.tables.map((entry) => ({
+          table: entry.table,
+          reasons: entry.reasons,
+          json_path: entry.json_path,
+          sql_path: entry.sql_path,
+          row_count: entry.row_count,
+          update_count: entry.update_count,
+          plan_rows: entry.plan_rows,
+          primary_key: entry.primary_key,
+          sha256: entry.sha256,
+          verified: entry.verified,
+        })),
+      }
+      : { skipped: true, reason: backupRun.reason },
     diff_kinds: PROJECTION_DIFF_KINDS,
     requests: entries,
     baseline,
@@ -619,6 +737,7 @@ export async function main() {
         console.log(`  ${applied.runId}\tbefore=${applied.diffsBefore.length}\twritten=${JSON.stringify(applied.written)}\tafter=${applied.diffsAfter.length}`);
       }
     }
+    console.log(renderBackupSummary(backup));
     if (directions) {
       console.log(renderToolErrorDirections(directions));
     }
@@ -664,9 +783,23 @@ export async function main() {
     if (!options.json) console.log(`报告已写入 ${target}`);
   }
 
-  await sequelize.close();
   // 只有**真缺陷**才让闸门红；host_enriched_reasoning 是已知非缺陷（终稿单写增强）。
   if (entries.some(isRealDefect)) process.exitCode = 3;
+}
+
+/**
+ * 失败 → 退出码映射（#1246）：备份失败**必须**非零退出，并把错误码打到 stderr。
+ *
+ * 抽成纯函数是为了能被用例钉住：`ERR_BACKUP_*`（目录不可写 / 磁盘满 / 回读校验不过）
+ * 一律 `exitCode = 1`，且**不会**降级成 0（"备份没落成但写照发"是本单要消灭的事故形态）。
+ */
+export function describeFailure(error) {
+  const lines = [`[verify-transcript-projection] ${error?.message ?? error}`];
+  if (error?.code) lines.push(`  code=${error.code}`);
+  if (Array.isArray(error?.problems) && error.problems.length > 0) {
+    for (const problem of error.problems) lines.push(`  - ${problem}`);
+  }
+  return { exitCode: 1, code: error?.code ?? null, message: lines.join("\n") };
 }
 
 // 只有**直接跑**本文件才执行 main（测试 import 拿工具函数时不能连带跑一轮真比对）。
@@ -676,8 +809,8 @@ if (invokedDirectly) {
   try {
     await main();
   } catch (error) {
-    console.error(`[verify-transcript-projection] ${error?.message ?? error}`);
-    if (error?.code) console.error(`  code=${error.code}`);
-    process.exitCode = 1;
+    const failure = describeFailure(error);
+    console.error(failure.message);
+    process.exitCode = failure.exitCode;
   }
 }

@@ -104,6 +104,50 @@ node scripts/verify-transcript-read-parity.js --gate --baseline /tmp/drill/snap-
 
 ## 6. 残留
 
-1. **备份生成侧的 `SET NAMES utf8mb4` 尚未落地**（本次只验证了执行侧绕行有效）。
+1. **备份生成侧的 `SET NAMES utf8mb4`**：已在 **#1246** 落地（见 §7；本单的第一条缺陷）。
 2. 演练库 `touwaka_drill_261102` 用完应 `DROP DATABASE`（本次保留以便复核，见工单评论）。
 3. 上线观测指标（行数/请求、索引字节、append 事务 p95、冲突计数、`erix.persistence_capability_degraded` 噪声）仍未系统采集——见 #1227 收尾项。
+4. §3 里那两份**旧**备份产物（`1227-c2d-2026-11-01/`、`1237-a-2026-11-01/`）的 SQL 仍无 `SET NAMES utf8mb4` 首行——
+   回放它们**必须**带 `--default-character-set=utf8mb4`。新闸生成的产物自带首行，不需要这个绕行。
+
+---
+
+## 7. 写前备份前置闸（#1246）
+
+§3 的两条缺陷（备份靠人自觉 / 回滚 SQL 不可直接回放）在 **#1246** 里修成了机制，不再靠纪律：
+
+- 实现：`lib/llm-kit-adapters/transcript-backup.js`；唯一写入口 `runWithPreWriteBackup()`，
+  `scripts/verify-transcript-projection.mjs` 的**所有**真写（`--fix-is-error` / `--fix-folded` /
+  `--fix-reasoning` / `--rewrite-record-json` / `--apply`）都只在它的回调里发第一条写语句。
+- 备份范围 = **整张受影响表**（`SELECT * ... ORDER BY 主键`，不是"计划要写的那些行"），
+  产物 `/docker/touwaka-backups/verify-transcript-projection-<YYMMDD>/<表>.{json,rollback.sql}` + `backup-manifest.json`。
+- 回读校验六格：JSON 可解析 / 行数 == 表内实际行数 / `row_count` 自洽 / 首行 `SET NAMES utf8mb4;` /
+  `UPDATE` 条数 == 行数 / sha256 自洽。任一项不过 ⇒ `ERR_BACKUP_VERIFY_FAILED`、exit 1、**零次写**。
+- `--dry-run` 不建目录、不写备份（不写就不必备份）。
+
+### 7.1 本单演练复跑（2026-11-02，库 `touwaka_drill_261102`）
+
+| # | 动作 | 实测 |
+|---|---|---|
+| ① | 用旧产物把演练库打回污染态（`--default-character-set=utf8mb4`） | `canonical folded=true` 69 行、`reasoning_content IS NOT NULL` 245 行；漂移 `folded A=69 / is_error A=29 / reasoning A=5 C_derived=4`（与 §2 逐格吻合） |
+| ② | 污染态 vs 绿基线 `--gate` | `GATE_EXIT=3`（23 条 `parity_regression`） |
+| ③ | 真写（省略 `--dry-run`）= 生产同款路径 | `EXIT=0`；备份 `agent_transcript_rounds` 184 行（plan 69）/ `messages` 2671 行（plan 9），`verified=true`；`written=69 + 9` |
+| ④ | 写后 vs 绿基线 | `GATE_EXIT=0` |
+| ⑤ | **用新生成的 SQL 回滚**（`mariadb < ...rollback.sql`，不带任何绕行参数） | `rc=0`、0 错误；逐行比对 `dumpTableRows()`：**184/2671 行全部 identical**（含 `created_at`/`updated_at`） |
+| ⑥ | 回滚态 vs 绿基线 | **`GATE_EXIT=3`**，23 条全部 `parity_regression`（`cells_mismatch=0 / shape_regression=0 / legacy_cells_drift=0`） |
+| ⑦ | 再修复一次（第二个备份 → 旧产物归档，不覆盖） | `EXIT=0`；`GATE_EXIT=0`，演练库回到绿态 |
+
+**结论**：新闸生成的 `*.rollback.sql` **可以不带任何绕行参数直接回放**，且回放是**字节保真**的；
+门禁对"回滚态"仍然变红（抓到 `parity_regression`）。
+
+### 7.2 本单演练又抓出的两个新缺陷（都已修，并各有用例钉住）
+
+1. **时区偏移（回滚会把时间戳写偏 +8h）**：第一版按"读成 `Date` 再格式化"生成字面量，
+   而 Sequelize 的 MySQL 方言默认 `timezone: "+00:00"`（mysql2 把墙钟当 UTC 解析），
+   本地 getter 格式化 ⇒ 回滚后 `messages.created_at` 的最大值比克隆时点晚了 8 小时。
+   修法：时间列一律由服务端 `DATE_FORMAT(...)` 渲染墙钟字符串，**任何环节都不经过时区解释**；
+   驱动若仍返回 `Date` ⇒ `ERR_BACKUP_UNSUPPORTED_VALUE`（fail-closed，不猜）。
+2. **备份目录不可用时进程空转不退出**：`fs.promises.mkdir(dir, { recursive: true })` 在 `/proc/...`
+   上**一直转**（实测 114% CPU、socket 0、4 分钟不返回、stdout 0 字节、没有退出码）。
+   修法：目录创建改成"stat 找第一个存在的祖先 → 逐级**非递归** mkdir"（层数上限 32），
+   每个 fs 操作再套 60s deadline；`main()` 用 `try/finally` 保证 `sequelize.close()`。
