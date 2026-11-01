@@ -251,3 +251,60 @@ npm run test:llm-kit   # 不要用目录形式 node --test tests/llm-kit-adapter
 
 测试会在 `llm_kit_test` 库内建/删 `providers` 与 `ai_models` 两表（sequelize sync 真实模型定义），
 **不要**把凭据指向 touwaka_mate 生产库。
+
+## 投影可重建：对账器 + 孤儿检测（#1227 阶段 3 切片 C1）
+
+**一句话：canonical 是真相，投影（`agent_rounds` / `messages` / `chat_tool_calls`）必须能被它逐格重建；
+对账器把“重建不出来”的地方按类报出来，`--apply` 只允许在非生产库补写。**
+
+| 文件 | 角色 | 读写 |
+|---|---|---|
+| `transcript-projection.js` | canonical → 投影的**唯一**推导/对账/重建实现 | 除 `projectRequest({apply:true})` 外全 SELECT |
+| `scripts/verify-transcript-projection.mjs` | CLI：逐请求对账 / 孤儿 / legacy 探针 / 基线统计 / EXPLAIN | 默认 dry-run |
+
+**生成列终于有消费者了**：`agent_rounds.kind` / `seq` / `part_of`（#1229 的 VIRTUAL 生成列）与
+`idx_agent_rounds_request_kind (request_id, kind, seq)` 在 C1 之前全仓没有 SQL 读；对账器的取行是第一个消费者：
+
+- 载体行：`WHERE request_id = :runId AND kind IS NULL`
+- 消息行：`WHERE request_id = :runId AND kind = 'message' ORDER BY round_no, seq`
+
+两条实测都走 `idx_agent_rounds_request_kind`（`type=ref`，`key_len=325`）。`--explain` 会把 EXPLAIN 打出来。
+
+**复用而非复制**（硬约束）：`agent_rounds.record_json` 走 `transcript-store.js#buildAgentRoundRecordSnapshot()`，
+`messages` 行字段走 `#projectMessageRow()`，折叠走 `#foldMessageRows`（= erix-agent 0.29 公共 API），
+legacy 读法直接调 `store.load()`。C1 只是把 appendRound 里原本内联的两段**纯提取**成新导出
+（`buildAgentRoundRecordSnapshot` / `projectMessageRow`，行为逐字不变，`TRANSCRIPT_SUMMARY_FIELDS` 为只读导出），
+没有第二份投影形状。
+
+**差异分类**（`PROJECTION_DIFF_KINDS`，每类独立判据）：`missing_carrier` / `extra_carrier` /
+`missing_round_row` / `extra_round_row` / `seq_mismatch` / `part_of_mismatch` / `record_json_mismatch` /
+`missing_message_row` / `unexpected_message_row` / `content_mismatch` / `missing_tool_row` /
+`extra_tool_row` / `tool_row_mismatch` / `tool_result_mismatch` / `tool_result_missing`。
+
+**已知非缺陷**：`host_enriched_reasoning`。终稿单写
+（`lib/chat-service.js#saveAssistantMessageAndCompleteRequest`）会 UPDATE 引擎已落的 assistant
+`messages` 行，把 `reasoning_content` 换成**整个 run 的累积推理**（canonical 每轮只存本轮那一段），
+并补 tokens/latency/model。判据只认「只有 reasoning 一个字段不同 + actual 以 expected 为后缀」，
+其它一律算 `content_mismatch`；`--apply` **不回写**这种行（否则会毁掉现网展示值）。
+
+**孤儿检测**：`chat_tool_calls.round_id` 找不到宿主轮 ⇒ `orphan_tool_row`；轮已完成但
+`result_json IS NULL` ⇒ canonical 有结果时报 `tool_result_missing`（真丢正文），canonical 也没有时
+只记 `tool_result_pending`（引擎未 settle / 中止，非投影缺陷）。
+
+**`--apply` 的边界**：只允许非生产库（`database !== 'touwaka_mate'`，库名为空也拒绝），
+写入口只有 `projectRequest() → applyProjectionWrites()`：补缺失 `agent_rounds` 行（`INSERT IGNORE`）、
+按 `(round_id, sequence_no)` upsert `messages`、按 `tool_use_id` upsert `chat_tool_calls`、
+剪掉“未被吸附”的 `messages` 行。**不重写既有 `agent_rounds.record_json`**（历史行保留原样，
+那部分差异只报告不修复）。幂等：第二次跑 `written` 全 0（`affectedRowsOf()` 同时兼容
+sequelize 的两种写入返回形状：`[insertId, affectedRows]` 与 `[ResultSetHeader, …]`）。
+
+**legacy 探针（给 C2 的靶子）**：同一请求三档对比——`new`（canonical 折叠）/ `legacy`（现网读法）/
+`carrier-only`（只用载体行当轮宿主，子行按 canonical 轮归属挂回）。生产 5 个 0.23 请求实测：
+legacy 会把 `agent_rounds` 里的消息行当成轮宿主 ⇒ 轮数从 7 涨到 16、工具轮正文整轮丢失；
+carrier-only 已把轮数与条数拉回与 canonical 一致，**只剩块顺序差**（`reasoning+text` vs
+`text+reasoning`，即 #1196 的 ordering-only 噪音）。
+
+**测试**：`tests/llm-kit-adapters/transcript-projection-reconcile.test.mjs`（真库 `llm_kit_test`）——
+干净 0.23 fixture（载体 + 消息行 + 分片）0 差异，然后**逐类**人为制造差异并断言分类计数与命中行；
+另有 dry-run 只读自证（写 SQL 代理会抛 + 静态断言写 SQL 只在写入口之后）、`--apply` 库名判据、
+`--apply` 幂等、宿主增强 reasoning 不回写。
