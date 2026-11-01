@@ -45,6 +45,9 @@ import ChatInputArea from './ChatInputArea.vue'
 import type { Message } from '@/types'
 
 export type ChatMessage = Pick<Message, 'id' | 'request_id' | 'role' | 'content' | 'status' | 'reasoning_content' | 'tool_calls'> & {
+  // #1237 切片 B：整段思考（只出现在终稿行）+ 参与拼接的轮数
+  run_reasoning_content?: string | null
+  run_reasoning_rounds?: number | null
   created_at?: string
   updated_at?: string
   metadata?: {

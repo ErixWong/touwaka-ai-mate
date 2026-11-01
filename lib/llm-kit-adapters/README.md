@@ -421,6 +421,21 @@ dry-run 只读自证里也加了全部计划阶段（零写 SQL）。
 
 本切片已用测试钉住这条等式（新写入后拼接逐字等于累积串），所以切片 B 改读侧时展示面不会漂。
 
+**切片 B 已实现（读侧唯一拼接实现：`lib/message-run-reasoning.js`）**：
+
+- 拼接**只在后端做一次**（`loadRunReasoningByRequest`），前端不许自己再 join 一遍（否则就是第二条口径，
+  前端也没有 `round_no` / `sequence_no` 可依，只能拿 `created_at` 猜）。
+- 三个历史查询口（`queryMessagesByRequest` / `listWithBefore` / `listSince`，由
+  `MessageController#_attachRunReasoning` 统一调用）与 SSE `complete` 事件共用它。
+- 字段是**可选字段** `run_reasoning_content`（+ 伴随的 `run_reasoning_rounds` = 参与拼接的段数），
+  **只出现在该请求的终稿行**上；`reasoning_content` 保持原样（仍是**本轮**那段，字段名与语义都不改），
+  不新增列、不加 DDL。分页窗口切掉终稿行时本页一行都不挂（不拿“部分轮”的拼接冒充整段）。
+- `complete` 事件的 `reasoning_content` 也改成**回读列值**（本轮那段），不再是 `fullReasoningContent`：
+  会话内显示要与刷新后（按轮行）逐字一致；`recovering` 仍带跨轮累积串，那只是**重试期的临时显示**
+  （`recovered`/`complete` 之后即以库为准）。
+- 测试：`tests/message-run-reasoning.test.mjs`（真库 7 格：等式 / 只挂终稿行 / 窗口截断 / legacy 不猜 /
+  四个查询口一致 / 字段集合与列集合不变）。
+
 **三格方向 + C 的两个子类**（`REASONING_DIRECTIONS` / `REASONING_C_SUBCLASSES` /
 `collectReasoningDirections` / `planReasoningRewrites` / `applyReasoningRewrites`）：
 

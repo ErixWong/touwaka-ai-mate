@@ -14,6 +14,8 @@
 import logger from '../../lib/logger.js';
 import { Op } from 'sequelize';
 import { buildPaginatedResponse } from '../../lib/query-builder.js';
+// #1237 切片 B：整段思考的读侧拼接**唯一实现**（三个查询口 + SSE complete 共用）
+import { attachRunReasoningContent } from '../../lib/message-run-reasoning.js';
 
 // 工具结果摘要阈值（字符数），与 chat-service.saveToolMessage 保持一致
 const TOOL_RESULT_SUMMARY_THRESHOLD = 5000;
@@ -65,6 +67,22 @@ class MessageController {
         latency: m.latency_ms || null,
       },
     };
+  }
+
+  /**
+   * #1237 切片 B：整段思考挂到终稿行（**三个查询口共用这一个入口**，拼接实现在
+   * `lib/message-run-reasoning.js`，本类里不许再写第二份 join）。
+   *
+   * 失败不拖垮消息列表：`run_reasoning_content` 是展示增强的可选字段，不是消息本体；
+   * 拼接出错时记 warn（不静默）后按“本次响应没有该字段”继续，消息照旧返回。
+   */
+  async _attachRunReasoning(rows) {
+    try {
+      await attachRunReasoningContent({ sequelize: this.db.sequelize, rows });
+    } catch (error) {
+      logger.warn('[MessageController] 整段思考拼接失败（本次响应不带 run_reasoning_content）:', error.message);
+    }
+    return rows;
   }
 
   getMessageListAttributes() {
@@ -183,6 +201,8 @@ class MessageController {
       : mergedRows.slice(offset, offset + size);
 
     const sortedRows = [...pageRows].sort(compareRows);
+    // #1237 切片 B：整段思考只挂在该请求的**终稿行**上（可选字段；本页没有终稿行时一行都不挂）。
+    await this._attachRunReasoning(sortedRows);
 
     const pages = Math.ceil(count / size);
     const latestRow = pageRows.reduce((latest, row) => {
@@ -418,6 +438,8 @@ class MessageController {
 
       // 反转为正序（最早的在前）
       const sortedMessages = [...found.rows].reverse();
+      // #1237 切片 B：同 `queryMessagesByRequest` 同一份拼接实现（字段只出现在终稿行）。
+      await this._attachRunReasoning(sortedMessages);
 
       // 统一分页形状（AGENTS.md §2.3）：{ items, pagination } (+ 开发环境 summary)
       const result = { rows: sortedMessages.map(m => this.formatMessage(m)), count: found.count };
@@ -528,6 +550,8 @@ class MessageController {
       });
 
       const latestMessageId = rows.length > 0 ? rows[rows.length - 1]?.id || null : after_message_id || null;
+      // #1237 切片 B：同 `queryMessagesByRequest` 同一份拼接实现（字段只出现在终稿行）。
+      await this._attachRunReasoning(rows);
 
       ctx.success({
         items: rows.map(m => this.formatMessage(m)),

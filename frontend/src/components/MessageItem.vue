@@ -1,8 +1,10 @@
 <template>
   <div
+    v-if="layout !== ASSISTANT_LAYOUT.HIDDEN"
     :data-message-id="message.id"
+    :data-layout="layout"
     class="message"
-    :class="[message.role, { 'message-highlighted': highlighted }]"
+    :class="[message.role, `message-${layout}`, { 'message-highlighted': highlighted }]"
   >
     <template v-if="message.role === 'tool'">
       <ToolMessageCard
@@ -17,7 +19,7 @@
     </template>
 
     <template v-else>
-      <div class="message-avatar">
+      <div v-if="layout === ASSISTANT_LAYOUT.BUBBLE" class="message-avatar">
         <span v-if="message.role === 'user'">👤</span>
         <div
           v-else
@@ -28,7 +30,7 @@
         </div>
       </div>
 
-      <div class="message-content">
+      <div class="message-content" :class="`message-content-${layout}`">
         <AssistantMessage
           v-if="message.role === 'assistant'"
           :message="message"
@@ -51,15 +53,17 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ToolMessageCard from './ToolMessageCard.vue'
 import AssistantMessage from './AssistantMessage.vue'
+import { ASSISTANT_LAYOUT, resolveAssistantLayout } from './assistantBubbleLayout.js'
 import { useToolDataParser } from '@/composables/useToolDataParser'
 import { formatRelativeTime } from '@/composables/useTimeFormatter'
 import type { ChatMessage } from './ChatWindow.vue'
 import type { ToolContextIndex } from '@/composables/useToolDataParser'
 
-defineProps<{
+const props = defineProps<{
   message: ChatMessage
   allMessages: ChatMessage[]
   toolContextIndex?: ToolContextIndex
@@ -74,6 +78,11 @@ defineEmits<{
 
 const { t } = useI18n()
 const toolParser = useToolDataParser()
+
+// #1237 切片 B（c）：空气泡规则（唯一实现 `assistantBubbleLayout.js`，八格见同名测试）。
+const layout = computed(() => resolveAssistantLayout(props.message, {
+  hasToolCalls: toolParser.parseToolCallsToArray(props.message).length > 0,
+}))
 
 const formatTime = (dateStr: string) => formatRelativeTime(dateStr, t)
 </script>
@@ -134,6 +143,23 @@ const formatTime = (dateStr: string) => formatRelativeTime(dateStr, t)
 
 .message.assistant .message-content {
   border-bottom-left-radius: 4px;
+}
+
+/* #1237 切片 B（c）：紧凑行 —— 正文为空的轮（纯工具/纯思考）不再占一个灰底气泡。
+   规则见 `assistantBubbleLayout.js`；`hidden` 的整行不渲染（MessageItem 根节点 v-if）。 */
+.message.message-compact {
+  margin-bottom: 6px;
+}
+
+.message.message-compact .message-content-compact {
+  max-width: 100%;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.message.message-compact .message-content-compact .reasoning-section {
+  margin-bottom: 0;
 }
 
 .message-text {

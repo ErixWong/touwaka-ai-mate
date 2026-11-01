@@ -26,8 +26,9 @@
       v-if="message.role === 'assistant' && message.reasoning_content"
       class="reasoning-section"
       :class="{ expanded: isReasoningExpanded }"
+      data-testid="assistant-reasoning-section"
     >
-      <div class="reasoning-header" @click="toggleReasoning">
+      <div class="reasoning-header" data-testid="assistant-reasoning-header" @click="toggleReasoning">
         <span class="reasoning-icon">💭</span>
         <span class="reasoning-title">{{ $t('chat.thinkingProcess') || '思考过程' }}</span>
         <span class="reasoning-expand-btn" :class="{ expanded: isReasoningExpanded }">
@@ -38,6 +39,31 @@
       </div>
       <div v-if="isReasoningExpanded" class="reasoning-content">
         <pre class="reasoning-text">{{ message.reasoning_content }}</pre>
+      </div>
+    </div>
+
+    <!-- #1237 切片 B（b）：**整段**思考入口。内容 = 各轮 reasoning_content 按轮序无分隔拼接，
+         由后端 `lib/message-run-reasoning.js` 在终稿行上给出（读侧拼接唯一实现），
+         本组件只负责展示，不在前端重算拼接（否则就是第二条口径）。 -->
+    <div
+      v-if="message.role === 'assistant' && message.run_reasoning_content"
+      class="reasoning-section run-reasoning-section"
+      :class="{ expanded: isRunReasoningExpanded }"
+      data-testid="assistant-run-reasoning-section"
+    >
+      <div class="reasoning-header" data-testid="assistant-run-reasoning-header" @click="toggleRunReasoning">
+        <span class="reasoning-icon">🧠</span>
+        <span class="reasoning-title">
+          {{ runReasoningTitle }}
+        </span>
+        <span class="reasoning-expand-btn" :class="{ expanded: isRunReasoningExpanded }">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </div>
+      <div v-if="isRunReasoningExpanded" class="reasoning-content">
+        <pre class="reasoning-text" data-testid="assistant-run-reasoning-text">{{ message.run_reasoning_content }}</pre>
       </div>
     </div>
 
@@ -96,6 +122,7 @@ const toolParser = useToolDataParser()
 const formatter = useMarkdownFormatter()
 
 const isReasoningExpanded = ref(false)
+const isRunReasoningExpanded = ref(false)
 const assistantMessageRef = ref<HTMLElement | null>(null)
 const isRenderVisible = ref(false)
 let visibilityObserver: IntersectionObserver | null = null
@@ -103,6 +130,19 @@ let visibilityObserver: IntersectionObserver | null = null
 const toggleReasoning = () => {
   isReasoningExpanded.value = !isReasoningExpanded.value
 }
+
+const toggleRunReasoning = () => {
+  isRunReasoningExpanded.value = !isRunReasoningExpanded.value
+}
+
+// 整段思考入口的标题：带轮数时显示“完整思考过程（N 轮）”，轮数未知则只显示标题。
+const runReasoningTitle = computed(() => {
+  const rounds = props.message.run_reasoning_rounds
+  if (typeof rounds === 'number' && rounds > 0) {
+    return t('chat.fullThinkingProcessRounds', { n: rounds }) || `完整思考过程（${rounds} 轮）`
+  }
+  return t('chat.fullThinkingProcess') || '完整思考过程'
+})
 
 const parsedToolCalls = computed<ToolCallData[]>(() => {
   return toolParser.parseToolCallsToArray(props.message)
