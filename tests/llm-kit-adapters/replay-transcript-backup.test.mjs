@@ -674,3 +674,346 @@ test("主键存在性预检分块（一次 SELECT 一个 IN 集合，不逐行�
   assert.deepEqual([...existing].sort(), ["a", "b", "c", "d", "e"]);
   assert.equal(sequelize.calls.filter((call) => /AS pk FROM/.test(call.sql)).length, 3, "6 个主键按 2 个一块 = 3 次查询");
 });
+
+// ==================== 8. 补钉：逐条件短路探针查出的四条缺口 ====================
+//
+// 由来（#1246 逐条件短路探针）：把下面每处的 `if (...)` 改成 `if (false && (...))`，
+// 上面 18 格**全绿**——判据在代码里，却没有一格钉住它。这一节就是补钉。
+// 每一格的注释写明「钉的是哪一行、哪种变异把它打红」；变异红名单见报告。
+//
+//   A. 三方计数里的**清单**两半（`scripts/replay-transcript-backup.mjs:471` / `:474`）
+//   B. `row_count` 的类型判据（`:350`）
+//   C. 标识符白名单（`:295` 表名 / `:360` 列名与主键名 / `:504`+`:512` buildUpdateStatement 直调）
+//   D. 写前预检 `primary_keys_missing_before_write`（`:849` 报告分支；`:690` dry-run 闸门）
+
+// `main` 单独动态取一次：既有的 import 清单一个字不动（本单只许加格，不许改既有格）。
+// 用途只有一个——用「env 里没有 DB_NAME」跑 main 来**结构性**证明「产物阶段 abort 时根本没连库」：
+// main 里 loadBackupBundle（:937）早于 connectDatabase（:941），所以走到连库那一步会抛
+// ERR_REPLAY_USAGE（缺 DB_NAME），而不是产物码。断言拿到产物码 == 没连库 == 零写。
+const { main: runReplayMain } = await import("../../scripts/replay-transcript-backup.mjs");
+
+async function assertAbortsBeforeAnyConnection({ directory, code, pattern = null }) {
+  await assert.rejects(
+    () => runReplayMain({
+      argv: ["--backup-dir", directory, "--expect-database", "touwaka_drill_261102"],
+      env: {},
+    }),
+    (error) => {
+      assert.equal(
+        error.code,
+        code,
+        `必须是产物码（若变成 ERR_REPLAY_USAGE 说明先连库了 ⇒ 零写不再成立）：${error.message}`,
+      );
+      if (pattern) assert.match(error.message, pattern);
+      return true;
+    },
+    "产物阶段的 abort 必须发生在 connectDatabase 之前",
+  );
+}
+
+// ---------- A. 三方计数：清单的 update_count / row_count ----------
+
+test("清单 update_count 与 .json 行数不等（.sql 与 .json 自洽）⇒ 走「产物行数不自洽」码、abort、不连库", async () => {
+  // 只有清单那一个数字错：.sql 的 UPDATE 3 条、.json 的 row_count=3 且 rows 3 行，
+  // 清单 update_count 撒谎成 2。短路 `:471` 会让这一格全绿（= 没钉住）。
+  const { directory } = await writeBackupFixture({
+    manifestTransform: (manifest) => ({
+      ...manifest,
+      tables: manifest.tables.map((entry) => ({ ...entry, update_count: 2 })),
+    }),
+  });
+  await assert.rejects(
+    () => loadBackupBundle({ directory }),
+    (error) => {
+      assert.equal(error.code, REPLAY_ERROR_CODES.ARTIFACT_ROW_COUNT_MISMATCH);
+      assert.match(error.message, /清单 update_count=2 ≠ \.json 的 3 行/);
+      assert.equal(
+        /\.sql 的 UPDATE/.test(error.message),
+        false,
+        "这一格必须是**只有清单**那一路错（.sql 与 .json 一致），否则等于没钉 manifest 那一路",
+      );
+      return true;
+    },
+    "清单 update_count 撒谎必须在**连库之前** abort",
+  );
+  await assertAbortsBeforeAnyConnection({
+    directory,
+    code: REPLAY_ERROR_CODES.ARTIFACT_ROW_COUNT_MISMATCH,
+    pattern: /清单 update_count=2/,
+  });
+});
+
+test("清单 update_count 不是数字（\"3\"）⇒ 视为「未记录」不参与比对（`!== null` 那一半）", async () => {
+  // 这一格钉的是条件的**左半**：`manifestUpdateCount !== null &&`。
+  // 把左半去掉（`manifestUpdateCount !== rows.length`）⇒ "3" !== 3 ⇒ 误报不自洽 ⇒ 这格红。
+  const { directory } = await writeBackupFixture({
+    manifestTransform: (manifest) => ({
+      ...manifest,
+      tables: manifest.tables.map((entry) => ({ ...entry, update_count: "3" })),
+    }),
+  });
+  const bundle = await loadBackupBundle({ directory });
+  assert.equal(bundle.tables[0].manifestUpdateCount, null, "非数字的 update_count 归为「未记录」");
+  const sequelize = createFakeSequelize();
+  const report = await replayBundle({ sequelize, bundle, expectDatabase: "touwaka_drill_261102" });
+  assert.equal(report.ok, true, "清单没记 update_count（或记成字符串）不是回放失败的理由");
+  assert.equal(report.written_rows, 3);
+});
+
+test("清单 row_count 与 .json 行数不等 ⇒ 同一个「产物行数不自洽」码（第三个计数也要钉）", async () => {
+  // 同段代码的第三个条件（`:474`）：探针只列了 update_count，但 row_count 一样是裸的。
+  const { directory } = await writeBackupFixture({
+    manifestTransform: (manifest) => ({
+      ...manifest,
+      tables: manifest.tables.map((entry) => ({ ...entry, row_count: 5 })),
+    }),
+  });
+  await assert.rejects(
+    () => loadBackupBundle({ directory }),
+    (error) => {
+      assert.equal(error.code, REPLAY_ERROR_CODES.ARTIFACT_ROW_COUNT_MISMATCH);
+      assert.match(error.message, /清单 row_count=5 ≠ \.json 的 3 行/);
+      assert.equal(/\.sql 的 UPDATE/.test(error.message), false, "只有清单 row_count 错（.sql 与 .json 一致）");
+      return true;
+    },
+  );
+  await assertAbortsBeforeAnyConnection({ directory, code: REPLAY_ERROR_CODES.ARTIFACT_ROW_COUNT_MISMATCH });
+});
+
+// ---------- B. row_count 必须是 number（三种形态各一格） ----------
+
+test("row_count 缺失 ⇒ ERR_REPLAY_ARTIFACT_MISSING_FIELD（不是「行数不自洽」）、不连库", async () => {
+  const { directory } = await writeBackupFixture({
+    jsonTransform: (payload) => {
+      const clone = { ...payload };
+      delete clone.row_count;
+      return clone;
+    },
+  });
+  await assert.rejects(
+    () => loadBackupBundle({ directory }),
+    (error) => {
+      assert.equal(error.code, REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD);
+      assert.match(error.message, /缺 row_count/);
+      return true;
+    },
+    "缺字段要报「产物缺字段」，不能滑到「行数不自洽」（两者处置不同）",
+  );
+  await assertAbortsBeforeAnyConnection({ directory, code: REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD });
+});
+
+test("row_count 为 null ⇒ 同上（typeof null 是 object，不许当数字）", async () => {
+  const { directory } = await writeBackupFixture({
+    jsonTransform: (payload) => ({ ...payload, row_count: null }),
+  });
+  await assert.rejects(
+    () => loadBackupBundle({ directory }),
+    (error) => error.code === REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD && /缺 row_count/.test(error.message),
+  );
+  await assertAbortsBeforeAnyConnection({ directory, code: REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD });
+});
+
+test("row_count 是字符串 \"3\" ⇒ 同上（字符串数字不是数字，不许隐式比较放过）", async () => {
+  // 短路 `:350` 时 `"3" !== 3` 会走「行数不自洽」——错误码变了，所以这格能红。
+  const { directory } = await writeBackupFixture({
+    jsonTransform: (payload) => ({ ...payload, row_count: String(payload.rows.length) }),
+  });
+  await assert.rejects(
+    () => loadBackupBundle({ directory }),
+    (error) => {
+      assert.equal(error.code, REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD);
+      assert.match(error.message, /缺 row_count/);
+      return true;
+    },
+    "字符串形式的数字必须按「缺字段」拒（否则 row_count 与 rows.length 的比较口径就变成了 JS 隐式转换）",
+  );
+  await assertAbortsBeforeAnyConnection({ directory, code: REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD });
+});
+
+// ---------- C. 标识符白名单：四处出现，分别覆盖 ----------
+
+test("列名非法（空格 / 反引号 / SQL 注释符）⇒ 三个变体各自 abort、不连库", async () => {
+  // 钉 `:360`（`[...columns, primaryKey]` 那一处）。列名要拼进 `SET \`x\` = ?`，必须 fail-closed。
+  const variants = ["bad column", "bad`column", "record_json--x"];
+  for (const bad of variants) {
+    const { directory } = await writeBackupFixture({
+      jsonTransform: (payload) => ({ ...payload, columns: [...payload.columns, bad] }),
+    });
+    await assert.rejects(
+      () => loadBackupBundle({ directory }),
+      (error) => {
+        assert.equal(error.code, REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD);
+        assert.match(error.message, /列名非法/, `必须报「列名非法」而不是滑到「缺列」：${error.message}`);
+        assert.ok(error.message.includes(JSON.stringify(bad)), `必须点名那个非法列名：${error.message}`);
+        return true;
+      },
+      `列名 ${JSON.stringify(bad)} 必须被拒`,
+    );
+    await assertAbortsBeforeAnyConnection({ directory, code: REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD });
+  }
+});
+
+test("清单里的表名非法 ⇒ 「产物缺字段」码（表名也拼进 UPDATE，必须 fail-closed）", async () => {
+  // 钉 `:295`。manifest 的 table 是**清单**里的字段（人可改），不像 payload.table 有交叉核对。
+  const badTable = "agent_transcript_rounds; DROP TABLE x";
+  const { directory } = await writeBackupFixture({
+    manifestTransform: (manifest) => ({
+      ...manifest,
+      tables: manifest.tables.map((entry) => ({ ...entry, table: badTable })),
+    }),
+  });
+  await assert.rejects(
+    () => loadBackupBundle({ directory }),
+    (error) => {
+      assert.equal(error.code, REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD);
+      assert.match(error.message, /清单里的表名非法或缺失/);
+      return true;
+    },
+    "非法表名要在**读文件之前**就拒（json_path 是清单给的，读谁由它决定）",
+  );
+  await assertAbortsBeforeAnyConnection({ directory, code: REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD });
+});
+
+test("主键名非法 ⇒ 「产物缺字段」码（不是「主键不在 columns 里」——两处校验别混）", async () => {
+  // 同一处 `:360` 的 `primaryKey` 那一半；短路后才会滑到 `:369` 的 ARTIFACT_PRIMARY_KEY_MISSING，
+  // 错误码不同 ⇒ 这格红。
+  const { directory } = await writeBackupFixture({
+    jsonTransform: (payload) => ({ ...payload, primary_key: "id`x" }),
+  });
+  await assert.rejects(
+    () => loadBackupBundle({ directory }),
+    (error) => {
+      assert.equal(error.code, REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD);
+      assert.match(error.message, /列名非法/);
+      assert.ok(error.message.includes('"id`x"'));
+      return true;
+    },
+    "非法主键名（拼进 WHERE）必须按标识符拒，不能只报「不在 columns 里」",
+  );
+});
+
+test("第二处标识符校验（buildUpdateStatement 直调，不经文件）：表名 / 主键名 / SET 列名各自抛", () => {
+  // 钉 `:504`（table+primaryKey）与 `:512`（setColumns）。这层是"不经产物、直接构造语句"的
+  // 防御：loadBackupBundle 走完之后还会再拼一次语句，两处都得 fail-closed。
+  const legalSet = ["request_id", "record_json", "created_at", "updated_at"];
+  assert.throws(
+    () => buildUpdateStatement({ table: "agent transcript rounds", setColumns: legalSet, primaryKey: "id" }),
+    (error) => error.code === REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD && /表名\/主键名非法/.test(error.message),
+    "表名带空格必须抛",
+  );
+  assert.throws(
+    () => buildUpdateStatement({ table: "agent_transcript_rounds", setColumns: legalSet, primaryKey: "id--x" }),
+    (error) => error.code === REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD && /表名\/主键名非法/.test(error.message),
+    "主键名带 SQL 注释符必须抛",
+  );
+  assert.throws(
+    () => buildUpdateStatement({ table: "agent_transcript_rounds", setColumns: ["bad column"], primaryKey: "id" }),
+    (error) => error.code === REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD && /列名非法/.test(error.message),
+    "SET 列名带空格必须抛",
+  );
+});
+
+test("合法标识符照常通过（挡住「一律拒绝」式糊弄）：同一份夹具只换一个非法列名才红", async () => {
+  // 没有这一格，"把 IDENTIFIER_PATTERN 改成永远 false"也能让上面几格全绿——那就是糊弄。
+  const legal = await writeBackupFixture();
+  const bundle = await loadBackupBundle({ directory: legal.directory });
+  assert.equal(bundle.tables[0].table, "agent_transcript_rounds");
+  assert.deepEqual(bundle.tables[0].setColumns, ["request_id", "record_json", "created_at", "updated_at"]);
+  const statement = buildUpdateStatement({
+    table: "agent_transcript_rounds",
+    setColumns: bundle.tables[0].setColumns,
+    primaryKey: "id",
+  });
+  assert.match(statement, /^UPDATE `agent_transcript_rounds` SET /);
+  assert.deepEqual(statementColumns(statement), bundle.tables[0].setColumns);
+  const sequelize = createFakeSequelize();
+  const report = await replayBundle({ sequelize, bundle, expectDatabase: "touwaka_drill_261102" });
+  assert.equal(report.ok, true, "合法标识符必须照常回放通过");
+  assert.equal(writeCalls(sequelize).length, 3);
+
+  // 对照：同一入口、同一夹具，只把列名换成带空格的 ⇒ 必须红。
+  const illegal = await writeBackupFixture({
+    jsonTransform: (payload) => ({ ...payload, columns: [...payload.columns, "record json"] }),
+  });
+  await assert.rejects(
+    () => loadBackupBundle({ directory: illegal.directory }),
+    (error) => error.code === REPLAY_ERROR_CODES.ARTIFACT_MISSING_FIELD && /列名非法/.test(error.message),
+    "对照组必须红（证明上面的绿不是「一律放过」）",
+  );
+});
+
+// ---------- D. 写前预检 primary_keys_missing_before_write ----------
+
+test("写前预检：主键不存在 ⇒ 报告点名（表名 + 主键）「缺主键（写前预检）」、dry-run 判 ok=false、零写", async () => {
+  // 钉 `:849-850`（formatReport 的打印分支）。短路它 ⇒ 报告里就看不到「缺主键（写前预检）」这一行。
+  const { directory } = await writeBackupFixture();
+  const bundle = await loadBackupBundle({ directory });
+  const sequelize = createFakeSequelize({ existingKeys: ["atr_1", "atr_2"] }); // atr_3 表里没有
+  const report = await replayBundle({
+    sequelize,
+    bundle,
+    expectDatabase: "touwaka_drill_261102",
+    dryRun: true,
+  });
+  const text = formatReport(report);
+  assert.match(text, /缺主键（写前预检）：atr_3/, "报告必须点名写前预检缺的那一行");
+  assert.match(text, /agent_transcript_rounds\t主键 id/, "点名必须带表名与主键名（不是光一个值）");
+  assert.deepEqual(report.tables[0].primary_keys_missing_before_write, ["atr_3"]);
+  assert.equal(report.tables[0].ok, false, "dry-run 的 ok 就是预检结果（`:690`）");
+  assert.equal(report.ok, false, "预演发现主键缺失 ⇒ 真跑会失败 ⇒ 报告 ok=false");
+  assert.equal(writeCalls(sequelize).length, 0, "预演零写");
+});
+
+test("写路径：写前预检非空**不是**成败闸门（UPDATE 命中即 ok=true），但报告必须点名；复合情形仍是 ROW_NOT_FOUND", async () => {
+  // 分支裁定（不许合并成一句话）：
+  //   · dry-run：`entry.ok = missingBeforeWrite.length === 0`（`:690`）⇒ 预检非空 = 失败。
+  //   · 真写：`entry.ok` 只看 affectedRows 三个桶（`:741-743`），**不含**预检 ⇒ 预检非空但
+  //     UPDATE 命中（探针漏了/类型口径不一致）时 ok=true、退出码 0。
+  //   · 真写且 UPDATE 也 0 行 ⇒ ROW_NOT_FOUND（`:776` 起），与既有第 3 格**同一个错误码**，
+  //     但那条路径由 affectedRows 判，不由预检判。
+  // 这一格把上面三条一起钉住：短路 `:849` 会让「缺主键（写前预检）」那行消失 ⇒ 红。
+  const { directory } = await writeBackupFixture();
+  const bundle = await loadBackupBundle({ directory });
+  const probeMissed = () => createFakeSequelize({
+    existingKeys: ["atr_1", "atr_3"], // 探针漏了 atr_2
+    affectedFor: () => 1, // 但 UPDATE 按主键命中 1 行
+  });
+
+  const sequelize = probeMissed();
+  const report = await replayBundle({ sequelize, bundle, expectDatabase: "touwaka_drill_261102" });
+  assert.deepEqual(report.tables[0].primary_keys_missing_before_write, ["atr_2"]);
+  assert.equal(report.tables[0].would_update, 2, "预检结果要体现在「会被更新的行数」上");
+  assert.equal(report.ok, true, "真写路径的成败只看 affectedRows（`:741-743`）——预检不是闸门");
+  assert.equal(report.written_rows, 3);
+  const text = formatReport(report);
+  assert.match(text, /会被更新的行数：2\t主键不存在的行数：1/);
+  assert.match(text, /缺主键（写前预检）：atr_2/, "即使 ok=true，预检缺的行也必须被点名（否则这条信号等于不存在）");
+
+  // 同一份夹具 + 同一个探针结果，dry-run 走另一条判据 ⇒ ok=false、零写。
+  const drySequelize = probeMissed();
+  const dryReport = await replayBundle({
+    sequelize: drySequelize,
+    bundle,
+    expectDatabase: "touwaka_drill_261102",
+    dryRun: true,
+  });
+  assert.equal(dryReport.ok, false, "同一份数据 dry-run 判失败、真写判通过 ⇒ 两条判据不同，必须分别钉");
+  assert.equal(writeCalls(drySequelize).length, 0);
+
+  // 复合情形（预检漏 + UPDATE 也 0 行）：同一个 ROW_NOT_FOUND 码，点名表名与主键。
+  await assert.rejects(
+    () => replayBundle({
+      sequelize: createFakeSequelize({ existingKeys: ["atr_1", "atr_3"] }),
+      bundle,
+      expectDatabase: "touwaka_drill_261102",
+    }),
+    (error) => {
+      assert.equal(error.code, REPLAY_ERROR_CODES.ROW_NOT_FOUND, "与既有第 3 格同码（预检没有自己的错误码）");
+      assert.match(error.message, /agent_transcript_rounds/, "点名表名");
+      assert.match(error.message, /atr_2/, "点名主键值");
+      assert.equal(error.writtenRows, 2, "已写 2 行才撞上缺主键那行");
+      assert.equal(describeFailure(error).exitCode, 1, "非零退出");
+      return true;
+    },
+  );
+});
