@@ -20,11 +20,23 @@
  *   node scripts/verify-transcript-projection.mjs --request-id <id> --json --report temp/projection.json
  *   node scripts/verify-transcript-projection.mjs --request-id <id> --apply     # 仅非生产库
  *
+ * 存量漂移回填（#1227 阶段 3 切片 C2b，两个开关**默认关**；不带开关 = C1 行为，dry-run 只读）
+ *   node scripts/verify-transcript-projection.mjs --limit 200 --fix-is-error --dry-run
+ *   node scripts/verify-transcript-projection.mjs --limit 200 --rewrite-record-json --dry-run
+ *   node scripts/verify-transcript-projection.mjs --limit 200 --rewrite-record-json   # 真写
+ *   `--fix-is-error`    只改 A 格（canonical 真 & 列 0 → 1）；C 格（列真 & canonical 非真）
+ *                       一律不动；dry-run 固定输出 A/B/C 三格方向。
+ *   `--rewrite-record-json`  用 `buildAgentRoundRecordSnapshot(canonical).recordSnapshot`
+ *                       重写 `agent_rounds.record_json`（唯一快照实现，不另写第二份）。
+ *   写生产库 `touwaka_mate` 必须**开关 + `ALLOW_NON_TEST_DB=1` 同时在场**，缺任一 ⇒ 拒绝，
+ *   code=`ERR_PROJECTION_BACKFILL_NEEDS_ALLOW_NON_TEST_DB`，exit 1。
+ *   `--dry-run` 与开关同用时只出清单不写（生产预演用）。
+ *
  * 退出码
  *   0 = 无缺陷（只剩 `host_enriched_reasoning` 这类“非投影缺陷”的信息项，或 legacy 探针的
  *       块顺序差）
  *   3 = 有真差异（对账 diff / 孤儿 / 丢正文）
- *   1 = 用法 / 连接 / `--apply` 被拒
+ *   1 = 用法 / 连接 / `--apply` / 存量回填被拒
  *
  * 连哪个库（与 scripts/verify-transcript-read-parity.js 同约定）
  *   - 默认（没给 DB_*）：走 `tests/helpers/test-db-guard.mjs` 的 `openTestDatabase()`，建连接之前
@@ -48,13 +60,20 @@ for (const method of ["info", "warn", "error", "debug"]) {
 const {
   PRODUCTION_DATABASE_NAME,
   PROJECTION_DIFF_KINDS,
+  TOOL_ERROR_DIRECTIONS,
+  applyRecordJsonRewrites,
+  applyToolErrorBackfill,
+  assertDriftBackfillAllowed,
   assertProjectionApplyAllowed,
   collectBaselineStats,
+  collectToolErrorDirections,
   detectOrphans,
   explainReconcileQueries,
+  planRecordJsonRewrites,
   probeLegacyVsCarrierOnly,
   projectRequest,
   reconcileRequest,
+  summarizeToolErrorDirections,
 } = await import("../lib/llm-kit-adapters/transcript-projection.js");
 const { CANONICAL_TABLE } = await import("../lib/llm-kit-adapters/transcript-store.js");
 const { openTestDatabase, assertTestDatabase, ALLOW_ENV_VAR } = await import(
@@ -76,6 +95,10 @@ export function parseArgs(argv) {
     explain: false,
     skipProbe: false,
     reportPath: null,
+    // #1227 C2b 存量漂移回填（两个开关默认关）
+    fixIsError: false,
+    rewriteRecordJson: false,
+    dryRun: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -88,6 +111,9 @@ export function parseArgs(argv) {
     else if (arg === "--explain") options.explain = true;
     else if (arg === "--no-probe") options.skipProbe = true;
     else if (arg === "--report") options.reportPath = String(next());
+    else if (arg === "--fix-is-error") options.fixIsError = true;
+    else if (arg === "--rewrite-record-json") options.rewriteRecordJson = true;
+    else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--help" || arg === "-h") options.help = true;
     else throw new Error(`未知参数：${arg}（--help 看用法）`);
   }
@@ -258,23 +284,88 @@ export function renderExplain(explainByRequest) {
   return lines.join("\n");
 }
 
+/**
+ * 三格方向表（#1227 C2b）。**固定输出**：A 可回填 / B 两边真 / C 列真&canonical非真。
+ *
+ * C 格尤其要看得见：它是「列已经是 1，canonical 却说不是」的行——本开关**永不碰它**。
+ */
+export function renderToolErrorDirections(rows) {
+  const summary = summarizeToolErrorDirections(rows);
+  const lines = [
+    "== 工具行 is_error 三格方向（A=canonical真&列0 / B=两边真 / C=列真&canonical非真）",
+    `  ${Object.entries(TOOL_ERROR_DIRECTIONS).map(([key, label]) => `${key}=${label}`).join("；")}`,
+    `  A: ${summary.A}\tB: ${summary.B}\tC: ${summary.C}\t两边皆假: ${summary.unchanged}\t合计: ${summary.total}`,
+    `  A 可回填（→1）；B 无需动作；C **禁止反向修改**（列已 1 的行绝不翻回 0）`,
+  ];
+  for (const row of rows) {
+    if (row.direction === null) continue;
+    const detail = row.direction === "C" && row.canonicalAbsent ? " canonical 无 tool_result" : "";
+    lines.push(
+      `    - [${row.direction}] ${row.runId} ${row.toolUseId} name=${row.name}`
+      + ` canonicalTrue=${row.canonicalTrue} columnTrue=${row.columnTrue} action=${row.action}${detail}`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/** `record_json` 重写清单（只列 dedup_key + 差在哪几个键，不倾倒整份 record）。 */
+export function renderRecordJsonPlan(plans) {
+  const requests = new Set(plans.map((plan) => plan.runId));
+  const lines = [
+    "== record_json 重写清单（--rewrite-record-json；快照实现 = buildAgentRoundRecordSnapshot）",
+    `  ${plans.length} 行 / ${requests.size} 请求`,
+  ];
+  for (const plan of plans) {
+    lines.push(
+      `    - ${plan.runId} ${plan.dedupKey} round=${plan.roundNo}`
+      + ` onlyExpected=[${plan.diff.onlyExpected.join(",")}]`
+      + ` onlyActual=[${plan.diff.onlyActual.join(",")}]`
+      + ` changed=[${plan.diff.changed.join(",")}]`,
+    );
+  }
+  return lines.join("\n");
+}
+
 export async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
     console.log("用法：node scripts/verify-transcript-projection.mjs "
-      + "[--request-id <id> ...] [--since <ISO>] [--limit <n>] [--apply] [--json] [--explain] [--no-probe] [--report <path>]");
+      + "[--request-id <id> ...] [--since <ISO>] [--limit <n>] [--apply] [--json] [--explain] [--no-probe] [--report <path>] "
+      + "[--fix-is-error] [--rewrite-record-json] [--dry-run]");
     return;
   }
 
   const { sequelize, database, source } = await resolveConnection();
   // --apply 的库名判据**先于**任何写入（生产库在这里就被拒，exit 1）。
   assertProjectionApplyAllowed({ database, apply: options.apply });
+  // 存量漂移回填：开关本身就是写请求；--dry-run 时降级为只读预演。
+  const driftWrite = !options.dryRun && (options.fixIsError || options.rewriteRecordJson);
+  const backfillGate = assertDriftBackfillAllowed({
+    database,
+    fixIsError: driftWrite && options.fixIsError,
+    rewriteRecordJson: driftWrite && options.rewriteRecordJson,
+    env: process.env,
+  });
 
   const runIds = await listRequestIds(sequelize, options);
   if (runIds.length === 0) {
     console.log("没有匹配的 request_id（检查 --request-id / --since / --limit）");
     await sequelize.close();
     return;
+  }
+
+  // ① 存量漂移：先出计划（只读），再决定写。
+  let directions = null;
+  let isErrorApply = null;
+  let recordJsonPlan = null;
+  let recordJsonApply = null;
+  if (options.fixIsError) {
+    directions = await collectToolErrorDirections({ sequelize, runIds });
+    if (driftWrite) isErrorApply = await applyToolErrorBackfill({ sequelize, rows: directions });
+  }
+  if (options.rewriteRecordJson) {
+    recordJsonPlan = await planRecordJsonRewrites({ sequelize, runIds });
+    if (driftWrite) recordJsonApply = await applyRecordJsonRewrites({ sequelize, plans: recordJsonPlan });
   }
 
   const entries = [];
@@ -286,6 +377,15 @@ export async function main() {
     }
     entries.push(await inspectRequest({ sequelize, runId, options }));
   }
+  // 回填后复跑对账（只 reconcile，不再跑探针）：给出这两类是否归零。
+  let driftAfter = null;
+  if (driftWrite) {
+    driftAfter = [];
+    for (const runId of runIds) {
+      const rec = await reconcileRequest({ sequelize, runId });
+      driftAfter.push({ runId, counts: rec.counts });
+    }
+  }
   const baseline = await collectBaselineStats({ sequelize, runIds });
 
   const report = {
@@ -293,10 +393,30 @@ export async function main() {
     database,
     connection: source,
     mode: options.apply ? "apply" : "dry-run",
+    drift_mode: driftWrite ? "apply" : (options.fixIsError || options.rewriteRecordJson ? "dry-run" : "off"),
+    drift_gate: backfillGate,
     diff_kinds: PROJECTION_DIFF_KINDS,
     requests: entries,
     baseline,
     apply: applyResults,
+    drift: (options.fixIsError || options.rewriteRecordJson)
+      ? {
+        tool_error_directions: directions
+          ? { summary: summarizeToolErrorDirections(directions), rows: directions }
+          : null,
+        is_error_apply: isErrorApply,
+        record_json_plan: recordJsonPlan
+          ? recordJsonPlan.map((plan) => ({
+            runId: plan.runId,
+            dedupKey: plan.dedupKey,
+            roundNo: plan.roundNo,
+            diff: plan.diff,
+          }))
+          : null,
+        record_json_apply: recordJsonApply,
+        after: driftAfter,
+      }
+      : null,
   };
 
   if (options.json) {
@@ -311,6 +431,27 @@ export async function main() {
       console.log("== --apply 结果（写入口：projectRequest → applyProjectionWrites）");
       for (const applied of applyResults) {
         console.log(`  ${applied.runId}\tbefore=${applied.diffsBefore.length}\twritten=${JSON.stringify(applied.written)}\tafter=${applied.diffsAfter.length}`);
+      }
+    }
+    if (directions) {
+      console.log(renderToolErrorDirections(directions));
+      console.log(isErrorApply
+        ? `== --fix-is-error 结果：written=${isErrorApply.written}（A 格 ${isErrorApply.applied.length} 行，C 格 0 行未动）`
+        : "== --fix-is-error 结果：dry-run 未写入（加 --dry-run 即此模式；去掉它才真写）");
+    }
+    if (recordJsonPlan) {
+      console.log(renderRecordJsonPlan(recordJsonPlan));
+      console.log(recordJsonApply
+        ? `== --rewrite-record-json 结果：written=${recordJsonApply.written}`
+        : "== --rewrite-record-json 结果：dry-run 未写入");
+    }
+    if (driftAfter) {
+      console.log("== 回填后复跑对账（只 reconcile）");
+      for (const item of driftAfter) {
+        const real = Object.entries(item.counts)
+          .filter(([kind]) => !INFORMATIONAL_DIFF_KINDS.includes(kind))
+          .map(([kind, count]) => `${kind}×${count}`).join(", ") || "无";
+        console.log(`  ${item.runId}\t${real}`);
       }
     }
   }

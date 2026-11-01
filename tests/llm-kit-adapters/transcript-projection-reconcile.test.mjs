@@ -26,6 +26,12 @@
  *      第二次 written 全 0、差异仍为 0。
  *   5. 宿主增强 reasoning（终稿单写把 reasoning 换成整个 run 的累积推理）归类为
  *      `host_enriched_reasoning`（非缺陷），且 `--apply` **不回写**它。
+ *   6. #1227 阶段 3 切片 C2b 存量漂移回填：
+ *      - `assertDriftBackfillAllowed` 纯函数：生产库缺 `ALLOW_NON_TEST_DB=1` 一律拒写；
+ *      - `--fix-is-error` 三格方向（A=canonical真&列0 / B=两边真 / C=列真&canonical非真）：
+ *        只改 A 格；**C 格列已 1 的行绝不翻回 0**；第二次写 0 行；
+ *      - `--rewrite-record-json` 结果与 `buildAgentRoundRecordSnapshot` **逐字节相等**，且幂等；
+ *      - 两个开关的**计划阶段**（dry-run 路径）同样零写 SQL。
  *
  * 依赖顺序（勿删）：`tests/llm-kit-adapters/transcript-rounds-ddl.test.mjs` 会 DROP 这几张表；
  * `npm run test:llm-kit` 用 `--test-concurrency=1` 串行跑文件且本文件排在其后，before() 另外做
@@ -63,19 +69,29 @@ if (creds) {
 
 const {
   PRODUCTION_DATABASE_NAME,
+  DRIFT_BACKFILL_ALLOW_ENV_VAR,
+  applyRecordJsonRewrites,
+  applyToolErrorBackfill,
+  assertDriftBackfillAllowed,
   assertProjectionApplyAllowed,
   bitToBoolean,
   collectBaselineStats,
+  collectToolErrorDirections,
   detectOrphans,
   explainReconcileQueries,
+  loadCanonicalRows,
   loadCarrierOnlyRounds,
+  planRecordJsonRewrites,
   probeLegacyVsCarrierOnly,
   projectRequest,
   reconcileRequest,
+  summarizeToolErrorDirections,
 } = await import("../../lib/llm-kit-adapters/transcript-projection.js");
-const { createTouwakaTranscriptStore, CANONICAL_TABLE } = await import(
-  "../../lib/llm-kit-adapters/transcript-store.js"
-);
+const {
+  buildAgentRoundRecordSnapshot,
+  createTouwakaTranscriptStore,
+  CANONICAL_TABLE,
+} = await import("../../lib/llm-kit-adapters/transcript-store.js");
 const { runMigrationSteps, parseUpgradeOptions } = await import("../../scripts/upgrade-database.js");
 
 const db = dbCtx?.db ?? null;
@@ -621,6 +637,9 @@ if (!creds) {
       await loadCarrierOnlyRounds({ sequelize: db.sequelize, runId: id });
       await collectBaselineStats({ sequelize: db.sequelize, runIds: [id] });
       await explainReconcileQueries({ sequelize: db.sequelize, runId: id });
+      // #1227 C2b：两个回填开关的**计划**阶段也必须只读（--dry-run 就是只跑这两条）。
+      await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] });
+      await planRecordJsonRewrites({ sequelize: db.sequelize, runIds: [id] });
     } finally {
       db.sequelize.query = originalQuery;
     }
@@ -762,6 +781,26 @@ if (!creds) {
         explain: false,
         skipProbe: false,
         reportPath: null,
+        fixIsError: false,
+        rewriteRecordJson: false,
+        dryRun: false,
+      },
+    );
+    // #1227 C2b：两个回填开关 + --dry-run 的解析（默认全关）。
+    assert.deepEqual(
+      parseArgs(["--fix-is-error", "--rewrite-record-json", "--dry-run"]),
+      {
+        requestIds: [],
+        since: null,
+        limit: null,
+        apply: false,
+        json: false,
+        explain: false,
+        skipProbe: false,
+        reportPath: null,
+        fixIsError: true,
+        rewriteRecordJson: true,
+        dryRun: true,
       },
     );
     assert.throws(() => parseArgs(["--nope"]), /未知参数/);
@@ -810,5 +849,134 @@ if (!creds) {
       { replacements: { roundId: ownerRoundId } },
     );
     assert.equal(rows[0].reasoning_content, enriched, "apply 不得把宿主增强的 reasoning 覆盖回 canonical 那一段");
+  });
+
+  // ==================== #1227 阶段 3 切片 C2b：存量漂移回填 ====================
+
+  test("存量回填闸门：两个开关写生产库必须同时给 ALLOW_NON_TEST_DB=1（纯函数）", () => {
+    // 不带开关 = 不写（与 C1 行为一致）
+    assert.deepEqual(
+      assertDriftBackfillAllowed({ database: PRODUCTION_DATABASE_NAME, env: {} }),
+      { allowed: false, reason: "no-write-flag" },
+    );
+    for (const flag of ["fixIsError", "rewriteRecordJson"]) {
+      assert.throws(
+        () => assertDriftBackfillAllowed({ database: PRODUCTION_DATABASE_NAME, [flag]: true, env: {} }),
+        (error) => error.code === "ERR_PROJECTION_BACKFILL_NEEDS_ALLOW_NON_TEST_DB"
+          && error.database === PRODUCTION_DATABASE_NAME,
+        `${flag} 单独在场（缺 ALLOW_NON_TEST_DB）必须拒绝`,
+      );
+      assert.deepEqual(
+        assertDriftBackfillAllowed({
+          database: PRODUCTION_DATABASE_NAME,
+          [flag]: true,
+          env: { [DRIFT_BACKFILL_ALLOW_ENV_VAR]: "1" },
+        }),
+        { allowed: true, reason: "production-explicit" },
+      );
+      // 测试库不需要显式确认（测试库演练靠这条）
+      assert.deepEqual(
+        assertDriftBackfillAllowed({ database: "llm_kit_test", [flag]: true, env: {} }),
+        { allowed: true, reason: "non-production" },
+      );
+    }
+    assert.throws(
+      () => assertDriftBackfillAllowed({ database: "", fixIsError: true, env: {} }),
+      (error) => error.code === "ERR_PROJECTION_BACKFILL_UNKNOWN_DATABASE",
+    );
+  });
+
+  test("--fix-is-error 三格方向：只改 A 格（canonical 真 & 列 0）；C 格（列真 & canonical 非真）一律不动", async () => {
+    const { id, tool1, tool2 } = await freshFixture("fix-is-error-directions");
+    // tool2：canonical 有 is_error:true，把列压回 0 → A 格（应被改成 1）
+    await db.sequelize.query(
+      "UPDATE chat_tool_calls SET is_error = b'0' WHERE request_id = :id AND tool_use_id = :toolId",
+      { replacements: { id, toolId: tool2 } },
+    );
+    // tool1：canonical 无 is_error，把列设成 1 → C 格（禁止反向修改，必须保持 1）
+    await db.sequelize.query(
+      "UPDATE chat_tool_calls SET is_error = b'1' WHERE request_id = :id AND tool_use_id = :toolId",
+      { replacements: { id, toolId: tool1 } },
+    );
+
+    const directions = await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] });
+    const byTool = new Map(directions.map((row) => [row.toolUseId, row]));
+    assert.equal(byTool.get(tool2).direction, "A");
+    assert.equal(byTool.get(tool1).direction, "C");
+    assert.deepEqual(
+      summarizeToolErrorDirections(directions),
+      { A: 1, B: 0, C: 1, unchanged: 0, total: 2 },
+    );
+
+    const before = await reconcileRequest({ sequelize: db.sequelize, runId: id });
+    assert.deepEqual(countsOf(before.diffs), { tool_row_mismatch: 2 });
+
+    const first = await applyToolErrorBackfill({ sequelize: db.sequelize, rows: directions });
+    assert.equal(first.written, 1, "只允许写 A 格那 1 行");
+    assert.deepEqual(first.applied.map((row) => row.toolUseId), [tool2]);
+
+    const [rows] = await db.sequelize.query(
+      "SELECT tool_use_id, is_error+0 AS is_error FROM chat_tool_calls WHERE request_id = :id ORDER BY tool_use_id",
+      { replacements: { id } },
+    );
+    const column = new Map(rows.map((row) => [row.tool_use_id, Number(row.is_error)]));
+    assert.equal(column.get(tool2), 1, "A 格必须被改成 1");
+    assert.equal(column.get(tool1), 1, "C 格必须保持原值 1（绝不翻回 0）");
+
+    // C 格仍是差异（没被“顺手修好”），A 格已消失
+    const after = await reconcileRequest({ sequelize: db.sequelize, runId: id });
+    assert.deepEqual(countsOf(after.diffs), { tool_row_mismatch: 1 });
+    assert.equal(after.diffs[0].toolUseId, tool1);
+    assert.equal(after.diffs[0].field, "is_error");
+
+    // 幂等：第二次方向表变成 B + C，写 0 行
+    const directions2 = await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] });
+    assert.deepEqual(
+      summarizeToolErrorDirections(directions2),
+      { A: 0, B: 1, C: 1, unchanged: 0, total: 2 },
+    );
+    const second = await applyToolErrorBackfill({ sequelize: db.sequelize, rows: directions2 });
+    assert.equal(second.written, 0, "第二次必须写 0 行（幂等）");
+  });
+
+  test("--rewrite-record-json：结果与 buildAgentRoundRecordSnapshot 逐字节相等，且幂等", async () => {
+    const { id } = await freshFixture("rewrite-record-json");
+    const targetKey = `${id}:engine:round:1`;
+    // 模拟历史行：写侧当年的白名单把 response 剔掉了
+    await db.sequelize.query(
+      "UPDATE agent_rounds SET record_json = JSON_REMOVE(record_json, '$.response')"
+      + " WHERE request_id = :id AND dedup_key = :key",
+      { replacements: { id, key: targetKey } },
+    );
+
+    const plans = await planRecordJsonRewrites({ sequelize: db.sequelize, runIds: [id] });
+    assert.equal(plans.length, 1);
+    assert.equal(plans[0].dedupKey, targetKey);
+    assert.deepEqual(plans[0].diff, { onlyExpected: ["response"], onlyActual: [], changed: [] });
+
+    const before = await reconcileRequest({ sequelize: db.sequelize, runId: id });
+    assert.deepEqual(countsOf(before.diffs), { record_json_mismatch: 1 });
+
+    const first = await applyRecordJsonRewrites({ sequelize: db.sequelize, plans });
+    assert.equal(first.written, 1);
+
+    // 逐字节：盘上的 record_json 必须与**写侧同一份**快照函数的输出完全相同
+    const canonicalRows = await loadCanonicalRows({ sequelize: db.sequelize, runId: id });
+    const canonicalRow = canonicalRows.find((row) => row.dedupKey === targetKey);
+    const expected = JSON.stringify(buildAgentRoundRecordSnapshot(canonicalRow.record).recordSnapshot);
+    const [rows] = await db.sequelize.query(
+      "SELECT record_json FROM agent_rounds WHERE request_id = :id AND dedup_key = :key",
+      { replacements: { id, key: targetKey } },
+    );
+    assert.equal(rows[0].record_json, expected, "必须与 buildAgentRoundRecordSnapshot 逐字节相等");
+
+    const after = await reconcileRequest({ sequelize: db.sequelize, runId: id });
+    assert.deepEqual(after.diffs, []);
+
+    // 幂等：第二次计划为空、写 0 行
+    const plans2 = await planRecordJsonRewrites({ sequelize: db.sequelize, runIds: [id] });
+    assert.deepEqual(plans2, []);
+    const second = await applyRecordJsonRewrites({ sequelize: db.sequelize, plans: plans2 });
+    assert.equal(second.written, 0);
   });
 }
