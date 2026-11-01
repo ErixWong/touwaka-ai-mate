@@ -295,8 +295,8 @@ legacy 读法直接调 `store.load()`。C1 只是把 appendRound 里原本内联
 写入口只有 `projectRequest() → applyProjectionWrites()`：补缺失 `agent_rounds` 行（`INSERT IGNORE`）、
 按 `(round_id, sequence_no)` upsert `messages`、按 `tool_use_id` upsert `chat_tool_calls`、
 剪掉“未被吸附”的 `messages` 行。**不重写既有 `agent_rounds.record_json`**（历史行保留原样，
-那部分差异只报告不修复）。幂等：第二次跑 `written` 全 0（`affectedRowsOf()` 同时兼容
-sequelize 的两种写入返回形状：`[insertId, affectedRows]` 与 `[ResultSetHeader, …]`）。
+那部分差异只报告不修复——存量重写走 C2b 的 `--rewrite-record-json`，见下节）。幂等：第二次跑 `written` 全 0
+（`affectedRowsOf()` 同时兼容 sequelize 的两种写入返回形状：`[insertId, affectedRows]` 与 `[ResultSetHeader, …]`）。
 
 **legacy 探针（给 C2 的靶子）**：同一请求三档对比——`new`（canonical 折叠）/ `legacy`（现网读法）/
 `carrier-only`（只用载体行当轮宿主，子行按 canonical 轮归属挂回）。生产 5 个 0.23 请求实测：
@@ -308,3 +308,29 @@ carrier-only 已把轮数与条数拉回与 canonical 一致，**只剩块顺序
 干净 0.23 fixture（载体 + 消息行 + 分片）0 差异，然后**逐类**人为制造差异并断言分类计数与命中行；
 另有 dry-run 只读自证（写 SQL 代理会抛 + 静态断言写 SQL 只在写入口之后）、`--apply` 库名判据、
 `--apply` 幂等、宿主增强 reasoning 不回写。
+
+## 存量投影漂移回填（#1227 阶段 3 切片 C2b）
+
+两个开关**默认关**，不带开关时行为与 C1 完全一致（dry-run 只读）：
+
+| 开关 | 改什么 | 方向约束 |
+|---|---|---|
+| `--fix-is-error` | `chat_tool_calls.is_error` | **单向**：只把「canonical `true` 且列 `0`」（A 格）改 1；「列真 & canonical 非真」（C 格）一律不动 |
+| `--rewrite-record-json` | `agent_rounds.record_json` | 用 `buildAgentRoundRecordSnapshot(canonical).recordSnapshot` 重写（唯一快照实现，不另写第二份） |
+
+**生产库写入门槛**：开关本身 + `ALLOW_NON_TEST_DB=1` 必须**同时在场**；缺任一即拒绝，
+code=`ERR_PROJECTION_BACKFILL_NEEDS_ALLOW_NON_TEST_DB`（库名缺失是 `ERR_PROJECTION_BACKFILL_UNKNOWN_DATABASE`）。
+`--dry-run` 与开关同用时只出清单不写。
+
+**三格方向表永远可见**（`collectToolErrorDirections` / `summarizeToolErrorDirections`）：
+A=canonical真&列0 / B=两边真 / C=列真&canonical非真 / 两边皆假。为什么强制三格而不是只报“命中数”：
+C2b 复盘发现 `agent_transcript_rounds.is_error` 自己会被 2026-10-09 的 canonical 回填污染
+（`reconstructMessages` 的 `row.is_error` 是 `BIT(1)` 的 `Buffer`，`Boolean(Buffer)` 恒真），
+只报命中数会把“canonical 假阳性”伪装成“投影丢位”。**基准本身是否可信必须一眼可见**。
+
+**不碰的边界**：`messages.reasoning_content`（宿主增强累积推理）不回填；canonical 数据本身不在本开关职责内
+（假阳性清理属 C2d，需 Eric 批准）；`reconstructMessages` 的读档语义不在本切片改（C2c）。
+
+**测试**：新增 3 条——闸门纯函数（生产库缺 `ALLOW_NON_TEST_DB=1` 拒写）、A/C 两格方向（C 格列已 1
+绝不翻回 0 + 幂等）、`--rewrite-record-json` 与 `buildAgentRoundRecordSnapshot` **逐字节相等** + 幂等；
+dry-run 只读自证里也加了两个开关的**计划阶段**（零写 SQL）。
