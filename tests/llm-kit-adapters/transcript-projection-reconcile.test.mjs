@@ -70,21 +70,26 @@ if (creds) {
 const {
   PRODUCTION_DATABASE_NAME,
   DRIFT_BACKFILL_ALLOW_ENV_VAR,
+  applyCanonicalRecordRewrites,
   applyRecordJsonRewrites,
-  applyToolErrorBackfill,
   assertDriftBackfillAllowed,
   assertProjectionApplyAllowed,
   bitToBoolean,
+  clearToolErrorBlocks,
   collectBaselineStats,
+  collectFoldedDirections,
   collectToolErrorDirections,
+  deriveCanonicalFoldShape,
   detectOrphans,
   explainReconcileQueries,
   loadCanonicalRows,
   loadCarrierOnlyRounds,
+  planCanonicalCleanups,
   planRecordJsonRewrites,
   probeLegacyVsCarrierOnly,
   projectRequest,
   reconcileRequest,
+  summarizeFoldedDirections,
   summarizeToolErrorDirections,
 } = await import("../../lib/llm-kit-adapters/transcript-projection.js");
 const {
@@ -95,6 +100,23 @@ const {
 const { runMigrationSteps, parseUpgradeOptions } = await import("../../scripts/upgrade-database.js");
 
 const db = dbCtx?.db ?? null;
+
+/**
+ * 通道 B：与 `scripts/*` 的 `DB_*` 直连同形状的连接——**不带** `dialectOptions.typeCast`，
+ * `BIT(1)` 列原样返回 `Buffer`（正是 2026-10-09 回填事故的连接形态）。凭据已过
+ * `openTestDatabase()` 的 #1167 硬断言（同一个 creds 对象，不会指向别的库）。
+ */
+let rawSequelize = null;
+if (creds) {
+  const { Sequelize } = await import("sequelize");
+  rawSequelize = new Sequelize(creds.database, creds.user, creds.password, {
+    host: creds.host ?? "localhost",
+    port: Number(creds.port ?? 3306),
+    dialect: "mysql",
+    logging: false,
+  });
+  await rawSequelize.authenticate();
+}
 const ns = randomUUID().slice(0, 8);
 const REQUEST_PREFIX = `run-c1-${ns}-`;
 
@@ -327,6 +349,7 @@ before(async () => {
 after(async () => {
   if (!db) return;
   await cleanupAll();
+  if (typeof rawSequelize?.close === "function") await rawSequelize.close();
   if (typeof db.close === "function") await db.close();
   else if (db.sequelize) await db.sequelize.close();
 });
@@ -637,9 +660,16 @@ if (!creds) {
       await loadCarrierOnlyRounds({ sequelize: db.sequelize, runId: id });
       await collectBaselineStats({ sequelize: db.sequelize, runIds: [id] });
       await explainReconcileQueries({ sequelize: db.sequelize, runId: id });
-      // #1227 C2b：两个回填开关的**计划**阶段也必须只读（--dry-run 就是只跑这两条）。
+      // #1227 C2b：回填开关的**计划**阶段也必须只读（--dry-run 就是只跑这几条）。
       await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] });
       await planRecordJsonRewrites({ sequelize: db.sequelize, runIds: [id] });
+      // #1227 C2d：canonical 清洗的两个方向表 + 合并计划器同样零写 SQL。
+      const foldedDirections = await collectFoldedDirections({ sequelize: db.sequelize, runIds: [id] });
+      await planCanonicalCleanups({
+        sequelize: db.sequelize,
+        toolErrorRows: await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] }),
+        foldedRows: foldedDirections,
+      });
     } finally {
       db.sequelize.query = originalQuery;
     }
@@ -783,6 +813,7 @@ if (!creds) {
         reportPath: null,
         fixIsError: false,
         rewriteRecordJson: false,
+        fixFolded: false,
         dryRun: false,
       },
     );
@@ -800,9 +831,15 @@ if (!creds) {
         reportPath: null,
         fixIsError: true,
         rewriteRecordJson: true,
+        fixFolded: false,
         dryRun: true,
       },
     );
+    // #1227 C2d：`--fix-folded` 单独开、且**不带** `--apply`（真写靠“不给 --dry-run”触发）。
+    const foldedOnly = parseArgs(["--fix-folded", "--limit", "40"]);
+    assert.equal(foldedOnly.fixFolded, true);
+    assert.equal(foldedOnly.apply, false);
+    assert.equal(foldedOnly.dryRun, false);
     assert.throws(() => parseArgs(["--nope"]), /未知参数/);
     assert.throws(() => parseArgs(["--limit", "-1"]), /非负整数/);
     assert.throws(() => parseArgs(["--since", "not-a-date"]), /可解析的日期/);
@@ -886,57 +923,462 @@ if (!creds) {
     );
   });
 
-  test("--fix-is-error 三格方向：只改 A 格（canonical 真 & 列 0）；C 格（列真 & canonical 非真）一律不动", async () => {
+  test("--fix-is-error 三格方向（C2d 方向）：只清 A 格的 canonical 键（不写列）；B/C 一律不动", async () => {
     const { id, tool1, tool2 } = await freshFixture("fix-is-error-directions");
-    // tool2：canonical 有 is_error:true，把列压回 0 → A 格（应被改成 1）
-    await db.sequelize.query(
-      "UPDATE chat_tool_calls SET is_error = b'0' WHERE request_id = :id AND tool_use_id = :toolId",
-      { replacements: { id, toolId: tool2 } },
-    );
-    // tool1：canonical 无 is_error，把列设成 1 → C 格（禁止反向修改，必须保持 1）
+    // tool1：canonical 无 is_error，把列设成 1 → C 格（列真 & canonical 非真，禁止反向修改）
     await db.sequelize.query(
       "UPDATE chat_tool_calls SET is_error = b'1' WHERE request_id = :id AND tool_use_id = :toolId",
       { replacements: { id, toolId: tool1 } },
     );
 
+    // ── 第一段：tool2 列也是 1 ⇒ B 格（两边真），一个都不该动 ──────────────
+    const bDirections = await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] });
+    const bByTool = new Map(bDirections.map((row) => [row.toolUseId, row]));
+    assert.equal(bByTool.get(tool2).direction, "B", "canonical 真 & 列 1 = B 格");
+    assert.equal(bByTool.get(tool1).direction, "C");
+    assert.deepEqual(
+      summarizeToolErrorDirections(bDirections),
+      { A: 0, B: 1, C: 1, unchanged: 0, total: 2 },
+    );
+    const bPlan = await planCanonicalCleanups({ sequelize: db.sequelize, toolErrorRows: bDirections });
+    assert.deepEqual(bPlan, [], "B/C 两格都不产生计划");
+    const bApply = await applyCanonicalRecordRewrites({ sequelize: db.sequelize, plans: bPlan });
+    assert.equal(bApply.written, 0);
+
+    // ── 第二段：把 tool2 的列压回 0 ⇒ A 格（canonical 假阳性）─────────────
+    await db.sequelize.query(
+      "UPDATE chat_tool_calls SET is_error = b'0' WHERE request_id = :id AND tool_use_id = :toolId",
+      { replacements: { id, toolId: tool2 } },
+    );
     const directions = await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] });
     const byTool = new Map(directions.map((row) => [row.toolUseId, row]));
     assert.equal(byTool.get(tool2).direction, "A");
+    assert.equal(byTool.get(tool2).action, "clear-canonical");
     assert.equal(byTool.get(tool1).direction, "C");
     assert.deepEqual(
       summarizeToolErrorDirections(directions),
       { A: 1, B: 0, C: 1, unchanged: 0, total: 2 },
     );
+    assert.equal(
+      byTool.get(tool2).ownerDedupKey,
+      `${id}:msg:1:0`,
+      "ownerDedupKey 是 tool_use 块所在的行（写侧 round_id 钉在这里）",
+    );
+    assert.deepEqual(
+      byTool.get(tool2).resultOwnerDedupKeys,
+      [`${id}:msg:1:2`],
+      "resultOwnerDedupKeys 才是 is_error 所在的行（清洗按它定位，两者可以不同行）",
+    );
 
     const before = await reconcileRequest({ sequelize: db.sequelize, runId: id });
     assert.deepEqual(countsOf(before.diffs), { tool_row_mismatch: 2 });
 
-    const first = await applyToolErrorBackfill({ sequelize: db.sequelize, rows: directions });
-    assert.equal(first.written, 1, "只允许写 A 格那 1 行");
-    assert.deepEqual(first.applied.map((row) => row.toolUseId), [tool2]);
+    const plan = await planCanonicalCleanups({ sequelize: db.sequelize, toolErrorRows: directions });
+    assert.equal(plan.length, 1, "只计划 A 格那 1 条 canonical 行");
+    assert.equal(plan[0].dedupKey, `${id}:msg:1:2`);
+    assert.deepEqual(plan[0].toolErrorCleared.map((item) => item.toolUseId), [tool2]);
+    assert.equal(plan[0].toolErrorCleared[0].old, true);
 
+    const first = await applyCanonicalRecordRewrites({ sequelize: db.sequelize, plans: plan });
+    assert.equal(first.written, 1, "只允许改 A 格那 1 行 canonical");
+
+    // ① canonical：A 格的 `is_error` 键**被删掉**（不是写 false），B 格（这里没有）不受影响
+    const [canonicalRows] = await db.sequelize.query(
+      `SELECT dedup_key, record_json FROM ${CANONICAL_TABLE} WHERE request_id = :id`,
+      { replacements: { id } },
+    );
+    const recordByKey = new Map(canonicalRows.map((row) => [row.dedup_key, JSON.parse(row.record_json)]));
+    const blockOf = (record, toolUseId) => {
+      for (const message of record.messages ?? []) {
+        for (const block of Array.isArray(message.content) ? message.content : []) {
+          if (block?.type === "tool_result" && block.tool_use_id === toolUseId) return block;
+        }
+      }
+      return null;
+    };
+    const cleaned = blockOf(recordByKey.get(`${id}:msg:1:2`), tool2);
+    assert.equal(
+      Object.hasOwn(cleaned, "is_error"),
+      false,
+      "无键 = 非错误（引擎契约）；写 false 会发明一个引擎从不产出的键",
+    );
+
+    // ② 列：一行都不许动（A 格的列仍是 0，C 格的列仍是 1）
     const [rows] = await db.sequelize.query(
       "SELECT tool_use_id, is_error+0 AS is_error FROM chat_tool_calls WHERE request_id = :id ORDER BY tool_use_id",
       { replacements: { id } },
     );
     const column = new Map(rows.map((row) => [row.tool_use_id, Number(row.is_error)]));
-    assert.equal(column.get(tool2), 1, "A 格必须被改成 1");
+    assert.equal(column.get(tool2), 0, "A 格的列必须保持 0（本开关不写 chat_tool_calls）");
     assert.equal(column.get(tool1), 1, "C 格必须保持原值 1（绝不翻回 0）");
 
-    // C 格仍是差异（没被“顺手修好”），A 格已消失
+    // ③ C 格仍是差异（没被“顺手修好”），A 格已消失
     const after = await reconcileRequest({ sequelize: db.sequelize, runId: id });
     assert.deepEqual(countsOf(after.diffs), { tool_row_mismatch: 1 });
     assert.equal(after.diffs[0].toolUseId, tool1);
     assert.equal(after.diffs[0].field, "is_error");
 
-    // 幂等：第二次方向表变成 B + C，写 0 行
+    // 幂等：第二次方向表变成「两边皆假 + C」，计划为空、写 0 行
     const directions2 = await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] });
     assert.deepEqual(
       summarizeToolErrorDirections(directions2),
-      { A: 0, B: 1, C: 1, unchanged: 0, total: 2 },
+      { A: 0, B: 0, C: 1, unchanged: 1, total: 2 },
     );
-    const second = await applyToolErrorBackfill({ sequelize: db.sequelize, rows: directions2 });
+    const plan2 = await planCanonicalCleanups({ sequelize: db.sequelize, toolErrorRows: directions2 });
+    assert.deepEqual(plan2, []);
+    const second = await applyCanonicalRecordRewrites({ sequelize: db.sequelize, plans: plan2 });
     assert.equal(second.written, 0, "第二次必须写 0 行（幂等）");
+  });
+
+  test("--fix-folded 三格方向：只清 A 格（canonical 真 & 列 0）；B 不动；C 不动且被点名", async () => {
+    const { id } = await freshFixture("fix-folded-directions");
+    const seedKey = `${id}:engine:round:0:seed`;
+    const round1Key = `${id}:engine:round:1`;
+    const round2Key = `${id}:engine:round:2`;
+    // A 格：canonical folded:true & 列 0（round 1）
+    // B 格：canonical folded:true & 列 1（round 2）
+    // C 格：canonical 无 folded & 列 1（round 0 种子）
+    await db.sequelize.query(
+      `UPDATE ${CANONICAL_TABLE} SET record_json = JSON_SET(record_json, '$.folded', true)`
+      + " WHERE request_id = :id AND dedup_key IN (:k1, :k2)",
+      { replacements: { id, k1: round1Key, k2: round2Key } },
+    );
+    await db.sequelize.query(
+      "UPDATE agent_rounds SET folded = b'1' WHERE request_id = :id AND dedup_key IN (:k2, :k3)",
+      { replacements: { id, k2: round2Key, k3: seedKey } },
+    );
+
+    const directions = await collectFoldedDirections({ sequelize: db.sequelize, runIds: [id] });
+    const byKey = new Map(directions.map((row) => [row.dedupKey, row]));
+    assert.equal(byKey.get(round1Key).direction, "A");
+    assert.equal(byKey.get(round2Key).direction, "B");
+    assert.equal(byKey.get(seedKey).direction, "C", "列真 & canonical 非真 = C 格");
+    assert.equal(byKey.get(seedKey).action, "forbidden");
+    assert.deepEqual(
+      summarizeFoldedDirections(directions),
+      { A: 1, B: 1, C: 1, unchanged: 4, total: 7 },
+    );
+
+    const plan = await planCanonicalCleanups({ sequelize: db.sequelize, foldedRows: directions });
+    assert.equal(plan.length, 1, "只有 A 格进计划");
+    assert.equal(plan[0].dedupKey, round1Key);
+    assert.equal(plan[0].newRecord.folded, false);
+    assert.equal(plan[0].folded.hadFolded, true);
+    assert.equal(plan[0].folded.folded, true);
+
+    const first = await applyCanonicalRecordRewrites({ sequelize: db.sequelize, plans: plan });
+    assert.equal(first.written, 1);
+
+    const [rows] = await db.sequelize.query(
+      `SELECT dedup_key, JSON_EXTRACT(record_json, '$.folded') AS folded FROM ${CANONICAL_TABLE}`
+      + " WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    const foldedOf = new Map(rows.map((row) => [
+      row.dedup_key,
+      row.folded === null ? null : Boolean(JSON.parse(row.folded)),
+    ]));
+    assert.equal(foldedOf.get(round1Key), false, "A 格必须被清成 false");
+    assert.equal(foldedOf.get(round2Key), true, "B 格（两边真）不许动");
+    assert.equal(foldedOf.get(seedKey), null, "C 格（列真 & canonical 非真）不许动，也不许发明键");
+
+    // 列值一行都没动
+    const [columnRows] = await db.sequelize.query(
+      "SELECT dedup_key, folded+0 AS folded FROM agent_rounds WHERE request_id = :id",
+      { replacements: { id } },
+    );
+    const columnOf = new Map(columnRows.map((row) => [row.dedup_key, Number(row.folded)]));
+    assert.equal(columnOf.get(round1Key), 0, "A 格的列保持 0（本开关不写 agent_rounds）");
+    assert.equal(columnOf.get(round2Key), 1, "B 格的列保持 1");
+    assert.equal(columnOf.get(seedKey), 1, "C 格的列保持 1（绝不翻回 0）");
+
+    // 幂等：A 格消失后计划为空、写 0 行
+    const directions2 = await collectFoldedDirections({ sequelize: db.sequelize, runIds: [id] });
+    assert.equal(summarizeFoldedDirections(directions2).A, 0);
+    const plan2 = await planCanonicalCleanups({ sequelize: db.sequelize, foldedRows: directions2 });
+    assert.deepEqual(plan2, []);
+    const second = await applyCanonicalRecordRewrites({ sequelize: db.sequelize, plans: plan2 });
+    assert.equal(second.written, 0, "第二次必须写 0 行（幂等）");
+  });
+
+  test("列值是 raw Buffer（b'0'/b'1'）时三格判定仍正确（无 typeCast 连接档）", async () => {
+    assert.ok(rawSequelize !== null, "raw 连接必须可用（否则本格失去意义）");
+    const { id, tool1, tool2 } = await freshFixture("raw-buffer-directions");
+    const seedKey = `${id}:engine:round:0:seed`;
+    const round1Key = `${id}:engine:round:1`;
+    const round2Key = `${id}:engine:round:2`;
+    await db.sequelize.query(
+      `UPDATE ${CANONICAL_TABLE} SET record_json = JSON_SET(record_json, '$.folded', true)`
+      + " WHERE request_id = :id AND dedup_key IN (:k1, :k2)",
+      { replacements: { id, k1: round1Key, k2: round2Key } },
+    );
+    await db.sequelize.query(
+      "UPDATE agent_rounds SET folded = b'1' WHERE request_id = :id AND dedup_key IN (:k2, :k3)",
+      { replacements: { id, k2: round2Key, k3: seedKey } },
+    );
+    await db.sequelize.query(
+      "UPDATE chat_tool_calls SET is_error = b'1' WHERE request_id = :id AND tool_use_id = :toolId",
+      { replacements: { id, toolId: tool1 } },
+    );
+    await db.sequelize.query(
+      "UPDATE chat_tool_calls SET is_error = b'0' WHERE request_id = :id AND tool_use_id = :toolId",
+      { replacements: { id, toolId: tool2 } },
+    );
+
+    // 先证明这条连接真的拿到 Buffer（否则本格退化成 typeCast 通道的重复）
+    const [rawRows] = await rawSequelize.query(
+      "SELECT folded FROM agent_rounds WHERE request_id = :id ORDER BY round_no",
+      { replacements: { id } },
+    );
+    assert.ok(rawRows.some((row) => Buffer.isBuffer(row.folded)), "raw 连接的 BIT 列必须是 Buffer");
+    assert.equal(bitToBoolean(Buffer.from([0])), false);
+    assert.equal(bitToBoolean(Buffer.from([1])), true);
+
+    const folded = await collectFoldedDirections({ sequelize: rawSequelize, runIds: [id] });
+    const byKey = new Map(folded.map((row) => [row.dedupKey, row]));
+    assert.equal(byKey.get(round1Key).direction, "A", "Buffer b'0' 必须读成 false（不是恒真）");
+    assert.equal(byKey.get(round2Key).direction, "B", "Buffer b'1' 必须读成 true");
+    assert.equal(byKey.get(seedKey).direction, "C");
+    assert.deepEqual(
+      summarizeFoldedDirections(folded),
+      { A: 1, B: 1, C: 1, unchanged: 4, total: 7 },
+    );
+
+    const toolErrors = await collectToolErrorDirections({ sequelize: rawSequelize, runIds: [id] });
+    const byTool = new Map(toolErrors.map((row) => [row.toolUseId, row]));
+    assert.equal(byTool.get(tool2).direction, "A", "is_error 的 Buffer b'0' 必须读成 false");
+    assert.equal(byTool.get(tool1).direction, "C");
+
+    // 在 raw 连接上真跑一遍：写入口与连接形态无关
+    const plan = await planCanonicalCleanups({
+      sequelize: rawSequelize, toolErrorRows: toolErrors, foldedRows: folded,
+    });
+    const applied = await applyCanonicalRecordRewrites({ sequelize: rawSequelize, plans: plan });
+    assert.equal(applied.written, 2, "两条 canonical 行（msg:1:2 的 is_error + round 1 的 folded）");
+    const after = await collectFoldedDirections({ sequelize: rawSequelize, runIds: [id] });
+    assert.equal(summarizeFoldedDirections(after).A, 0);
+    const afterTools = await collectToolErrorDirections({ sequelize: rawSequelize, runIds: [id] });
+    assert.equal(summarizeToolErrorDirections(afterTools).A, 0);
+  });
+
+  test("清洗后 canonical 形状可被写侧函数重建（幂等），且 foldedRoundRange 与 folded 一致", async () => {
+    const { id, tool2 } = await freshFixture("canonical-shape-rebuild");
+    const round1Key = `${id}:engine:round:1`;
+    // 模拟 2026-10-09 回填的存量形状：canonical 多了 folded:true，
+    // 而 agent_rounds.record_json 是**旧写侧**落的（没有 __hostSynthesizedColumns 标记）。
+    // ⚠ 只对“被污染的那一行”去标记：没被污染的行仍然带着 marker（生产实测 91 行带 / 69 行不带）。
+    await db.sequelize.query(
+      "UPDATE agent_rounds SET record_json = JSON_REMOVE(record_json, '$.__hostSynthesizedColumns')"
+      + " WHERE request_id = :id AND dedup_key = :key",
+      { replacements: { id, key: round1Key } },
+    );
+    await db.sequelize.query(
+      `UPDATE ${CANONICAL_TABLE}`
+      + " SET record_json = JSON_SET(record_json, '$.folded', true, '$.foldedRoundRange', JSON_OBJECT('from', 1, 'to', 2))"
+      + " WHERE request_id = :id AND dedup_key = :key",
+      { replacements: { id, key: round1Key } },
+    );
+    await db.sequelize.query(
+      "UPDATE chat_tool_calls SET is_error = b'0' WHERE request_id = :id AND tool_use_id = :toolId",
+      { replacements: { id, toolId: tool2 } },
+    );
+
+    const shapeOf = async () => {
+      const canonicalRows = await loadCanonicalRows({ sequelize: db.sequelize, runId: id });
+      const [diskRows] = await db.sequelize.query(
+        "SELECT dedup_key, record_json FROM agent_rounds WHERE request_id = :id",
+        { replacements: { id } },
+      );
+      const disk = new Map(diskRows.map((row) => [row.dedup_key, JSON.parse(row.record_json)]));
+      return new Map(canonicalRows.map((row) => [
+        row.dedupKey,
+        { record: row.record, disk: disk.get(row.dedupKey) },
+      ]));
+    };
+
+    // 清洗前：canonical folded:true ⇒ 快照不带标记，与旧写侧的盘上形状一致（这就是“自洽的假阳性”）
+    const beforeShape = await shapeOf();
+    for (const [, entry] of beforeShape) {
+      assert.deepEqual(
+        buildAgentRoundRecordSnapshot(entry.record).recordSnapshot,
+        entry.disk,
+        "清洗前每一行都必须能被写侧函数逐字段重建（否则本格测的不是同一件事）",
+      );
+    }
+
+    const toolErrors = await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] });
+    const folded = await collectFoldedDirections({ sequelize: db.sequelize, runIds: [id] });
+    const plan = await planCanonicalCleanups({
+      sequelize: db.sequelize, toolErrorRows: toolErrors, foldedRows: folded,
+    });
+    // 两条 A 格落在同一条 canonical 行（round 1 载体行？不是——tool_result 在 msg:1:2）
+    assert.equal(plan.length, 2, "msg:1:2 的假 is_error + round 1 的假 folded 各一条计划");
+
+    const applied = await applyCanonicalRecordRewrites({ sequelize: db.sequelize, plans: plan });
+    assert.equal(applied.written, 2);
+
+    // ① 清洗后仍然可以被写侧函数逐字段重建（幂等的前提）
+    const afterShape = await shapeOf();
+    for (const [, entry] of afterShape) {
+      assert.deepEqual(
+        buildAgentRoundRecordSnapshot(entry.record).recordSnapshot,
+        entry.disk,
+        "清洗后的 canonical 必须仍与 agent_rounds.record_json 逐字段等价",
+      );
+    }
+    // ② foldedRoundRange 的处置与 folded 一致：列 folded_range 是 NULL ⇒ 键被删掉
+    const cleanedRound1 = afterShape.get(round1Key).record;
+    assert.equal(cleanedRound1.folded, false);
+    assert.equal(
+      Object.hasOwn(cleanedRound1, "foldedRoundRange"),
+      false,
+      "列 folded_range 为 NULL ⇒ 写侧不设该键（foldedRoundRange 必须随 folded 一起清掉）",
+    );
+    // ③ 对账不再报 record_json_mismatch
+    const after = await reconcileRequest({ sequelize: db.sequelize, runId: id });
+    assert.equal(after.counts.record_json_mismatch ?? 0, 0);
+
+    // ④ 幂等
+    const plan2 = await planCanonicalCleanups({
+      sequelize: db.sequelize,
+      toolErrorRows: await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] }),
+      foldedRows: await collectFoldedDirections({ sequelize: db.sequelize, runIds: [id] }),
+    });
+    assert.deepEqual(plan2, []);
+    const second = await applyCanonicalRecordRewrites({ sequelize: db.sequelize, plans: plan2 });
+    assert.equal(second.written, 0);
+  });
+
+  test("foldedRoundRange 从列推导（列有值 ⇒ 用列的值，不用 canonical 里那份）", async () => {
+    const { id } = await freshFixture("folded-range-from-column");
+    const round1Key = `${id}:engine:round:1`;
+    await db.sequelize.query(
+      `UPDATE ${CANONICAL_TABLE}`
+      + " SET record_json = JSON_SET(record_json, '$.folded', true, '$.foldedRoundRange', JSON_OBJECT('from', 9, 'to', 9))"
+      + " WHERE request_id = :id AND dedup_key = :key",
+      { replacements: { id, key: round1Key } },
+    );
+    await db.sequelize.query(
+      "UPDATE agent_rounds SET folded_range = :range WHERE request_id = :id AND dedup_key = :key",
+      { replacements: { id, key: round1Key, range: JSON.stringify({ from: 3, to: 4 }) } },
+    );
+
+    const folded = await collectFoldedDirections({ sequelize: db.sequelize, runIds: [id] });
+    const row = folded.find((item) => item.dedupKey === round1Key);
+    assert.equal(row.direction, "A");
+    assert.deepEqual(row.canonicalFoldedRange, { from: 9, to: 9 }, "canonical 那份是缺陷产物");
+    assert.deepEqual(row.columnFoldedRange, { from: 3, to: 4 }, "列才是区间的权威存储");
+
+    const plan = await planCanonicalCleanups({ sequelize: db.sequelize, foldedRows: folded });
+    assert.equal(plan.length, 1);
+    assert.equal(plan[0].newRecord.folded, false);
+    assert.deepEqual(plan[0].newRecord.foldedRoundRange, { from: 3, to: 4 });
+    assert.equal(plan[0].folded.foldedRoundRangeAction, "set");
+
+    const applied = await applyCanonicalRecordRewrites({ sequelize: db.sequelize, plans: plan });
+    assert.equal(applied.written, 1);
+    const [rows] = await db.sequelize.query(
+      `SELECT record_json FROM ${CANONICAL_TABLE} WHERE request_id = :id AND dedup_key = :key`,
+      { replacements: { id, key: round1Key } },
+    );
+    const record = JSON.parse(rows[0].record_json);
+    assert.equal(record.folded, false);
+    assert.deepEqual(record.foldedRoundRange, { from: 3, to: 4 });
+  });
+
+  test("单表不变量：--fix-is-error / --fix-folded 只写 agent_transcript_rounds", async () => {
+    const { id, tool2 } = await freshFixture("single-table-invariant");
+    const round1Key = `${id}:engine:round:1`;
+    await db.sequelize.query(
+      `UPDATE ${CANONICAL_TABLE} SET record_json = JSON_SET(record_json, '$.folded', true)`
+      + " WHERE request_id = :id AND dedup_key = :key",
+      { replacements: { id, key: round1Key } },
+    );
+    await db.sequelize.query(
+      "UPDATE chat_tool_calls SET is_error = b'0' WHERE request_id = :id AND tool_use_id = :toolId",
+      { replacements: { id, toolId: tool2 } },
+    );
+
+    const originalQuery = db.sequelize.query.bind(db.sequelize);
+    const writePattern = /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|TRUNCATE)\b/i;
+    const writes = [];
+    db.sequelize.query = async (sql, options) => {
+      const text = String(typeof sql === "string" ? sql : sql?.query);
+      if (writePattern.test(text)) writes.push(text.replace(/\s+/g, " ").trim());
+      return originalQuery(sql, options);
+    };
+    let applied;
+    try {
+      const plan = await planCanonicalCleanups({
+        sequelize: db.sequelize,
+        toolErrorRows: await collectToolErrorDirections({ sequelize: db.sequelize, runIds: [id] }),
+        foldedRows: await collectFoldedDirections({ sequelize: db.sequelize, runIds: [id] }),
+      });
+      applied = await applyCanonicalRecordRewrites({ sequelize: db.sequelize, plans: plan });
+    } finally {
+      db.sequelize.query = originalQuery;
+    }
+    assert.equal(applied.written, 2);
+    assert.equal(writes.length, 2, "每条计划一句 UPDATE");
+    for (const sql of writes) {
+      assert.match(
+        sql,
+        new RegExp(`^UPDATE ${CANONICAL_TABLE}\\b`),
+        `写入面只允许 ${CANONICAL_TABLE}（实际：${sql}）`,
+      );
+      for (const forbidden of ["chat_tool_calls", "agent_rounds", "messages"]) {
+        assert.doesNotMatch(
+          sql,
+          new RegExp(`(UPDATE|INSERT\\s+(IGNORE\\s+)?INTO|DELETE\\s+FROM)\\s+${forbidden}\\b`),
+          `禁止写 ${forbidden}（实际：${sql}）`,
+        );
+      }
+    }
+  });
+
+  test("clearToolErrorBlocks / deriveCanonicalFoldShape 纯函数：只删真值键、列值优先、幂等", () => {
+    const record = {
+      round: 1,
+      messages: [
+        { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "x" }] },
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "t1", content: "ok" },
+            { type: "tool_result", tool_use_id: "t2", content: "boom", is_error: true },
+          ],
+        },
+      ],
+      folded: true,
+      foldedRoundRange: { from: 1, to: 2 },
+    };
+    const cleared = clearToolErrorBlocks({ record, toolUseIds: ["t1", "t2"] });
+    assert.deepEqual(cleared.cleared.map((item) => [item.toolUseId, item.messageIndex, item.blockIndex]), [["t2", 1, 1]]);
+    assert.equal(Object.hasOwn(cleared.record.messages[1].content[0], "is_error"), false);
+    assert.equal(Object.hasOwn(cleared.record.messages[1].content[1], "is_error"), false);
+    assert.equal(record.messages[1].content[1].is_error, true, "纯函数不得改入参");
+    // 幂等：再删一次没有任何改动
+    assert.deepEqual(clearToolErrorBlocks({ record: cleared.record, toolUseIds: ["t2"] }).cleared, []);
+
+    const shaped = deriveCanonicalFoldShape({
+      record, columnFolded: Buffer.from([0]), columnFoldedRange: null,
+    });
+    assert.equal(shaped.record.folded, false);
+    assert.equal(Object.hasOwn(shaped.record, "foldedRoundRange"), false);
+    assert.equal(shaped.before.foldedRoundRangeAction, "removed");
+    assert.equal(shaped.before.hadFolded, true);
+    // 列有值 ⇒ 用列的值
+    const withRange = deriveCanonicalFoldShape({
+      record, columnFolded: 1, columnFoldedRange: { from: 5, to: 6 },
+    });
+    assert.equal(withRange.record.folded, true);
+    assert.deepEqual(withRange.record.foldedRoundRange, { from: 5, to: 6 });
+    assert.equal(withRange.before.foldedRoundRangeAction, "set");
+    // 幂等：再推一次形状不变
+    const again = deriveCanonicalFoldShape({
+      record: withRange.record, columnFolded: 1, columnFoldedRange: { from: 5, to: 6 },
+    });
+    assert.deepEqual(again.record, withRange.record);
   });
 
   test("--rewrite-record-json：结果与 buildAgentRoundRecordSnapshot 逐字节相等，且幂等", async () => {

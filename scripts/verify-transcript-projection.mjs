@@ -20,17 +20,27 @@
  *   node scripts/verify-transcript-projection.mjs --request-id <id> --json --report temp/projection.json
  *   node scripts/verify-transcript-projection.mjs --request-id <id> --apply     # 仅非生产库
  *
- * 存量漂移回填（#1227 阶段 3 切片 C2b，两个开关**默认关**；不带开关 = C1 行为，dry-run 只读）
+ * 存量漂移回填（#1227 阶段 3 切片 C2b）
  *   node scripts/verify-transcript-projection.mjs --limit 200 --fix-is-error --dry-run
  *   node scripts/verify-transcript-projection.mjs --limit 200 --rewrite-record-json --dry-run
  *   node scripts/verify-transcript-projection.mjs --limit 200 --rewrite-record-json   # 真写
- *   `--fix-is-error`    只改 A 格（canonical 真 & 列 0 → 1）；C 格（列真 & canonical 非真）
- *                       一律不动；dry-run 固定输出 A/B/C 三格方向。
+ *   `--fix-is-error`    只改 A 格（canonical 真 & 列 0）：**删** canonical 该 `tool_result`
+ *                       块的 `is_error` 键（不写列）；C 格（列真 & canonical 非真）一律不动；
+ *                       dry-run 固定输出 A/B/C 三格方向。
  *   `--rewrite-record-json`  用 `buildAgentRoundRecordSnapshot(canonical).recordSnapshot`
  *                       重写 `agent_rounds.record_json`（唯一快照实现，不另写第二份）。
  *   写生产库 `touwaka_mate` 必须**开关 + `ALLOW_NON_TEST_DB=1` 同时在场**，缺任一 ⇒ 拒绝，
  *   code=`ERR_PROJECTION_BACKFILL_NEEDS_ALLOW_NON_TEST_DB`，exit 1。
  *   `--dry-run` 与开关同用时只出清单不写（生产预演用）。
+ *
+ * 存量 canonical 假阳性清洗（#1227 阶段 3 切片 C2d，两个开关默认关）
+ *   node scripts/verify-transcript-projection.mjs --limit 40 --fix-is-error --fix-folded --dry-run
+ *   node scripts/verify-transcript-projection.mjs --limit 40 --fix-is-error --fix-folded   # 真写
+ *   `--fix-is-error` / `--fix-folded` 的 A 格动作都是**改 canonical**（删 `is_error` 键 /
+ *   `folded:false`），写入面**只有 `agent_transcript_rounds` 一张表**；C 格只报告。
+ *   ⚠ 真写用“不给 `--dry-run`”触发，**不要**加 `--apply`：`--apply` 是投影重建开关，
+ *   它在生产库被 `assertProjectionApplyAllowed()` 直接拒绝（exit 1，零写入），且会写
+ *   `agent_rounds` / `messages` / `chat_tool_calls`——与“只改 canonical”相反。
  *
  * 退出码
  *   0 = 无缺陷（只剩 `host_enriched_reasoning` 这类“非投影缺陷”的信息项，或 legacy 探针的
@@ -61,18 +71,22 @@ const {
   PRODUCTION_DATABASE_NAME,
   PROJECTION_DIFF_KINDS,
   TOOL_ERROR_DIRECTIONS,
+  FOLDED_DIRECTIONS,
+  applyCanonicalRecordRewrites,
   applyRecordJsonRewrites,
-  applyToolErrorBackfill,
   assertDriftBackfillAllowed,
   assertProjectionApplyAllowed,
   collectBaselineStats,
+  collectFoldedDirections,
   collectToolErrorDirections,
   detectOrphans,
   explainReconcileQueries,
+  planCanonicalCleanups,
   planRecordJsonRewrites,
   probeLegacyVsCarrierOnly,
   projectRequest,
   reconcileRequest,
+  summarizeFoldedDirections,
   summarizeToolErrorDirections,
 } = await import("../lib/llm-kit-adapters/transcript-projection.js");
 const { CANONICAL_TABLE } = await import("../lib/llm-kit-adapters/transcript-store.js");
@@ -98,6 +112,8 @@ export function parseArgs(argv) {
     // #1227 C2b 存量漂移回填（两个开关默认关）
     fixIsError: false,
     rewriteRecordJson: false,
+    // #1227 C2d canonical 假阳性清洗（默认关；与 --fix-is-error 同写一张表）
+    fixFolded: false,
     dryRun: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -112,6 +128,7 @@ export function parseArgs(argv) {
     else if (arg === "--no-probe") options.skipProbe = true;
     else if (arg === "--report") options.reportPath = String(next());
     else if (arg === "--fix-is-error") options.fixIsError = true;
+    else if (arg === "--fix-folded") options.fixFolded = true;
     else if (arg === "--rewrite-record-json") options.rewriteRecordJson = true;
     else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--help" || arg === "-h") options.help = true;
@@ -285,7 +302,7 @@ export function renderExplain(explainByRequest) {
 }
 
 /**
- * 三格方向表（#1227 C2b）。**固定输出**：A 可回填 / B 两边真 / C 列真&canonical非真。
+ * 三格方向表（#1227 C2b/C2d）。**固定输出**：A 可清 / B 两边真 / C 列真&canonical非真。
  *
  * C 格尤其要看得见：它是「列已经是 1，canonical 却说不是」的行——本开关**永不碰它**。
  */
@@ -295,14 +312,69 @@ export function renderToolErrorDirections(rows) {
     "== 工具行 is_error 三格方向（A=canonical真&列0 / B=两边真 / C=列真&canonical非真）",
     `  ${Object.entries(TOOL_ERROR_DIRECTIONS).map(([key, label]) => `${key}=${label}`).join("；")}`,
     `  A: ${summary.A}\tB: ${summary.B}\tC: ${summary.C}\t两边皆假: ${summary.unchanged}\t合计: ${summary.total}`,
-    `  A 可回填（→1）；B 无需动作；C **禁止反向修改**（列已 1 的行绝不翻回 0）`,
+    "  A → 删 canonical 该块的 `is_error` 键（**不写列**）；B 无需动作；C **禁止反向修改**（列已 1 的行绝不翻回 0）",
   ];
   for (const row of rows) {
     if (row.direction === null) continue;
     const detail = row.direction === "C" && row.canonicalAbsent ? " canonical 无 tool_result" : "";
     lines.push(
       `    - [${row.direction}] ${row.runId} ${row.toolUseId} name=${row.name}`
+      + ` owner=${row.ownerDedupKey ?? "-"}`
       + ` canonicalTrue=${row.canonicalTrue} columnTrue=${row.columnTrue} action=${row.action}${detail}`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/** `folded` 的三格方向表（#1227 C2d，与 `is_error` 同一张表、同一个动作方向）。 */
+export function renderFoldedDirections(rows) {
+  const summary = summarizeFoldedDirections(rows);
+  const lines = [
+    "== 轮级 folded 三格方向（A=canonical真&列0 / B=两边真 / C=列真&canonical非真）",
+    `  ${Object.entries(FOLDED_DIRECTIONS).map(([key, label]) => `${key}=${label}`).join("；")}`,
+    `  A: ${summary.A}\tB: ${summary.B}\tC: ${summary.C}\t两边皆假: ${summary.unchanged}\t合计: ${summary.total}`,
+    "  A → canonical folded=false（foldedRoundRange 从列推导）；B 无需动作；C **禁止反向修改**",
+  ];
+  for (const row of rows) {
+    if (row.direction === null) continue;
+    const range = row.canonicalFoldedRange === null
+      ? ""
+      : ` canonicalRange=${JSON.stringify(row.canonicalFoldedRange)}`;
+    lines.push(
+      `    - [${row.direction}] ${row.runId} ${row.dedupKey} round=${row.roundNo}`
+      + ` canonicalTrue=${row.canonicalTrue} columnTrue=${row.columnTrue}`
+      + ` columnRange=${row.columnFoldedRange === null ? "null" : JSON.stringify(row.columnFoldedRange)}`
+      + ` action=${row.action}${range}`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/** canonical 改写清单（只列定位键 + 改动摘要，不倾倒整份 record）。 */
+export function renderCanonicalPlan(plans) {
+  const requests = new Set(plans.map((plan) => plan.runId));
+  const lines = [
+    "== canonical 改写清单（--fix-is-error / --fix-folded；写入面只有 agent_transcript_rounds）",
+    `  ${plans.length} 行 / ${requests.size} 请求`,
+  ];
+  for (const plan of plans) {
+    if (plan.missing === true) {
+      lines.push(`    - ${plan.runId} ${plan.dedupKey} ⚠ canonical 行已不存在（跳过）`);
+      continue;
+    }
+    const parts = [];
+    if (plan.toolErrorCleared.length > 0) {
+      parts.push(`is_error:删键×${plan.toolErrorCleared.length}`
+        + `[${plan.toolErrorCleared.map((item) => item.toolUseId).join(",")}]`);
+    }
+    if (plan.folded !== null) {
+      parts.push(`folded:${JSON.stringify(plan.folded.folded)}→${plan.newRecord.folded}`
+        + ` range:${plan.folded.foldedRoundRangeAction}`);
+    }
+    lines.push(
+      `    - ${plan.runId} ${plan.dedupKey} round=${plan.roundNo} ${parts.join(" ")}`
+      + ` changed=[${plan.diff.changed.join(",")}]`
+      + ` onlyActual=[${plan.diff.onlyActual.join(",")}]`,
     );
   }
   return lines.join("\n");
@@ -331,18 +403,22 @@ export async function main() {
   if (options.help) {
     console.log("用法：node scripts/verify-transcript-projection.mjs "
       + "[--request-id <id> ...] [--since <ISO>] [--limit <n>] [--apply] [--json] [--explain] [--no-probe] [--report <path>] "
-      + "[--fix-is-error] [--rewrite-record-json] [--dry-run]");
+      + "[--fix-is-error] [--fix-folded] [--rewrite-record-json] [--dry-run]");
     return;
   }
 
   const { sequelize, database, source } = await resolveConnection();
   // --apply 的库名判据**先于**任何写入（生产库在这里就被拒，exit 1）。
   assertProjectionApplyAllowed({ database, apply: options.apply });
-  // 存量漂移回填：开关本身就是写请求；--dry-run 时降级为只读预演。
-  const driftWrite = !options.dryRun && (options.fixIsError || options.rewriteRecordJson);
+  // 存量漂移清洗：开关本身就是写请求；--dry-run 时降级为只读预演。
+  // ⚠ 真写靠“不给 --dry-run”触发，**不是** `--apply`（`--apply` 在生产库会被上面那行拒掉，
+  // 且它写的是 agent_rounds / messages / chat_tool_calls，与“只改 canonical”相反）。
+  const driftWrite = !options.dryRun
+    && (options.fixIsError || options.fixFolded || options.rewriteRecordJson);
   const backfillGate = assertDriftBackfillAllowed({
     database,
     fixIsError: driftWrite && options.fixIsError,
+    fixFolded: driftWrite && options.fixFolded,
     rewriteRecordJson: driftWrite && options.rewriteRecordJson,
     env: process.env,
   });
@@ -355,13 +431,24 @@ export async function main() {
   }
 
   // ① 存量漂移：先出计划（只读），再决定写。
+  // 两个 canonical 开关的计划**必须合并成一份**（同一条 canonical 行可能既带假 is_error 又带假
+  // folded，生产实测 29 个假 is_error 块全部落在 69 个假 folded 轮之内）——分别算 newRecord
+  // 再先后写，后一份会盖掉前一份的修复。
   let directions = null;
-  let isErrorApply = null;
+  let foldedDirections = null;
+  let canonicalPlan = null;
+  let canonicalApply = null;
   let recordJsonPlan = null;
   let recordJsonApply = null;
-  if (options.fixIsError) {
-    directions = await collectToolErrorDirections({ sequelize, runIds });
-    if (driftWrite) isErrorApply = await applyToolErrorBackfill({ sequelize, rows: directions });
+  if (options.fixIsError) directions = await collectToolErrorDirections({ sequelize, runIds });
+  if (options.fixFolded) foldedDirections = await collectFoldedDirections({ sequelize, runIds });
+  if (options.fixIsError || options.fixFolded) {
+    canonicalPlan = await planCanonicalCleanups({
+      sequelize,
+      toolErrorRows: directions ?? [],
+      foldedRows: foldedDirections ?? [],
+    });
+    if (driftWrite) canonicalApply = await applyCanonicalRecordRewrites({ sequelize, plans: canonicalPlan });
   }
   if (options.rewriteRecordJson) {
     recordJsonPlan = await planRecordJsonRewrites({ sequelize, runIds });
@@ -393,18 +480,34 @@ export async function main() {
     database,
     connection: source,
     mode: options.apply ? "apply" : "dry-run",
-    drift_mode: driftWrite ? "apply" : (options.fixIsError || options.rewriteRecordJson ? "dry-run" : "off"),
+    drift_mode: driftWrite
+      ? "apply"
+      : ((options.fixIsError || options.fixFolded || options.rewriteRecordJson) ? "dry-run" : "off"),
     drift_gate: backfillGate,
     diff_kinds: PROJECTION_DIFF_KINDS,
     requests: entries,
     baseline,
     apply: applyResults,
-    drift: (options.fixIsError || options.rewriteRecordJson)
+    drift: (options.fixIsError || options.fixFolded || options.rewriteRecordJson)
       ? {
         tool_error_directions: directions
           ? { summary: summarizeToolErrorDirections(directions), rows: directions }
           : null,
-        is_error_apply: isErrorApply,
+        folded_directions: foldedDirections
+          ? { summary: summarizeFoldedDirections(foldedDirections), rows: foldedDirections }
+          : null,
+        canonical_plan: canonicalPlan
+          ? canonicalPlan.map((plan) => ({
+            runId: plan.runId,
+            dedupKey: plan.dedupKey,
+            roundNo: plan.roundNo,
+            missing: plan.missing === true,
+            tool_error_cleared: plan.toolErrorCleared ?? [],
+            folded: plan.folded ?? null,
+            diff: plan.diff ?? null,
+          }))
+          : null,
+        canonical_apply: canonicalApply,
         record_json_plan: recordJsonPlan
           ? recordJsonPlan.map((plan) => ({
             runId: plan.runId,
@@ -435,9 +538,16 @@ export async function main() {
     }
     if (directions) {
       console.log(renderToolErrorDirections(directions));
-      console.log(isErrorApply
-        ? `== --fix-is-error 结果：written=${isErrorApply.written}（A 格 ${isErrorApply.applied.length} 行，C 格 0 行未动）`
-        : "== --fix-is-error 结果：dry-run 未写入（加 --dry-run 即此模式；去掉它才真写）");
+    }
+    if (foldedDirections) {
+      console.log(renderFoldedDirections(foldedDirections));
+    }
+    if (canonicalPlan) {
+      console.log(renderCanonicalPlan(canonicalPlan));
+      console.log(canonicalApply
+        ? `== canonical 清洗结果：written=${canonicalApply.written} 行（写入面只有 ${CANONICAL_TABLE}；`
+          + "C 格 0 行未动，agent_rounds / chat_tool_calls / messages 一行未写）"
+        : "== canonical 清洗结果：dry-run 未写入（去掉 --dry-run 才真写；不要用 --apply）");
     }
     if (recordJsonPlan) {
       console.log(renderRecordJsonPlan(recordJsonPlan));
@@ -446,7 +556,7 @@ export async function main() {
         : "== --rewrite-record-json 结果：dry-run 未写入");
     }
     if (driftAfter) {
-      console.log("== 回填后复跑对账（只 reconcile）");
+      console.log("== 清洗后复跑对账（只 reconcile）");
       for (const item of driftAfter) {
         const real = Object.entries(item.counts)
           .filter(([kind]) => !INFORMATIONAL_DIFF_KINDS.includes(kind))
