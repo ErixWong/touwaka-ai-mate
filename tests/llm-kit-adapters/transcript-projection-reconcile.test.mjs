@@ -12,6 +12,12 @@
  *      - 删一条工具行                     → `missing_tool_row`
  *      - 改一条消息正文                   → `content_mismatch`
  *      - 删一条载体行 / 多插一条载体行     → `missing_carrier` / `extra_carrier`
+ *      #1227 阶段 3 切片 C2 补齐 R4 的 5 格（**精确计数 + 命中 key**，不许“至少报一条”）：
+ *      - 删一条消息行（`kind='message'`）  → `missing_round_row`
+ *      - 多插一条消息行                   → `extra_round_row`
+ *      - 改消息行 `seq`                   → `seq_mismatch`（+ 必然的 `record_json_mismatch`）
+ *      - 多插一条工具行                   → `extra_tool_row`
+ *      - 改工具行 `result_json`           → `tool_result_mismatch`
  *   2. **dry-run 只读自证**：用「遇到写 SQL 就抛」的 sequelize 代理跑完整个 dry-run 分支；
  *      另加静态断言：写 SQL 只出现在 `applyProjectionWrites()`（写入口）之后。
  *   3. `--apply` 库名判据：`touwaka_mate` 一律拒绝（exit code 语义由 `ERR_PROJECTION_APPLY_FORBIDDEN` 表达），
@@ -490,6 +496,109 @@ if (!creds) {
     const extra = diffs.find((item) => item.kind === "extra_carrier");
     assert.equal(extra.dedupKey, `${id}:ghost:round:9`);
     assert.equal(extra.roundNo, 9);
+  });
+
+  test("分类⑨：删一条消息行（kind='message'）→ 只报 missing_round_row（精确到 msg:1:2）", async () => {
+    const { id } = await freshFixture("missing-round-row");
+    const missingKey = `${id}:msg:1:2`;
+    await db.sequelize.query(
+      "DELETE FROM agent_rounds WHERE request_id = :id AND dedup_key = :key",
+      { replacements: { id, key: missingKey } },
+    );
+
+    const { diffs, counts } = await reconcileRequest({ sequelize: db.sequelize, runId: id });
+    assert.deepEqual(counts, { missing_round_row: 1 });
+    const hit = diffs[0];
+    assert.equal(hit.table, "agent_rounds");
+    assert.equal(hit.dedupKey, missingKey);
+    assert.equal(hit.roundNo, 1);
+    assert.equal(hit.expected.kind, "message");
+    assert.equal(hit.expected.seq, 2);
+    assert.equal(hit.expected.partOf, `${id}:msg:1:1`);
+    assert.equal(hit.actual, null);
+  });
+
+  test("分类⑩：多插一条消息行 → 只报 extra_round_row（canonical 无来源）", async () => {
+    const { id } = await freshFixture("extra-round-row");
+    const ghostKey = `${id}:msg:9:7`;
+    await db.sequelize.query(`
+      INSERT INTO agent_rounds (id, request_id, round_no, dedup_key, stop_reason, \`usage\`, latency_ms,
+        folded, folded_range, record_json, ts, created_at)
+      VALUES ('round-ghost-msg-${ns}', :id, 1, :ghostKey, NULL, NULL, NULL, b'0', NULL,
+        JSON_OBJECT('roundKey', '${id}:round:1', 'dedupKey', :ghostKey, 'kind', 'message', 'seq', 7),
+        '2026-11-01T00:00:09.500Z', NOW())
+    `, { replacements: { id, ghostKey } });
+
+    const { diffs, counts } = await reconcileRequest({ sequelize: db.sequelize, runId: id });
+    assert.deepEqual(counts, { extra_round_row: 1 });
+    const hit = diffs[0];
+    assert.equal(hit.table, "agent_rounds");
+    assert.equal(hit.dedupKey, ghostKey);
+    assert.equal(hit.roundNo, 1);
+    assert.equal(hit.expected, null);
+    assert.equal(hit.actual.kind, "message");
+    assert.equal(hit.actual.seq, 7);
+  });
+
+  test("分类⑪：改消息行 seq → 报 seq_mismatch（+ 必然的 record_json_mismatch）", async () => {
+    const { id } = await freshFixture("seq-mismatch");
+    const targetKey = `${id}:msg:2:0`;
+    await db.sequelize.query(`
+      UPDATE agent_rounds SET record_json = JSON_SET(record_json, '$.seq', 7)
+      WHERE request_id = :id AND dedup_key = :key
+    `, { replacements: { id, key: targetKey } });
+
+    const { diffs, counts } = await reconcileRequest({ sequelize: db.sequelize, runId: id });
+    assert.deepEqual(counts, { seq_mismatch: 1, record_json_mismatch: 1 });
+    const hit = diffs.find((item) => item.kind === "seq_mismatch");
+    assert.equal(hit.table, "agent_rounds");
+    assert.equal(hit.dedupKey, targetKey);
+    assert.equal(hit.roundNo, 2);
+    assert.equal(hit.expected, 0, "canonical 里这条消息的 seq 是 0");
+    assert.equal(hit.actual, 7, "生成列 seq 随 record_json 现算成 7");
+    // 生成列真的变了（不是只改了 JSON 文本）。
+    const [rows] = await db.sequelize.query(
+      "SELECT seq FROM agent_rounds WHERE request_id = :id AND dedup_key = :key",
+      { replacements: { id, key: targetKey } },
+    );
+    assert.equal(Number(rows[0].seq), 7);
+  });
+
+  test("分类⑫：多插一条工具行 → 只报 extra_tool_row（canonical 无对应 tool_use）", async () => {
+    const { id } = await freshFixture("extra-tool-row");
+    const ownerRoundId = await roundRowId(id, `${id}:msg:2:0`);
+    const ghostTool = `ghost-tool-${ns}`;
+    await db.sequelize.query(`
+      INSERT INTO chat_tool_calls (tool_use_id, request_id, round_id, name, input_json, result_json,
+        is_error, duration_ms, created_at)
+      VALUES (:ghostTool, :id, :roundId, 'ghost_tool', NULL, '"done"', b'0', NULL, NOW())
+    `, { replacements: { ghostTool, id, roundId: ownerRoundId } });
+
+    const { diffs, counts } = await reconcileRequest({ sequelize: db.sequelize, runId: id });
+    assert.deepEqual(counts, { extra_tool_row: 1 });
+    const hit = diffs[0];
+    assert.equal(hit.table, "chat_tool_calls");
+    assert.equal(hit.toolUseId, ghostTool);
+    assert.equal(hit.roundId, ownerRoundId);
+    assert.equal(hit.expected, null);
+    assert.equal(hit.actual.name, "ghost_tool");
+    assert.equal(hit.actual.resultJsonPresent, true);
+  });
+
+  test("分类⑬：改工具行 result_json → 只报 tool_result_mismatch（正文长度精确）", async () => {
+    const { id, tool1 } = await freshFixture("tool-result-mismatch");
+    await db.sequelize.query(
+      `UPDATE chat_tool_calls SET result_json = '"tampered"' WHERE request_id = :id AND tool_use_id = :toolId`,
+      { replacements: { id, toolId: tool1 } },
+    );
+
+    const { diffs, counts } = await reconcileRequest({ sequelize: db.sequelize, runId: id });
+    assert.deepEqual(counts, { tool_result_mismatch: 1 });
+    const hit = diffs[0];
+    assert.equal(hit.table, "chat_tool_calls");
+    assert.equal(hit.toolUseId, tool1);
+    assert.equal(hit.expected.resultLength, JSON.stringify("ok-1").length, "canonical 的 tool_result 正文是 \"ok-1\"");
+    assert.equal(hit.actual.resultLength, JSON.stringify("tampered").length);
   });
 
   test("dry-run 只读自证：写 SQL 代理一抛，reconcile/orphan/probe/baseline 全跑通", async () => {
