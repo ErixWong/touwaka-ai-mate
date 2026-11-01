@@ -309,31 +309,85 @@ carrier-only 已把轮数与条数拉回与 canonical 一致，**只剩块顺序
 另有 dry-run 只读自证（写 SQL 代理会抛 + 静态断言写 SQL 只在写入口之后）、`--apply` 库名判据、
 `--apply` 幂等、宿主增强 reasoning 不回写。
 
-## 存量投影漂移回填（#1227 阶段 3 切片 C2b）
+## 存量投影漂移回填 / canonical 假阳性清洗（#1227 阶段 3 切片 C2b → C2d）
 
-两个开关**默认关**，不带开关时行为与 C1 完全一致（dry-run 只读）：
+三个开关**默认关**，不带开关时行为与 C1 完全一致（dry-run 只读）：
 
-| 开关 | 改什么 | 方向约束 |
+| 开关 | 改什么（**写哪张表**） | 方向约束 |
 |---|---|---|
-| `--fix-is-error` | `chat_tool_calls.is_error` | **单向**：只把「canonical `true` 且列 `0`」（A 格）改 1；「列真 & canonical 非真」（C 格）一律不动 |
+| `--fix-is-error` | `agent_transcript_rounds.record_json`：**删** A 格 `tool_result` 块的 `is_error` 键 | **单向**：只动「canonical `true` 且列 `0`」（A 格）；B（两边真）与 C（列真 & canonical 非真）一律不动，C 只报告 |
+| `--fix-folded` | `agent_transcript_rounds.record_json`：A 格 `folded` → `false`，`foldedRoundRange` 从列推导 | 同上三格表；判据同表，动作指向 canonical |
 | `--rewrite-record-json` | `agent_rounds.record_json` | 用 `buildAgentRoundRecordSnapshot(canonical).recordSnapshot` 重写（唯一快照实现，不另写第二份） |
 
 **生产库写入门槛**：开关本身 + `ALLOW_NON_TEST_DB=1` 必须**同时在场**；缺任一即拒绝，
 code=`ERR_PROJECTION_BACKFILL_NEEDS_ALLOW_NON_TEST_DB`（库名缺失是 `ERR_PROJECTION_BACKFILL_UNKNOWN_DATABASE`）。
 `--dry-run` 与开关同用时只出清单不写。
 
-**三格方向表永远可见**（`collectToolErrorDirections` / `summarizeToolErrorDirections`）：
+**真写怎么触发（别用 `--apply`）**：`--apply` 是**投影重建**开关，它在生产库被
+`assertProjectionApplyAllowed()` 直接拒绝（exit 1、零写入），且它写的是 `agent_rounds` /
+`messages` / `chat_tool_calls`——与“只改 canonical”相反。清洗的真写靠**不给 `--dry-run`**：
+
+```bash
+# 预演（只读）
+node scripts/verify-transcript-projection.mjs --limit 40 --fix-is-error --fix-folded --dry-run --json
+# 真写（只 UPDATE agent_transcript_rounds）
+node scripts/verify-transcript-projection.mjs --limit 40 --fix-is-error --fix-folded --json
+```
+
+**三格方向表永远可见**（`collectToolErrorDirections` / `collectFoldedDirections` + 两个 `summarize*`）：
 A=canonical真&列0 / B=两边真 / C=列真&canonical非真 / 两边皆假。为什么强制三格而不是只报“命中数”：
 C2b 复盘发现 `agent_transcript_rounds.is_error` 自己会被 2026-10-09 的 canonical 回填污染
 （`reconstructMessages` 的 `row.is_error` 是 `BIT(1)` 的 `Buffer`，`Boolean(Buffer)` 恒真），
 只报命中数会把“canonical 假阳性”伪装成“投影丢位”。**基准本身是否可信必须一眼可见**。
 
-**不碰的边界**：`messages.reasoning_content`（宿主增强累积推理）不回填；canonical 数据本身不在本开关职责内
-（假阳性清理属 C2d，需 Eric 批准）；`reconstructMessages` 的读档语义不在本切片改（C2c）。
+### 为什么 `--fix-is-error` 的 A 格动作从「列改 1」翻成「删 canonical 键」（C2d）
 
-**测试**：新增 3 条——闸门纯函数（生产库缺 `ALLOW_NON_TEST_DB=1` 拒写）、A/C 两格方向（C 格列已 1
-绝不翻回 0 + 幂等）、`--rewrite-record-json` 与 `buildAgentRoundRecordSnapshot` **逐字节相等** + 幂等；
-dry-run 只读自证里也加了两个开关的**计划阶段**（零写 SQL）。
+C2b 实现这个开关时的假设是「canonical 是真相」，于是 A 格动作写成 `chat_tool_calls.is_error = b'1'`。
+**这个假设已被 C2b 自己的实测推翻**（C2c 复测一字不差）：
+
+| 方向 | `is_error` 实测 | `folded` 实测 | 谁错 |
+|---|---|---|---|
+| A（canonical 真 & 列 0） | **29 块** | **69 轮** | **canonical 错**（回填缺陷注入） |
+| B（两边真） | 10 块 | 0 轮 | 都正确，不许动 |
+| C（列真 & canonical 非真） | 0 块 | 0 轮 | 列侧另有来源，不许动 |
+
+机制：`reconstructMessages()` 旧写法 `...(row.is_error ? {is_error:true} : {})` 在 `Buffer` 上恒真
+⇒ 2026-10-09 那批回填给**每个** `tool_result` 都挂了 `is_error:true`（39 块 = 29 假 + 10 真）；
+`assembleRoundRecord()` 的 `Boolean(round.folded)` 同病 ⇒ 每轮都被写成「已折叠」。
+⇒ **投影列是真相，canonical 是被污染的一方**。
+
+所以 A 格的正确动作是**清 canonical**：`is_error` **删键**（引擎契约「无键 = 非错误」；
+`is_error:false` 与「无键」在 canonical 里不是一回事），`folded` **写 `false`**（写侧
+`assembleRoundRecord` 对每一轮都给布尔值；实测 69/69 行 `folded:false` 后
+`buildAgentRoundRecordSnapshot` 与盘上 `agent_rounds.record_json` 逐字段相等，改成删键则 0/69
+——删键会让写侧多出一个存量行没有的 `__hostSynthesizedColumns` 标记）。
+
+**为什么不能“另开开关保留旧语义”**：留着「列改 1」= 一颗脚枪。谁再跑一次就会把 29 条
+**正确非错误**的工具结果污染成错误——正是本切片要消灭的缺陷类。
+
+### 单表不变量与幂等
+
+- 两个开关的写入面**只有 `agent_transcript_rounds`**（唯一写入口 `applyCanonicalRecordRewrites`）。
+  用例用写 SQL 探针钉住：每条写语句必须匹配 `^UPDATE agent_transcript_rounds\b`，且不得出现
+  `chat_tool_calls` / `agent_rounds` / `messages` 的写。
+- 两个开关的计划**必须合并**（`planCanonicalCleanups`）：同一条 canonical 行可能既带假 `is_error`
+  又带假 `folded`（生产实测 29 个假 `is_error` 块全部落在 69 个假 `folded` 轮之内）。分别算
+  `newRecord` 再先后写，后一份会盖掉前一份的修复。
+- 定位 `tool_result` 块**不能**用 `deriveProjectedRows().toolCalls[].ownerDedupKey`——那是
+  `tool_use` 块所在的行（`chat_tool_calls.round_id` 钉在 tool_use 行），而 `is_error` 长在
+  `tool_result` 块上，两者可以不同行（分片形状里就是）。用 `findToolResultBlocks()` 扫块。
+- 幂等：计划阶段按深比较只收“真的会变”的行；SQL 侧再夹 `record_json <> :recordJson`。
+  第二次跑计划为空 ⇒ `written = 0`。`updated_at` 不动（只改内容，回滚只需还原 `record_json`）。
+
+**不碰的边界**：`messages.reasoning_content`（宿主增强累积推理）不回填；`agent_rounds.folded` /
+`chat_tool_calls.is_error` 两列本切片**一行都不写**；`reconstructMessages` 的读档语义不在本切片改（C2c）。
+
+**测试**：`transcript-projection-reconcile.test.mjs` 里 —— 闸门纯函数（生产库缺 `ALLOW_NON_TEST_DB=1` 拒写）、
+`--fix-is-error` / `--fix-folded` **各一格三格方向**（A 清、B 不动、C 不动且被点名 + 幂等）、
+raw `Buffer` 列（无 typeCast 连接）下判定仍正确、清洗后 canonical 形状可被写侧函数重建（幂等）、
+`foldedRoundRange` 与 `folded` 一致性（列 NULL ⇒ 删键；列有值 ⇒ 用列的值）、单表不变量、
+`--rewrite-record-json` 与 `buildAgentRoundRecordSnapshot` **逐字节相等** + 幂等；
+dry-run 只读自证里也加了全部计划阶段（零写 SQL）。
 
 ## `BIT(1)` 读侧转换（#1227 阶段 3 切片 C2c）
 
