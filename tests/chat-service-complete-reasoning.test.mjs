@@ -262,24 +262,95 @@ test('补测3：complete.message.run_reasoning_content 逐字等于读侧拼接�
   assert.equal(message[RUN_REASONING_ROUNDS_FIELD], 2, '段数 = 2');
 });
 
+// ----------------------------------------------------------------------------
+// 本格专用单轮夹具（issue #1250）：该 `request_id` 只有 **1 条** 轮绑定 assistant 行，
+// 且 `reasoning_content` 非空 ⇒ 读侧拼接结果与终稿行自己的 `reasoning_content` **逐字相等**
+// ⇒ D1 规则（相等 ⇒ 不挂）必须生效。
+//
+// 为什么不能只用上面那套多轮夹具：多轮下整段 = R1 + R2 ≠ 末轮值 R2，`text === finalReasoningContent`
+// 永远不成立 ⇒ `resolveRunReasoningAttachment` 恒返回非空，把 complete 路径改成“直接挂整段”
+// （绕过 resolve）两边仍然一致、断言照样恒真，这条规则在 SSE 路径上就完全没有守卫。
+const REQUEST_ID_SINGLE = `${REQUEST_PREFIX}single-round`;
+const ROUND_ID_SINGLE = `cmp-s1-r1-${ns}`;
+const MESSAGE_ID_SINGLE = `cmp-s1-a1-${ns}`;
+const REASONING_SINGLE = 'C-S1：单轮只有这一段思考。';
+
 test('补测3：会话内（complete）与刷新后（REST）两个字段逐字一致', { skip: skipReason }, async () => {
   const controller = new MessageController(db);
-  const ctx = {
-    params: { expertId: testExpertId, messageId: MESSAGE_IDS.assistant2 },
-    query: { limit: '20' },
-    state: { session: { id: testUserId } },
-    body: null,
-    status: 200,
-    success(data) { this.body = { code: 200, message: 'success', data }; },
-    error(message, status = 400) { this.status = status; this.body = { code: status, message, data: null }; },
+  const readRest = async (messageId) => {
+    const ctx = {
+      params: { expertId: testExpertId, messageId },
+      query: { limit: '20' },
+      state: { session: { id: testUserId } },
+      body: null,
+      status: 200,
+      success(data) { this.body = { code: 200, message: 'success', data }; },
+      error(message, status = 400) { this.status = status; this.body = { code: status, message, data: null }; },
+    };
+    await controller.listWithBefore(ctx);
+    return (ctx.body?.data?.items ?? []).find((row) => row.id === messageId);
   };
-  await controller.listWithBefore(ctx);
-  const item = (ctx.body?.data?.items ?? []).find((row) => row.id === MESSAGE_IDS.assistant2);
+
+  // (A) 多轮：两边都挂，且逐字一致（原断言，保留不改）
+  const item = await readRest(MESSAGE_IDS.assistant2);
   assert.ok(item, '终稿行必须在 REST 响应里');
   const message = mainComplete[0].message;
   assert.equal(item.reasoning_content, message.reasoning_content, 'reasoning_content 会话内 === 刷新后（逐字）');
   assert.equal(item[RUN_REASONING_FIELD], message[RUN_REASONING_FIELD], 'run_reasoning_content 会话内 === 刷新后（逐字）');
   assert.equal(item[RUN_REASONING_ROUNDS_FIELD], message[RUN_REASONING_ROUNDS_FIELD], '轮数一致');
+
+  // (B) 单轮：整段 === 末轮值 ⇒ 两边都**不挂**（“一致”必须是“都不挂”的一致，不是“都挂”）
+  await cleanupRequest(REQUEST_ID_SINGLE);
+  await insertRound({ id: ROUND_ID_SINGLE, requestId: REQUEST_ID_SINGLE, roundNo: 1 });
+  await insertAssistantRow({
+    id: MESSAGE_ID_SINGLE,
+    requestId: REQUEST_ID_SINGLE,
+    roundId: ROUND_ID_SINGLE,
+    sequenceNo: 0,
+    content: '',
+    reasoningContent: REASONING_SINGLE,
+  });
+
+  const harness = createHarness({
+    requestId: REQUEST_ID_SINGLE,
+    userMessageId: `${USER_MESSAGE_ID}-s1`,
+    agentLoopResult,
+  });
+  await harness.run();
+
+  assert.equal(harness.events.errors.length, 0, '单轮场景 onError 不得触发');
+  assert.equal(harness.events.complete.length, 1, 'complete 必须恰好一次');
+  const singleMessage = harness.events.complete[0].message;
+  assert.equal(singleMessage.id, MESSAGE_ID_SINGLE, 'complete.message.id = 终稿 canonical 行');
+  assert.equal(singleMessage.reasoning_content, REASONING_SINGLE, '本轮思考照旧逐字给出');
+  // D1 规则在 complete 路径上的体现：相等 ⇒ 不挂。绕过 `resolveRunReasoningAttachment`
+  // （改回直接挂整段）会在这里变红。
+  assert.equal(
+    singleMessage[RUN_REASONING_FIELD] ?? null,
+    null,
+    '整段与末轮值逐字相等 ⇒ 不挂（D1 规则必须作用在 complete 路径上）',
+  );
+  assert.equal(singleMessage[RUN_REASONING_ROUNDS_FIELD] ?? 0, 0, '不挂时轮数为 0');
+
+  const singleItem = await readRest(MESSAGE_ID_SINGLE);
+  assert.ok(singleItem, '单轮终稿行必须在 REST 响应里');
+  assert.equal(singleItem.reasoning_content, singleMessage.reasoning_content, '单轮 reasoning_content 会话内 === 刷新后（逐字）');
+  assert.equal(
+    singleItem[RUN_REASONING_FIELD] ?? null,
+    singleMessage[RUN_REASONING_FIELD] ?? null,
+    '单轮 run_reasoning_content 会话内 === 刷新后（逐字）',
+  );
+  assert.equal(
+    singleItem[RUN_REASONING_ROUNDS_FIELD] ?? 0,
+    singleMessage[RUN_REASONING_ROUNDS_FIELD] ?? 0,
+    '单轮轮数一致',
+  );
+  // “两边都挂”也能满足上面两条“一致”断言 ⇒ 必须单独钉住“不挂”这个方向本身。
+  assert.equal(
+    singleItem[RUN_REASONING_FIELD] ?? null,
+    null,
+    'REST 侧同样不挂（要的是“都不挂”的一致，不是“都挂”的一致）',
+  );
 });
 
 test('写侧未被 complete 路径改动：终稿行仍是本轮思考，正文被终稿 UPDATE 覆盖', { skip: skipReason }, async () => {
