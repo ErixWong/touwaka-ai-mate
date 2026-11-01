@@ -334,3 +334,69 @@ C2b 复盘发现 `agent_transcript_rounds.is_error` 自己会被 2026-10-09 的 
 **测试**：新增 3 条——闸门纯函数（生产库缺 `ALLOW_NON_TEST_DB=1` 拒写）、A/C 两格方向（C 格列已 1
 绝不翻回 0 + 幂等）、`--rewrite-record-json` 与 `buildAgentRoundRecordSnapshot` **逐字节相等** + 幂等；
 dry-run 只读自证里也加了两个开关的**计划阶段**（零写 SQL）。
+
+## `BIT(1)` 读侧转换（#1227 阶段 3 切片 C2c）
+
+### 唯一实现
+
+`lib/llm-kit-adapters/bit-column.js` 的 `bitToBoolean()` 是**全仓唯一一份** `BIT(1)` → 布尔转换。
+`transcript-projection.js` 只是 `import` + `export { bitToBoolean }`（C1 的 import 面保持不变），
+`transcript-store.js` 直接 `import` 同一个模块。`tests/llm-kit-adapters/bit-column.test.mjs`
+用「读源码 + 函数对象同一性 + grep 唯一实现点」三条钉住“不会出现第二份”。
+
+### 为什么必须转换（缺陷本体）
+
+`AGENTS.md §2.1` 规定布尔列统一 `BIT(1)`。mysql2 对 BIT 列返回 `Buffer`，而 JS 真值判断在 Buffer 上全错：
+
+| 表达式 | `Buffer 00`（列=0） | `Buffer 01`（列=1） |
+|---|---|---|
+| `Boolean(v)` / `if (v)` / `v ? a : b` | **`true`**（恒真） | `true` |
+| `Number(v)` | `NaN` → 假 | `NaN` → 假（恒假） |
+| `v.some(byte => byte !== 0)` | `false` ✅ | `true` ✅ |
+
+恒真/恒假两种错法都是**静默**的，且**只在没有连接级 `typeCast` 的连接上显形**。
+
+### 暴露面结论（重要，别再重复踩）
+
+`lib/db.js` 的 `dialectOptions.typeCast` 把 `BIT(1)` 提前转成 JS boolean，因此：
+
+| 通道 | 谁在用 | BIT 列形态 | 缺陷可见性 |
+|---|---|---|---|
+| A `typeCast` | server（`lib/db.js` 单例）、`openTestDatabase()`、全部 Sequelize 模型查询 | `boolean` | **被掩盖**（未修代码也是对的） |
+| B raw | `scripts/*` 的 `DB_*` 直连（`new Sequelize(...)` 不带 typeCast）：canonical 回填、parity、verify、sql-invariants | `Buffer` | **显形** |
+
+⇒ **这个缺陷在生产 server 路径上被 `typeCast` 掩盖**；实际影响的是 raw 连接工具链，以及
+2026-10-09 那次 canonical 回填**已经落盘**的数据。修代码只能止住今后，已落盘的存量要 C2d 清。
+
+### 本切片修的两处读点
+
+| 位置 | 列 | 旧读法 | 后果 |
+|---|---|---|---|
+| `transcript-store.js` `reconstructMessages()` | `chat_tool_calls.is_error` | `...(row.is_error ? {is_error:true} : {})` | **每一个** `tool_result` 都被挂假 `is_error:true`（resume 上下文与 legacy 展示全污染，并把假阳性回填进 canonical） |
+| `transcript-store.js` `assembleRoundRecord()` | `agent_rounds.folded` | `Boolean(round.folded)` | **每一轮**都被读成「已折叠」 |
+
+`is_error` 为 0 时**不写该键**（引擎契约：无键 = 非错误；`is_error:false` 与「无键」在 canonical 里不是一回事）。
+
+### 存量漂移与门禁口径（C2d 之前）
+
+canonical 里由同一次回填缺陷落盘的假阳性（**C2d 的范围 = 两件事一起清**）：
+
+| 存量 | 量 | 分布 | 判据 |
+|---|---|---|---|
+| 假 `is_error:true` | **29 个 `tool_result` 块** | 6 个请求 | canonical `true` 且 `chat_tool_calls.is_error = b'0'` |
+| 假 `folded:true` | **69 轮** | 14 个请求 | canonical `true` 且 `agent_rounds.folded = b'0'` |
+
+因此 `scripts/verify-transcript-read-parity.js --gate --baseline <改动前快照>` 在 C2d 之前**预期 exit 3**，
+且失败项**只能**是 `parity_regression`、diff path **只能**含 `is_error` / `folded` 两个字段
+（其余任何字段出现 = 真回归，必须停下）。**禁止**用白名单把它刷绿——那等于把 C2d 的清单藏起来。
+同一次运行里 `cells_mismatch = 0`、`shape_regression = 0`、「老账本 legacy 三格变化请求数 = 0」
+必须仍然成立：这三项才是“没把内容读坏”的证据。
+
+### 测试
+
+- `tests/llm-kit-adapters/bit-column.test.mjs`：六格输入输出表（`Buffer[0]`/`Buffer[1]`/`0`/`1`/`null`/`undefined`）
+  + string/Uint8Array/空 buffer + boolean 幂等（保护 typeCast 通道）+ 单一实现自证（源码断言 + grep）。
+- `tests/llm-kit-adapters/transcript-store-bit-columns.test.mjs`：真库，**两条连接各跑一遍**
+  （通道 A typeCast / 通道 B raw）。断言 `is_error` 的**键有无**（0 → 无键，1 → `is_error:true`）、
+  整轮装配（一轮两个工具结果一真一假，只有那个带键）、`folded` 列 `b'1'`/`b'0'` → `true`/`false`。
+  通道 B 在**未修代码**上红、修后绿；通道 A 在未修代码上也绿——这正是“缺陷被 typeCast 掩盖”的证据。
