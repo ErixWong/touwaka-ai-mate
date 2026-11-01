@@ -99,6 +99,9 @@ export default {
     timeDaysAgo: '{n} days ago',
     // Thinking process
     thinkingProcess: 'Thinking Process',
+    // Full thinking (issue #1237 slice B): all rounds joined in round order
+    fullThinkingProcess: 'Full Thinking Process',
+    fullThinkingProcessRounds: 'Full Thinking Process ({n} segments)',
     // Tool messages
     toolArguments: 'Arguments',
     toolResult: 'Result',

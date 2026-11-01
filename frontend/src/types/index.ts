@@ -61,6 +61,11 @@ export interface Message {
   role: MessageRole
   content: string
   reasoning_content?: string  // 思考过程内容（DeepSeek R1、GLM-Z1、Qwen3 等支持）
+  // #1237 切片 B：**整段**思考（各轮 reasoning_content 按轮序无分隔拼接）。可选字段，只有
+  // 该请求的终稿行才有（后端 `lib/message-run-reasoning.js` 是唯一拼接实现）。
+  run_reasoning_content?: string | null
+  // 参与拼接的轮数（终稿行上的伴随字段，供 UI 显示“共 N 轮”）
+  run_reasoning_rounds?: number | null
   tool_calls?: string | ToolCallData[]  // 工具调用信息（直接字段，JSON 字符串或对象数组）
   status: MessageStatus
   metadata?: MessageMetadata

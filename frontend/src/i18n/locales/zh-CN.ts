@@ -99,6 +99,9 @@ export default {
     timeDaysAgo: '{n}天前',
     // 思考过程
     thinkingProcess: '思考过程',
+    // 整段思考（#1237 切片 B）：各轮思考按轮序拼接后的完整过程
+    fullThinkingProcess: '完整思考过程',
+    fullThinkingProcessRounds: '完整思考过程（{n} 段）',
     // Tool 消息
     toolArguments: '参数',
     toolResult: '结果',
