@@ -106,3 +106,82 @@ verify-transcript-read-parity --gate（基线=全库快照）：GATE_EXIT=0
 2. 两条判据都**必须** `export ALLOW_NON_TEST_DB=1` 才能对生产库跑：脚本的测试库白名单只放 `llm_kit_test`，`--gate` / `--dry-run` 全程只 SELECT，放行时会打 WARN 不静默。另外脚本读 `process.env.DB_*`（**不读** `config/config.json`），宿主上必须显式导出 `DB_HOST=127.0.0.1 DB_PORT=3306`，否则会连到默认库并**安静地返回 0 个请求**（我就据此得出过一次假的"没有匹配的 request_id"）。
 
 后续工作已全部拆成独立单：**#1246**（批量写备份前置闸 + 回滚 SQL 带 `utf8mb4`）、**#1249**（run snapshot / run-state 持久化二选一）、**#1250**（`complete` 一致性格夹具改单轮）。
+
+## 7. erix 事件面分布（#1255，erix-agent 0.29.0）
+
+§3 那张表里 `erix.unhandled_event` 那一格（当时 6 条）在 #1255 被查清了：**全部是 `run_outcome`**——引擎每个 run 恰好发一条 run 级终局汇总，宿主一条都没接。这一节把事件面按「宿主怎么处置」摊平，以后再加事件时**先看这张表**。
+
+### 7.1 账表：25 = 14 + 6 + 4 + 1
+
+口径：**只数 touwaka 这条接线实际能收到的类型**（见 §7.3 的排除项）。发射点全部在引擎 `node_modules/erix-agent/src/`，处置点在宿主 `lib/agent/agent-loop.js`。
+
+| 处置 | 种数 | 位置 |
+|---|---|---|
+| 已处理（`HANDLED_ERIX_EVENT_TYPES` 6 + `switch` 8） | **14** | `lib/agent/agent-loop.js:30`（常量）、`:193` 起（switch） |
+| 显式白名单（打 DEBUG + 计数，不打 WARN） | **6** | `lib/agent/agent-loop.js:50`（`DELIBERATELY_IGNORED_ERIX_EVENT_TYPES`） |
+| 故意保持 WARN（不进白名单） | **4** | 落到 `lib/agent/agent-loop.js:340` 的 `default` |
+| 新增 INFO（`erix.run_outcome`） | **1** | `lib/agent/agent-loop.js:205` 的 `case 'run_outcome'` |
+| **合计** | **25** | |
+
+逐格点名（引擎发射点 → 宿主处置）：
+
+| # | 类型 | 引擎发射点 | 宿主 |
+|---|---|---|---|
+| 1 | `round_start` | `loop/orchestrator.js:4790` | 已处理（常量） |
+| 2 | `attempt` | `loop/provider-runner.js:171` | 已处理（常量） |
+| 3 | `recovering` | `loop/provider-runner.js:342` | 已处理（常量） |
+| 4 | `recovered` | `loop/provider-runner.js:279`、`:294` | 已处理（常量） |
+| 5 | `usage` | `loop/provider-runner.js:184`、`loop/orchestrator.js:4849`、`:4921` | 已处理（常量） |
+| 6 | `round_end` | `loop/orchestrator.js:5474` | 已处理（常量） |
+| 7 | `persistence_capability_degraded` | `loop/orchestrator.js:1243`（启动期直调） | 已处理（warn） |
+| 8 | `forced_final` | `loop/termination.js:648` | 已处理（warn） |
+| 9 | `tool_output_aggregate` | `loop/run-snapshot-executor.js:217` | 已处理（info/error/warn 按 action） |
+| 10 | `final_guard` | `loop/termination.js:381/391/423/437/448/463/493/507`、`loop/orchestrator.js:5534/5549/5626` | 已处理（按 action 分三级） |
+| 11 | `compaction` | `loop/orchestrator.js:2354` | 已处理（info） |
+| 12 | `tool_use` | `loop/orchestrator.js:4600`、`:4989` | 已处理（debug 计数） |
+| 13 | `tool_result` | `loop/orchestrator.js:4675`、`:5042` | 已处理（debug 计数） |
+| 14 | `tool_replay_decision_required` | `loop/orchestrator.js:4664` | 已处理（warn） |
+| 15 | `continuity_written` | `loop/orchestrator.js:3240` | **白名单**（需 `config.continuity.handoff≠off`） |
+| 16 | `continuity_write_failed` | `loop/orchestrator.js:3127`、`:3205`、`:3251` | **白名单**（同上） |
+| 17 | `continuity_injection_skipped` | `loop/orchestrator.js:3269` | **白名单**（同上） |
+| 18 | `final_guard_extend` | `loop/orchestrator.js:4517` | **白名单**（需传 `finalGuard`） |
+| 19 | `config_override_conflict` | `loop/orchestrator.js:1271`（启动期直调） | **白名单**（需扁平名与 `config.*` 同键异值） |
+| 20 | `resume_journal_skipped` | `loop/orchestrator.js:2845` | **白名单**（需传 `resume`） |
+| 21 | `compaction_strategy_fallback` | `loop/orchestrator.js:3808` | **保持 WARN**（触发即压缩真的开始了） |
+| 22 | `compaction_deferred` | `loop/orchestrator.js:4884` | **保持 WARN**（尾部未完结的 tool_use） |
+| 23 | `budget_below_working_set` | `loop/orchestrator.js:4056` | **保持 WARN**（预算配小了，run 会提前结束） |
+| 24 | `model_metadata_missing` | `loop/orchestrator.js:1304`（启动期直调） | **保持 WARN**（当前被显式 `budgetTokens` 抑制） |
+| 25 | `run_outcome` | `loop/orchestrator.js:1401`（`runOutcomeRecord()`） | **新增 INFO** |
+
+### 7.2 白名单的四条「结构上不会发」判据（会随接线变化失效）
+
+白名单不是「不认识的都静默」——它只装**当前接线结构上不可能发生**的类型，每条都带复开判据（源码注释在 `lib/agent/agent-loop.js:50`）：
+
+| 类型 | 为什么现在不会发 | 什么变化会让它复活 |
+|---|---|---|
+| `continuity_*`（3 种） | `config.continuity.handoff` 缺省 `off`（`loop/orchestrator.js:778` 归一、`:484` 默认值），`off` 时读/写路径首行 return（`:3122` / `:3227`）。宿主从未配置（`grep -rn "continuity" lib/ server/` = 0） | 给 `config.continuity.handoff` 赋 `prompt` / `prompt-and-fallback` |
+| `final_guard_extend` | 只在 `extendAfterGuard` 里发（`loop/orchestrator.js:4517`），该路径要求宿主传 `finalGuard`；`grep -rn "finalGuard" lib/ server/` = 0 | 接入 `finalGuard`（`final_guard` 会一起出现） |
+| `config_override_conflict` | 要求同名扁平键与 `config.*` 同键异值（`loop/orchestrator.js:1271`）；宿主走 0.29 纯嵌套，扁平名会被名称闸口当场拒 | 重新引入扁平别名 / 装配口 policy 与调用级 config 双源 |
+| `resume_journal_skipped` | 只在恢复路径发（`loop/orchestrator.js:2845`），需传 `resume`；宿主未接 resume/replayPolicy | 接入崩溃续跑（`tool_replay_decision_required` 会一起复活） |
+
+### 7.3 为什么不数「引擎里出现的所有 type」：5 种结构上收不到
+
+扫引擎源码能扫出 28 种 `emitEvent({type:...})` / 直调 `onEvent` 的类型，比 25 多 3 种；另有 2 种不走 `onEvent`。**不要把它们算进宿主的事件面**，否则账永远对不上：
+
+- `delta` / `reasoning_delta` / `tool_call`：只在**引擎自带 provider** 里发（`providers/openai.js:550`、`:558`、`:565`、`:574`）。touwaka 注入自己的 provider（`createTouwakaProvider`），而引擎给 provider 的 request 里**没有 `onEvent`**（`loop/provider-runner.js:200-215` 的 request 字段表里没有它），所以 touwaka 适配器里那几处 `request.onEvent?.(...)`（`lib/llm-kit-adapters/provider-adapter.js:218`、`:482`、`:488`、`:502`、`:531`）在这条链路上恒为空转。
+- `context_unknown_option`（`assembly.js:928`）：只经 `createAssemblyPort` 的 `port.emit` 发出，宿主没用装配口。
+- `persistence_error`（`loop/orchestrator.js:314` 构造）：出口是 `onPersistenceError` 回调 + 错误账本（`:1161`），**不走 `onEvent`**。
+
+### 7.4 类型面不可当穷举依据（重要）
+
+引擎的 `LoopEvent` 联合类型只列 **19** 种（`node_modules/erix-agent/src/loop/orchestrator.js:389` 的 `@typedef`，**不是** `.d.ts`——0.29.0 发布的 `src/*.d.ts` 里根本没有事件类型 union，只有 `assembly.d.ts` 提了一句 `onEvent` 是 sink）。缺的 6 种是 `continuity_written` / `continuity_write_failed` / `continuity_injection_skipped` / `final_guard_extend` / `forced_final` / `tool_output_aggregate`——它们全都在行为面上真实发射。
+
+所以：**`@typedef` 少列 ≠ 引擎不发**。唯一可靠的发现通道是宿主 `default` 分支那条 `erix.unhandled_event` WARN（`run_outcome` 就是这么被发现的：现网 24h 8 条 WARN、每 run 恰好一条）。这也是 #1255 坚持「未知事件必须继续 WARN」的原因：白名单一旦变成「其他一律静默」，下一种新事件就会**永远不被发现**。
+
+### 7.5 新增的观测面：`erix.run_outcome`
+
+`run_outcome` 是 run 级终局裁决（引擎 `loop/judge-record.js` 的 `runOutcomeRecord()`），载荷**刻意克制**：没有 `ts`、没有 usage 汇总、没有 `finalText`；`judgeRecordCount` 对 touwaka 恒 0（不传 `onJudge`），`verification` 恒 `skipped/no_final_guard`（不传 `finalGuard`）。
+
+宿主只打一条 INFO（不落库、不加 DDL），字段：`request_id` / `runId` / `model` / `rounds` / `termination.{reason,errorCode,forcedFinal,detail}` / `verification.status`，其中**所有字符串字段截断到 500 字符**（`termination.detail` 可能是整条错误 message 或预算串）。缺失字段写 `null`，不写字符串 `"undefined"`。
+
+在此之前「这个 run 怎么结束的」在生产上是黑洞（`grep -rn "\.termination" lib/ server/` = 0 命中）。判据格在 `tests/agent/erix-event-policy.test.mjs`（8 格，含「未知事件仍 WARN」与「白名单与 switch case 不相交」两条自证）。
