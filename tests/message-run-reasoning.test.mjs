@@ -496,3 +496,229 @@ test('既有响应字段集合不被改名/删除：reasoning_content 仍在且�
   assert.ok(!names.includes(RUN_REASONING_FIELD), '整段思考不得落库成新列（本切片无 DDL）');
   assert.ok(!names.includes('round_no'), '未新增轮序冗余列');
 });
+
+// ============================================================================
+// ④ #1237 切片 C（审计 D1 + 四条“当前测不出”的断言）
+// ============================================================================
+//
+// 这一段全部用**裸行 INSERT**（`agent_rounds` + `messages`）造夹具：它要钉的是读侧拼接的
+// 边界条件（非 assistant 行 / 无思考的轮 / 单行 legacy），不是写侧投影，所以不走 agent-loop。
+
+/** 造一条轮（`agent_rounds` 的 NOT NULL 列只有 id/request_id/round_no/dedup_key/ts/created_at）。 */
+async function insertRound({ id, requestId, roundNo }) {
+  await db.sequelize.query(
+    `INSERT INTO agent_rounds (id, request_id, round_no, dedup_key, ts, created_at)
+     VALUES (:id, :requestId, :roundNo, :dedupKey, :ts, NOW())`,
+    {
+      replacements: {
+        id,
+        requestId,
+        roundNo,
+        dedupKey: `dedup-${id}`,
+        ts: new Date().toISOString(),
+      },
+    },
+  );
+}
+
+/** 造一条消息行（`round_id` / `sequence_no` 可空 = legacy 形状）。 */
+async function insertMessageRow({ id, requestId, role, content, reasoningContent, roundId = null, sequenceNo = null }) {
+  await db.sequelize.query(
+    `INSERT INTO messages (id, request_id, topic_id, user_id, expert_id, role, content, reasoning_content, round_id, sequence_no)
+     VALUES (:id, :requestId, NULL, :userId, :expertId, :role, :content, :reasoningContent, :roundId, :sequenceNo)`,
+    {
+      replacements: {
+        id,
+        requestId,
+        userId: testUserId,
+        expertId: testExpertId,
+        role,
+        content,
+        reasoningContent,
+        roundId,
+        sequenceNo,
+      },
+    },
+  );
+}
+
+// 三段轮：第 1 轮**没有思考**（`reasoning_content IS NULL`），第 2/3 轮各有一段。
+const SEG_REQUEST = `${REQUEST_PREFIX}segments`;
+const SEG_R2 = 'C-R2：第二轮那一段思考。';
+const SEG_R3 = 'C-R3：第三轮那一段思考。';
+// 非 assistant 行上的哨兵：如果 `m.role = 'assistant'` 过滤被删掉，它们会混进拼接串。
+const SENTINEL_USER = '【哨兵-USER-不得参与拼接】';
+const SENTINEL_TOOL = '【哨兵-TOOL-不得参与拼接】';
+const SEG_IDS = {
+  round1: `seg-r1-${ns}`,
+  round2: `seg-r2-${ns}`,
+  round3: `seg-r3-${ns}`,
+  assistant1: `seg-a1-${ns}`,
+  assistant2: `seg-a2-${ns}`,
+  assistant3: `seg-a3-${ns}`,
+  userSentinel: `seg-u-${ns}`,
+  toolSentinel: `seg-t-${ns}`,
+};
+let segReady = false;
+
+async function ensureSegmentsFixture() {
+  if (segReady || !db) return;
+  await cleanupRequest(SEG_REQUEST);
+  await insertRound({ id: SEG_IDS.round1, requestId: SEG_REQUEST, roundNo: 1 });
+  await insertRound({ id: SEG_IDS.round2, requestId: SEG_REQUEST, roundNo: 2 });
+  await insertRound({ id: SEG_IDS.round3, requestId: SEG_REQUEST, roundNo: 3 });
+  // 轮 1：assistant 行但**没有思考**（这一轮不产生任何字符，也不该被记成一段）
+  await insertMessageRow({
+    id: SEG_IDS.assistant1,
+    requestId: SEG_REQUEST,
+    role: 'assistant',
+    content: '轮1 纯工具轮正文为空',
+    reasoningContent: null,
+    roundId: SEG_IDS.round1,
+    sequenceNo: 0,
+  });
+  // 轮 2：assistant 行（有思考）+ **user 行哨兵**（同一轮内，sequence_no 更大）
+  await insertMessageRow({
+    id: SEG_IDS.assistant2,
+    requestId: SEG_REQUEST,
+    role: 'assistant',
+    content: '',
+    reasoningContent: SEG_R2,
+    roundId: SEG_IDS.round2,
+    sequenceNo: 0,
+  });
+  await insertMessageRow({
+    id: SEG_IDS.userSentinel,
+    requestId: SEG_REQUEST,
+    role: 'user',
+    content: '用户行',
+    reasoningContent: SENTINEL_USER,
+    roundId: SEG_IDS.round2,
+    sequenceNo: 1,
+  });
+  // 轮 3：**tool 行哨兵**（sequence_no 更小）+ 终稿 assistant 行
+  await insertMessageRow({
+    id: SEG_IDS.toolSentinel,
+    requestId: SEG_REQUEST,
+    role: 'tool',
+    content: '工具行',
+    reasoningContent: SENTINEL_TOOL,
+    roundId: SEG_IDS.round3,
+    sequenceNo: 0,
+  });
+  await insertMessageRow({
+    id: SEG_IDS.assistant3,
+    requestId: SEG_REQUEST,
+    role: 'assistant',
+    content: '',
+    reasoningContent: SEG_R3,
+    roundId: SEG_IDS.round3,
+    sequenceNo: 1,
+  });
+  segReady = true;
+}
+
+test('§2-1 role 过滤：同一请求里 user/tool 行的 reasoning_content 不参与拼接', { skip: skipReason }, async () => {
+  await ensureSegmentsFixture();
+  const info = (await loadRunReasoningByRequest({
+    sequelize: db.sequelize,
+    requestIds: [SEG_REQUEST],
+  })).get(SEG_REQUEST);
+  assert.ok(info, '必须为该请求产出整段思考');
+  assert.equal(info.text, `${SEG_R2}${SEG_R3}`, '拼接只含 assistant 行的思考');
+  assert.ok(!info.text.includes(SENTINEL_USER), 'user 行的 reasoning_content 不得混进拼接（`m.role = \'assistant\'` 过滤）');
+  assert.ok(!info.text.includes(SENTINEL_TOOL), 'tool 行的 reasoning_content 不得混进拼接（`m.role = \'assistant\'` 过滤）');
+  assert.equal(info.finalMessageId, SEG_IDS.assistant3, '终稿行仍是轮序最后一条 assistant 行');
+});
+
+test('§2-2 rounds 语义：等于“参与拼接的段数”，不是行数也不是轮数', { skip: skipReason }, async () => {
+  await ensureSegmentsFixture();
+  const info = (await loadRunReasoningByRequest({
+    sequelize: db.sequelize,
+    requestIds: [SEG_REQUEST],
+  })).get(SEG_REQUEST);
+  // 该请求有 3 轮 / 5 行，但只有 2 行有思考（轮 1 的 reasoning_content IS NULL）
+  assert.equal(info.rounds, 2, '有思考的段数 = 2');
+  assert.notEqual(info.rounds, 3, '不是总轮数（3 轮）');
+  assert.notEqual(info.rounds, 5, '不是总行数（5 行）');
+  // 夹具自检：真的存在一条 reasoning_content IS NULL 的行，否则本断言没有区分力
+  const [nullRows] = await db.sequelize.query(
+    `SELECT COUNT(*) AS n FROM messages WHERE request_id = :id AND reasoning_content IS NULL`,
+    { replacements: { id: SEG_REQUEST } },
+  );
+  assert.equal(Number(nullRows[0].n), 1, '夹具必须含恰好一条 reasoning_content IS NULL 的行');
+});
+
+test('§2-1/D1 反向：多轮正常形状下整段照旧挂上终稿行（整段 ≠ 终稿行自己那份）', { skip: skipReason }, async () => {
+  await ensureSegmentsFixture();
+  const [rows] = await db.sequelize.query(
+    `SELECT m.id, m.request_id, m.role, m.reasoning_content
+       FROM messages AS m
+      WHERE m.request_id = :id
+      ORDER BY m.id ASC`,
+    { replacements: { id: SEG_REQUEST } },
+  );
+  const working = rows.map((row) => ({ ...row }));
+  await attachRunReasoningContent({ sequelize: db.sequelize, rows: working });
+
+  const carriers = working.filter((row) => row[RUN_REASONING_FIELD] !== undefined);
+  assert.equal(carriers.length, 1, '整段只能挂一条行');
+  assert.equal(carriers[0].id, SEG_IDS.assistant3, '挂在终稿行上');
+  assert.equal(carriers[0][RUN_REASONING_FIELD], `${SEG_R2}${SEG_R3}`, '整段 = 各段拼接');
+  assert.equal(carriers[0][RUN_REASONING_ROUNDS_FIELD], 2, '段数 = 2');
+  assert.notEqual(carriers[0][RUN_REASONING_FIELD], SEG_R3, '整段与终稿行自己的 reasoning_content 不同 ⇒ 有增量');
+  for (const row of working.filter((item) => item.role !== 'assistant')) {
+    assert.equal(row[RUN_REASONING_FIELD], undefined, `${row.role} 行不得带整段字段`);
+  }
+});
+
+test('D1：单行 legacy（整段 === 该行自己的 reasoning_content）⇒ 不挂 run_reasoning_content', { skip: skipReason }, async () => {
+  const legacyRequestId = `${REQUEST_PREFIX}legacy-single`;
+  const legacyId = `legacy-single-${ns}`;
+  await cleanupRequest(legacyRequestId);
+  try {
+    await insertMessageRow({
+      id: legacyId,
+      requestId: legacyRequestId,
+      role: 'assistant',
+      content: 'legacy 正文',
+      reasoningContent: 'legacy 整段思考（这一行存的就是累积串）',
+    });
+
+    const info = (await loadRunReasoningByRequest({
+      sequelize: db.sequelize,
+      requestIds: [legacyRequestId],
+    })).get(legacyRequestId);
+    // 拼接口径不变：text 仍是那一行自己的值（等式口径不因 D1 规则打折）
+    assert.equal(info.text, 'legacy 整段思考（这一行存的就是累积串）');
+    assert.equal(info.rounds, 1);
+    assert.equal(info.finalReasoningContent, 'legacy 整段思考（这一行存的就是累积串）', '聚合结果必须带出终稿行自己那份（D1 判据的输入）');
+
+    const rows = [{
+      id: legacyId,
+      request_id: legacyRequestId,
+      role: 'assistant',
+      reasoning_content: 'legacy 整段思考（这一行存的就是累积串）',
+    }];
+    await attachRunReasoningContent({ sequelize: db.sequelize, rows });
+    assert.equal(
+      rows[0][RUN_REASONING_FIELD],
+      undefined,
+      '整段与终稿行自己那份逐字相等 ⇒ 不挂（否则前端同一气泡出现两个相同折叠区 = 本单标题缺陷）',
+    );
+    assert.equal(rows[0][RUN_REASONING_ROUNDS_FIELD], undefined, '不挂文本也不挂轮数');
+
+    // REST 侧同口径：单行 legacy 请求的终稿行不得带该字段
+    const controller = new MessageController(db);
+    const ctx = createCtx({ params: { expertId: testExpertId, messageId: legacyId }, query: { limit: '20' } });
+    await controller.listWithBefore(ctx);
+    const item = (ctx.body?.data?.items ?? []).find((row) => row.id === legacyId);
+    assert.ok(item, 'legacy 行必须在响应里');
+    assert.equal(item[RUN_REASONING_FIELD], undefined, 'REST 也不得给出与 reasoning_content 逐字相同的 run_reasoning_content');
+    assert.equal(item.reasoning_content, 'legacy 整段思考（这一行存的就是累积串）', '既有字段照旧');
+  } finally {
+    await db.sequelize.query('DELETE FROM messages WHERE request_id = :id', {
+      replacements: { id: legacyRequestId },
+    });
+  }
+});
