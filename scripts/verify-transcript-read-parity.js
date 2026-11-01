@@ -42,8 +42,22 @@
  *   node scripts/verify-transcript-read-parity.js --limit 20
  *   node scripts/verify-transcript-read-parity.js --request-id <id>
  *   node scripts/verify-transcript-read-parity.js --report temp/parity.json
+ *   node scripts/verify-transcript-read-parity.js --snapshot temp/parity-snapshot.json   # 采三格快照
+ *   node scripts/verify-transcript-read-parity.js --gate --baseline temp/parity-snapshot.json
  *   退出码：无 content_diff = 0（哪怕有 ordering_only）；有 content_diff = 3（**是信号不是崩**）；
  *   用法/连接错误 = 1。
+ *
+ * 回滚演练门禁（#1227 阶段 3 切片 C2，`--snapshot` / `--gate`）
+ *   阶段 4 要拿 `legacy` 当**真回滚档**，所以这条修法必须能可重复地证明两件事：
+ *     ① 0.23 请求（有 `kind='message'` 行）在 legacy 与 canonical 之间**只剩块顺序差**；
+ *     ② 老账本请求（无消息行）**不因改动丢内容**。
+ *   判据是「三格对账」（轮数 / 条数 / 正文总长 / `tool_result` 条数）+ **块形状多重集**
+ *   （逐消息比块种类与数量，允许纯顺序差与宿主增强 reasoning），**不是**深比对——
+ *   展示面本来就不存 `erix` / `metadata` / 浮点 `duration` / 每条消息的 `ts` 信封
+ *   （#1147 既有损点），拿深比对当闸门会把“读不到的东西”算成内容丢失。
+ *   `--snapshot` 采一次（改动前后各一次）；`--gate --baseline <快照>` 逐格比，失败逐条列出
+ *   `cells_mismatch` / `shape_regression` / `legacy_cells_drift` / `parity_regression`。
+ *   **`--gate` 模式下退出码由门禁自己定**（不再被存量 content_diff 拖着红）。
  *
  * 连哪个库（与 scripts/backfill-transcript-canonical.js 同约定）
  *   - 默认（没给 DB_*）：走 tests/helpers/test-db-guard.mjs 的 openTestDatabase()，
@@ -56,7 +70,7 @@
  */
 
 import path from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 import logger from "../lib/logger.js";
 // logs/ 目录可能非本用户属主：脚本只往 stdout 打报告，不让 logger 写文件失败盖住结果。
@@ -242,19 +256,36 @@ export function normalizedDiffPaths(a, b, base = "", found = []) {
   return found;
 }
 
-function parseArgs(argv) {
-  const options = { limit: null, requestId: null, reportPath: DEFAULT_REPORT_PATH };
+export function parseArgs(argv) {
+  const options = {
+    limit: null,
+    requestId: null,
+    reportPath: DEFAULT_REPORT_PATH,
+    snapshotPath: null,
+    gate: false,
+    baselinePath: null,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const next = () => argv[++index];
     if (arg === "--limit") options.limit = Number(next());
     else if (arg === "--request-id") options.requestId = next();
     else if (arg === "--report") options.reportPath = next();
+    else if (arg === "--snapshot") options.snapshotPath = next();
+    else if (arg === "--gate") options.gate = true;
+    else if (arg === "--baseline") options.baselinePath = next();
     else if (arg === "--help" || arg === "-h") options.help = true;
     else throw new Error(`未知参数：${arg}（--help 看用法）`);
   }
   if (options.limit !== null && (!Number.isInteger(options.limit) || options.limit < 0)) {
     throw new Error(`--limit 必须是非负整数，收到 ${options.limit}`);
+  }
+  // --gate 必须配基线快照：没有“改动前”就没有“不因改动丢内容”的判据。
+  if (options.gate && !options.baselinePath) {
+    throw new Error("--gate 必须同时给 --baseline <改动前的快照 JSON>（用 --snapshot 采）");
+  }
+  if (options.baselinePath && !options.gate) {
+    throw new Error("--baseline 只用于 --gate（采快照用 --snapshot）");
   }
   return options;
 }
@@ -429,10 +460,316 @@ export function compareRequest(store, runId) {
   return run();
 }
 
+// ==================== 回滚演练门禁（#1227 阶段 3 切片 C2） ====================
+//
+// 为什么需要它：C2 把 `legacy` 读档修成「按请求形状分流」（0.23 请求：载体行当轮宿主；
+// 老账本请求：逐行装配）。阶段 4 要拿 `legacy` 当**真回滚档**，所以这条修法必须能
+// **可重复地**证明两件事：
+//   ① 0.23 请求：`legacy` 与 canonical 之间**只剩块顺序差**（#1196 已判定非缺陷）；
+//   ② 老账本请求：**不因这次改动丢内容**（三格对账 + 与改动前快照逐格相等）。
+// 判据只用「正文总长 / 轮数 / tool_result 条数」这三格 + 块类型多重集——刻意**不用**深比对
+// 当闸门：展示面本来就不存 `erix` / `metadata` / 浮点 `duration` / 每条消息的 `ts` 信封
+// （#1147 记录的既有损点），拿深比对当闸门会把这些“读不到的东西”算成内容丢失。
+
+/**
+ * 三格画像：轮数 / 条数 / 正文总长（含 tool_result 正文）/ tool_result 条数。
+ * 口径与 `transcript-projection.js#profileRound` 逐字一致（同一条判据，别处不另算）。
+ */
+export function profileLedgerCells(records) {
+  let messages = 0;
+  let textLength = 0;
+  let toolResults = 0;
+  let toolUses = 0;
+  for (const record of Array.isArray(records) ? records : []) {
+    for (const message of Array.isArray(record?.messages) ? record.messages : []) {
+      messages += 1;
+      for (const block of Array.isArray(message?.content) ? message.content : []) {
+        if (block?.type === "text") textLength += String(block.text ?? "").length;
+        else if (block?.type === "tool_result") {
+          toolResults += 1;
+          textLength += JSON.stringify(block.content ?? null).length;
+        } else if (block?.type === "tool_use") toolUses += 1;
+      }
+    }
+  }
+  return {
+    rounds: Array.isArray(records) ? records.length : 0,
+    messages,
+    textLength,
+    toolResults,
+    toolUses,
+  };
+}
+
+/** 三格对账要逐格比的键（顺序稳定，报告与失败信息都用它）。 */
+export const LEDGER_CELL_KEYS = Object.freeze(["rounds", "messages", "textLength", "toolResults"]);
+
+/** 逐消息的块类型表：`{round, role, types}`（types 已排序）。 */
+function blockTypeRows(records) {
+  const rows = [];
+  for (const record of Array.isArray(records) ? records : []) {
+    const round = Number.isSafeInteger(record?.round) ? record.round : "?";
+    for (const message of Array.isArray(record?.messages) ? record.messages : []) {
+      rows.push({
+        round,
+        role: message?.role ?? "?",
+        types: (Array.isArray(message?.content) ? message.content : [])
+          .map((block) => (typeof block?.type === "string" ? block.type : "?"))
+          .sort(),
+      });
+    }
+  }
+  return rows;
+}
+
+/** 多重集差：`left` 里扣掉 `right` 的配额后剩下的元素。 */
+function multisetMinus(left, right) {
+  const budget = new Map();
+  for (const item of right) budget.set(item, (budget.get(item) ?? 0) + 1);
+  const rest = [];
+  for (const item of left) {
+    const available = budget.get(item) ?? 0;
+    if (available > 0) budget.set(item, available - 1);
+    else rest.push(item);
+  }
+  return rest;
+}
+
+/**
+ * 块形状对账（**内容粒度**的「只剩块顺序差」判据）。
+ *
+ * 两侧逐消息（按轮 + 轮内出现序对齐）比**块类型多重集**：
+ *   - `equal_up_to_order`：每个位置的多重集都相等 ⇒ 只可能差块先后
+ *     （`assistant[reasoning+text]` vs `assistant[text+reasoning]` 在这里判等）。
+ *   - `reasoning_enriched`：某一侧多了 **且只多了** `reasoning` 块 ⇒ 宿主增强 reasoning
+ *     （终稿单写把整个 run 的累积推理写回 `messages.reasoning_content`，canonical 每轮只有
+ *     本轮那一段；对账器把这一类归 `host_enriched_reasoning` 非缺陷）。**不是内容丢失**：
+ *     正文块一个没少，legacy 侧是 canonical 的超集。
+ *   - 其余（缺块 / 多出非 reasoning 块 / 消息条数不同）⇒ 失败，逐条列出缺/多。
+ *
+ * 这比深比对弱（不比较块**内容**与 envelope 字段）、比「条数相等」强（逐消息比块种类与数量）。
+ * 为什么不用深比对当闸门：展示面本来就不存 `erix` / `metadata` / 浮点 `duration` / 每条消息
+ * 的 `ts` 信封（#1147 既有损点），拿深比对当闸门会把“读不到的东西”算成内容丢失。
+ */
+export function compareBlockShapes(legacyRecords, canonicalRecords) {
+  const legacyRows = blockTypeRows(legacyRecords);
+  const canonicalRows = blockTypeRows(canonicalRecords);
+  if (legacyRows.length !== canonicalRows.length) {
+    return {
+      equal_up_to_order: false,
+      reasoning_enriched: false,
+      ok: false,
+      reason: "message_count",
+      legacy_messages: legacyRows.length,
+      canonical_messages: canonicalRows.length,
+      missing: [],
+      extra: [],
+    };
+  }
+  const missing = [];
+  const extra = [];
+  let equalUpToOrder = true;
+  for (let index = 0; index < legacyRows.length; index += 1) {
+    const left = legacyRows[index];
+    const right = canonicalRows[index];
+    const missingHere = multisetMinus(right.types, left.types);
+    const extraHere = multisetMinus(left.types, right.types);
+    if (missingHere.length === 0 && extraHere.length === 0) continue;
+    equalUpToOrder = false;
+    if (missingHere.length > 0) {
+      missing.push({ round: right.round, role: right.role, index, types: missingHere });
+    }
+    if (extraHere.length > 0) {
+      extra.push({ round: left.round, role: left.role, index, types: extraHere });
+    }
+  }
+  const onlyReasoningExtra = missing.length === 0
+    && extra.every((item) => item.types.every((type) => type === "reasoning"));
+  return {
+    equal_up_to_order: equalUpToOrder,
+    reasoning_enriched: !equalUpToOrder && onlyReasoningExtra,
+    ok: equalUpToOrder || onlyReasoningExtra,
+    reason: equalUpToOrder ? "identical" : (onlyReasoningExtra ? "reasoning_enriched" : "shape_diff"),
+    missing,
+    extra,
+  };
+}
+
+/**
+ * 单请求的三格对账（legacy vs canonical）。
+ * @returns {{legacy: object, canonical: object, cells_match: boolean, mismatched_cells: string[],
+ *   shape: object}}
+ */
+export function compareLedgerCells(legacyRecords, canonicalRecords) {
+  const legacy = profileLedgerCells(legacyRecords);
+  const canonical = profileLedgerCells(canonicalRecords);
+  const mismatched = LEDGER_CELL_KEYS.filter((key) => legacy[key] !== canonical[key]);
+  return {
+    legacy,
+    canonical,
+    cells_match: mismatched.length === 0,
+    mismatched_cells: mismatched,
+    shape: compareBlockShapes(legacyRecords, canonicalRecords),
+  };
+}
+
+/** 哪些请求已经有 0.23 消息行（`kind='message'`，生成列现算）——形状分流的判据。 */
+export async function loadMessageRowFlags({ sequelize, requestIds }) {
+  const flags = new Map();
+  if (!Array.isArray(requestIds) || requestIds.length === 0) return flags;
+  const [rows] = await sequelize.query(`
+    SELECT request_id, SUM(kind = 'message') AS message_rows
+    FROM agent_rounds
+    WHERE request_id IN (:requestIds)
+    GROUP BY request_id
+  `, { replacements: { requestIds } });
+  for (const row of rows) flags.set(row.request_id, Number(row.message_rows ?? 0) > 0);
+  return flags;
+}
+
+/**
+ * 逐请求采一次「回滚演练快照」：三格对账 + 块形状 + parity 分类。
+ *
+ * 快照是**改动前后各采一次**再逐格比的东西（`--snapshot`），也是门禁的输入（`--gate`）。
+ * 只读：两侧都调 store 现成的读方法。
+ */
+export async function collectRollbackSnapshot({ sequelize, store, requests }) {
+  const flags = await loadMessageRowFlags({
+    sequelize,
+    requestIds: requests.map((item) => item.request_id),
+  });
+  const entries = [];
+  for (const item of requests) {
+    const runId = item.request_id;
+    const legacyOut = await readUnder(store, TRANSCRIPT_READ_MODE_LEGACY, runId);
+    const newOut = await readUnder(store, TRANSCRIPT_READ_MODE_NEW, runId);
+    const cells = compareLedgerCells(legacyOut.rounds, newOut.rounds);
+    const parity = await compareRequest(store, runId);
+    entries.push({
+      request_id: runId,
+      has_message_rows: flags.get(runId) === true,
+      legacy_cells: cells.legacy,
+      canonical_cells: cells.canonical,
+      cells_match: cells.cells_match,
+      mismatched_cells: cells.mismatched_cells,
+      shape_up_to_order: cells.shape.equal_up_to_order,
+      shape_reasoning_enriched: cells.shape.reasoning_enriched,
+      shape_ok: cells.shape.ok,
+      shape_reason: cells.shape.reason,
+      ...(cells.shape.ok ? {} : { shape_missing: cells.shape.missing, shape_extra: cells.shape.extra }),
+      parity_classification: parity.classification,
+      parity_issues_content_diff: parity.issues_content_diff,
+      parity_issues_ordering_only: parity.issues_ordering_only,
+      legacy_rounds: parity.legacy_round_count,
+      canonical_rounds: parity.new_round_count,
+    });
+  }
+  return {
+    generated_at: new Date().toISOString(),
+    modes_compared: [TRANSCRIPT_READ_MODE_LEGACY, TRANSCRIPT_READ_MODE_NEW],
+    cell_keys: LEDGER_CELL_KEYS,
+    requests: entries,
+  };
+}
+
+/**
+ * 回滚演练门禁：拿当前快照与基线快照逐格比。
+ *
+ * 失败判据（逐条都能定位到 request + 格）：
+ *  1. `cells_mismatch`：三格任一不等 canonical（**丢内容**，任何形状都不允许）；
+ *  2. `shape_regression`：0.23 请求（有消息行）的块形状多重集不等 ⇒ 不止是块顺序差；
+ *  3. `legacy_cells_drift`：老账本请求的 legacy 三格与基线不等（本次改动动了老账本语义）；
+ *  4. `parity_regression`：parity 分类变差（变成 content_diff）或 content_diff 条数变多。
+ *
+ * 第 3 条只对**基线里没有消息行**的请求生效：0.23 请求这次就是要改（轮数会变少），
+ * 它们的“改动前后”比对没有意义，闸门对它们用的是第 1、2 条（对 canonical 的绝对判据）。
+ */
+export function evaluateRollbackGate({ current, baseline }) {
+  const failures = [];
+  const baselineById = new Map(
+    (baseline?.requests ?? []).map((entry) => [entry.request_id, entry]),
+  );
+  let zero23 = 0;
+  let legacyShape = 0;
+  for (const entry of current.requests) {
+    if (entry.has_message_rows) zero23 += 1;
+    else legacyShape += 1;
+
+    if (!entry.cells_match) {
+      failures.push({
+        request_id: entry.request_id,
+        reason: "cells_mismatch",
+        detail: `legacy ${JSON.stringify(entry.legacy_cells)} vs canonical ${JSON.stringify(entry.canonical_cells)}`,
+        mismatched_cells: entry.mismatched_cells,
+      });
+    }
+    if (entry.has_message_rows && !entry.shape_ok) {
+      failures.push({
+        request_id: entry.request_id,
+        reason: "shape_regression",
+        detail: "0.23 请求的块形状与 canonical 不等（不只是块顺序差，也不是宿主增强 reasoning）",
+        shape_reason: entry.shape_reason,
+        shape_missing: entry.shape_missing,
+        shape_extra: entry.shape_extra,
+      });
+    }
+    const before = baselineById.get(entry.request_id);
+    if (before !== undefined) {
+      if (!before.has_message_rows) {
+        const drifted = LEDGER_CELL_KEYS.filter(
+          (key) => entry.legacy_cells[key] !== before.legacy_cells[key],
+        );
+        if (drifted.length > 0) {
+          failures.push({
+            request_id: entry.request_id,
+            reason: "legacy_cells_drift",
+            detail: `老账本请求的 legacy 三格变了：${JSON.stringify(before.legacy_cells)} → ${JSON.stringify(entry.legacy_cells)}`,
+            drifted_cells: drifted,
+          });
+        }
+      }
+      const wasContentDiff = before.parity_classification === "content_diff";
+      const isContentDiff = entry.parity_classification === "content_diff";
+      if ((isContentDiff && !wasContentDiff)
+        || (isContentDiff && wasContentDiff
+          && entry.parity_issues_content_diff > before.parity_issues_content_diff)) {
+        failures.push({
+          request_id: entry.request_id,
+          reason: "parity_regression",
+          detail: `parity 分类变差：${before.parity_classification}(${before.parity_issues_content_diff})`
+            + ` → ${entry.parity_classification}(${entry.parity_issues_content_diff})`,
+        });
+      }
+    }
+  }
+  const missingFromBaseline = current.requests
+    .filter((entry) => baselineById.size > 0 && !baselineById.has(entry.request_id))
+    .map((entry) => entry.request_id);
+  return {
+    ok: failures.length === 0,
+    failures,
+    summary: {
+      requests: current.requests.length,
+      requests_with_message_rows: zero23,
+      requests_legacy_shape: legacyShape,
+      cells_match: current.requests.filter((entry) => entry.cells_match).length,
+      shape_up_to_order: current.requests.filter((entry) => entry.shape_up_to_order).length,
+      shape_ok: current.requests.filter((entry) => entry.shape_ok).length,
+      shape_reasoning_enriched: current.requests.filter((entry) => entry.shape_reasoning_enriched).length,
+      parity_content_diff: current.requests.filter((entry) => entry.parity_classification === "content_diff").length,
+      baseline_requests: baselineById.size,
+      requests_not_in_baseline: missingFromBaseline.length,
+    },
+    requests_not_in_baseline: missingFromBaseline,
+  };
+}
+
 export async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
-    console.log("用法：node scripts/verify-transcript-read-parity.js [--limit N] [--request-id <id>] [--report <path>]");
+    console.log("用法：node scripts/verify-transcript-read-parity.js [--limit N] [--request-id <id>] [--report <path>]\n"
+      + "      node scripts/verify-transcript-read-parity.js --snapshot temp/parity-snapshot.json        # 采三格快照（改动前后各一次）\n"
+      + "      node scripts/verify-transcript-read-parity.js --gate --baseline temp/parity-snapshot.json  # 回滚演练门禁");
     return;
   }
   const { sequelize, database, source } = await resolveConnection();
@@ -513,6 +850,24 @@ export async function main() {
   await mkdir(path.dirname(reportPath), { recursive: true });
   await writeFile(reportPath, JSON.stringify(report, null, 2), "utf8");
 
+  // 回滚演练快照（#1227 阶段 3 切片 C2）：改动前后各采一次，供 --gate 逐格比。
+  const rollbackSnapshot = options.snapshotPath !== null || options.gate
+    ? await collectRollbackSnapshot({ sequelize, store, requests })
+    : null;
+  let snapshotPath = null;
+  if (options.snapshotPath !== null) {
+    snapshotPath = path.resolve(process.cwd(), options.snapshotPath);
+    await mkdir(path.dirname(snapshotPath), { recursive: true });
+    await writeFile(snapshotPath, JSON.stringify(rollbackSnapshot, null, 2), "utf8");
+  }
+  let gate = null;
+  if (options.gate) {
+    const baselinePath = path.resolve(process.cwd(), options.baselinePath);
+    const baseline = JSON.parse(await readFile(baselinePath, "utf8"));
+    gate = evaluateRollbackGate({ current: rollbackSnapshot, baseline });
+    gate.baseline_path = baselinePath;
+  }
+
   console.log([
     `[#1156 Stage C 两模式等价比对] 库=${database}  ${TRANSCRIPT_READ_MODE_ENV}: ${TRANSCRIPT_READ_MODE_LEGACY} vs ${TRANSCRIPT_READ_MODE_NEW}`,
     `  会话比对   : ${report.totals.requests_compared} 个（展示面独有 ${report.totals.requests_only_in_display_side} / canonical 独有 ${report.totals.requests_only_in_canonical_side}）`,
@@ -537,10 +892,69 @@ export async function main() {
   }
   if (orderingOnly.length > 20) console.log(`  ~ …另有 ${orderingOnly.length - 20} 个会话仅块顺序，见报告文件`);
 
+  if (rollbackSnapshot !== null) {
+    console.log(renderRollbackSnapshot(rollbackSnapshot, { snapshotPath }));
+  }
+  if (gate !== null) {
+    console.log(renderRollbackGate(gate));
+  }
+
   await sequelize.close();
-  // 只有**真内容差异**才让闸门红：纯块顺序是已知噪音，单独计数看报告（issue #1196）。
-  // 这是信号不是崩。
-  if (contentDiff.length > 0) process.exitCode = 3;
+  // 退出码：**--gate 模式由门禁自己定**（它已经把 parity 分类逐请求与基线比过一遍，
+  // 见 evaluateRollbackGate 的 `parity_regression`），否则沿用 #1196 的老口径
+  // 「只有真内容差异才红」。存量老账本请求的 content_diff 是展示面既有损点（erix/metadata/
+  // 浮点 duration/ts 信封），不是本次改动引入——拿它当回滚门禁的 exit 会让闸门永远红。
+  if (gate !== null) {
+    if (!gate.ok) process.exitCode = 3;
+  } else if (contentDiff.length > 0) process.exitCode = 3;
+}
+
+/** 快照的人读渲染（三格 + 形状判据，逐请求一行）。 */
+export function renderRollbackSnapshot(snapshot, { snapshotPath = null } = {}) {
+  const lines = [];
+  const zero23 = snapshot.requests.filter((entry) => entry.has_message_rows);
+  const legacyShape = snapshot.requests.filter((entry) => !entry.has_message_rows);
+  lines.push(`== 回滚演练快照（三格：${snapshot.cell_keys.join(" / ")}）`);
+  lines.push(`  0.23 形状（有 kind='message' 行）：${zero23.length} 个请求；老账本形状：${legacyShape.length} 个请求`);
+  lines.push(`  三格与 canonical 全等：${snapshot.requests.filter((entry) => entry.cells_match).length}/${snapshot.requests.length}；`
+    + `块形状（忽略块序）全等：${snapshot.requests.filter((entry) => entry.shape_up_to_order).length}/${snapshot.requests.length}`);
+  for (const entry of zero23) {
+    lines.push(`    [0.23] ${entry.request_id} rounds ${entry.legacy_cells.rounds}/${entry.canonical_cells.rounds}`
+      + ` 正文 ${entry.legacy_cells.textLength}/${entry.canonical_cells.textLength}`
+      + ` tool_result ${entry.legacy_cells.toolResults}/${entry.canonical_cells.toolResults}`
+      + ` 三格=${entry.cells_match ? "✅" : `❌ ${entry.mismatched_cells.join(",")}`}`
+      + ` 形状=${entry.shape_up_to_order ? "仅块顺序 ✅" : (entry.shape_reasoning_enriched ? "宿主增强 reasoning（非缺陷）" : `❌ ${entry.shape_reason}`)}`);
+  }
+  for (const entry of legacyShape) {
+    lines.push(`    [老账本] ${entry.request_id} rounds ${entry.legacy_cells.rounds}/${entry.canonical_cells.rounds}`
+      + ` 正文 ${entry.legacy_cells.textLength}/${entry.canonical_cells.textLength}`
+      + ` tool_result ${entry.legacy_cells.toolResults}/${entry.canonical_cells.toolResults}`
+      + ` 三格=${entry.cells_match ? "✅" : `❌ ${entry.mismatched_cells.join(",")}`}`);
+  }
+  if (snapshotPath !== null) lines.push(`  快照：${snapshotPath}`);
+  return lines.join("\n");
+}
+
+/** 门禁结果的人读渲染（失败清单逐条可定位）。 */
+export function renderRollbackGate(gate) {
+  const lines = [];
+  lines.push("== 回滚演练门禁（legacy 与 canonical 只剩块顺序差；老账本不因改动丢内容）");
+  lines.push(`  基线：${gate.baseline_path}`);
+  lines.push(`  请求 ${gate.summary.requests} 个（0.23 ${gate.summary.requests_with_message_rows} / 老账本 ${gate.summary.requests_legacy_shape}）`
+    + `；三格全等 ${gate.summary.cells_match}；块形状全等 ${gate.summary.shape_up_to_order}`
+    + `（另有 ${gate.summary.shape_reasoning_enriched} 个是宿主增强 reasoning，非缺陷）`
+    + `；基线 ${gate.summary.baseline_requests} 个（不在基线 ${gate.summary.requests_not_in_baseline}）`);
+  if (gate.ok) {
+    lines.push("  结论：✅ 通过（0.23 请求只剩块顺序差；老账本请求三格与改动前逐格相等）");
+    lines.push(`  注：parity 另有 ${gate.summary.parity_content_diff} 个会话仍是 content_diff（存量展示面漂移：`
+      + "erix/metadata/浮点 duration/每条消息 ts 信封；与基线逐请求比过，无新增/无加重）");
+  } else {
+    lines.push(`  结论：❌ ${gate.failures.length} 条失败`);
+    for (const failure of gate.failures) {
+      lines.push(`    - [${failure.reason}] ${failure.request_id} ${failure.detail}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 // 只有**直接跑**本文件才执行 main（测试 import 拿工具函数时不能连带跑一轮真比对）。

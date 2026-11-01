@@ -681,4 +681,193 @@ if (!creds) {
       assert.equal(Number(remainingRows[0].n), 0, "只清除的 canonical-only 标记行必须没有残留");
     }
   });
+
+  /**
+   * #1227 阶段 3 切片 C2：legacy 读档**按请求形状分流**。
+   *
+   * 0.23 形状（载体行 + `kind:'message'` 消息行 + 子行挂在消息行上）在 legacy 档以前会被
+   * 逐行当成轮宿主 ⇒ 每轮多出 0–2 个**裸消息轮**（实测 5 个真请求 16 vs 7、7 vs 4、8 vs 5）。
+   * 分流后：轮数 / 条数 / 正文总长 / tool_result 条数必须与 canonical 逐格相等，且消息行的
+   * key（`…:msg:<n>:<seq>`）不再单独成轮。
+   *
+   * 反向守卫（同样重要）：**老账本**（没有消息行、行本身就是轮宿主）语义一字不改——
+   * 逐行装配 + 同轮双行（appendUserTurn 预写行 vs 引擎轮）保序照旧。
+   */
+  test("⑦ C2 形状分流：0.23 请求不再多出裸消息轮；老账本请求逐行装配语义不变", async () => {
+    const id = runId("shape-dispatch");
+    const tool1 = `tu-shape-${ns}`;
+    const tool2 = `tu-shape2-${ns}`;
+    const carrierKey = (round) => `${id}:engine:round:${round}`;
+    const records = [
+      // round 0 种子载体（写侧不拆行）
+      {
+        round: 0,
+        roundKey: `${id}:round:0`,
+        dedupKey: `${id}:engine:round:0:seed`,
+        ts: "2026-11-01T00:00:00.000Z",
+        messages: [{ role: "system", content: [{ type: "text", text: "seed" }] }],
+      },
+      // round 1 载体（只留元数据，正文全在消息行）
+      {
+        round: 1,
+        roundKey: `${id}:round:1`,
+        dedupKey: carrierKey(1),
+        ts: "2026-11-01T00:00:01.000Z",
+        response: { stopReason: "tool_use" },
+      },
+      // 消息行 seq0：assistant [reasoning, tool_use ×2]（子行 messages / tool 行挂在这一行）
+      {
+        round: 1,
+        roundKey: `${id}:round:1`,
+        dedupKey: `${id}:msg:1:0`,
+        kind: "message",
+        seq: 0,
+        ts: "2026-11-01T00:00:01.100Z",
+        messages: [{
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "需要两个工具" },
+            { type: "tool_use", id: tool1, name: "list", input: { path: "." } },
+            { type: "tool_use", id: tool2, name: "read", input: { path: "a.txt" } },
+          ],
+        }],
+      },
+      // 消息行 seq1：user [tool_result t1]
+      {
+        round: 1,
+        roundKey: `${id}:round:1`,
+        dedupKey: `${id}:msg:1:1`,
+        kind: "message",
+        seq: 1,
+        ts: "2026-11-01T00:00:01.200Z",
+        messages: [{ role: "user", content: [{ type: "tool_result", tool_use_id: tool1, content: "ok-1" }] }],
+      },
+      // 分片 seq2：user [tool_result t2]，partOf → seq1（同一条逻辑 user 消息的第二片）
+      {
+        round: 1,
+        roundKey: `${id}:round:1`,
+        dedupKey: `${id}:msg:1:2`,
+        kind: "message",
+        seq: 2,
+        partOf: `${id}:msg:1:1`,
+        ts: "2026-11-01T00:00:01.300Z",
+        messages: [{ role: "user", content: [{ type: "tool_result", tool_use_id: tool2, content: "boom" }] }],
+      },
+      // round 2 载体 + 终稿消息行（reasoning 在前、text 在后：legacy 会把它重排成 [text, reasoning]）
+      {
+        round: 2,
+        roundKey: `${id}:round:2`,
+        dedupKey: carrierKey(2),
+        ts: "2026-11-01T00:00:02.000Z",
+        response: { stopReason: "end_turn" },
+      },
+      {
+        round: 2,
+        roundKey: `${id}:round:2`,
+        dedupKey: `${id}:msg:2:0`,
+        kind: "message",
+        seq: 0,
+        ts: "2026-11-01T00:00:02.100Z",
+        messages: [{
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "final reasoning" },
+            { type: "text", text: "all done" },
+          ],
+        }],
+      },
+    ];
+    // 老账本形状：没有 kind 行，行本身就是轮宿主（含同轮双行，钉住逐行装配的保序没被动到）
+    const legacyId = runId("shape-dispatch-legacy");
+    const legacyRecords = [
+      {
+        round: 1,
+        roundKey: `${legacyId}:engine:round:1`,
+        dedupKey: `${legacyId}:engine:round:1`,
+        ts: "2026-11-01T00:00:01.000Z",
+        messages: [
+          { role: "user", content: [{ type: "text", text: "老账本问一句" }] },
+          { role: "assistant", content: [{ type: "text", text: "老账本答一句" }] },
+        ],
+        response: { content: [{ type: "text", text: "老账本答一句" }], stopReason: "end_turn" },
+      },
+      {
+        round: 2,
+        roundKey: `${legacyId}:user:round:2`,
+        dedupKey: `${legacyId}:user:round:2`,
+        ts: "2026-11-01T00:00:02.000Z",
+        messages: [{ role: "user", content: [{ type: "text", text: "同轮预写的用户行" }] }],
+      },
+      {
+        round: 2,
+        roundKey: `${legacyId}:engine:round:2`,
+        dedupKey: `${legacyId}:engine:round:2`,
+        ts: "2026-11-01T00:00:03.000Z",
+        messages: [{ role: "assistant", content: [{ type: "text", text: "同轮的引擎轮" }] }],
+        response: { content: [{ type: "text", text: "同轮的引擎轮" }], stopReason: "end_turn" },
+      },
+    ];
+
+    const store = createTouwakaTranscriptStore({ db, requestContext });
+    for (const record of records) await store.appendRound(id, record);
+    for (const record of legacyRecords) await store.appendRound(legacyId, record);
+
+    const cellsOf = (rounds) => {
+      let messages = 0;
+      let textLength = 0;
+      let toolResults = 0;
+      for (const round of rounds) {
+        for (const message of round.messages ?? []) {
+          messages += 1;
+          for (const block of message.content ?? []) {
+            if (block.type === "text") textLength += String(block.text ?? "").length;
+            else if (block.type === "tool_result") {
+              toolResults += 1;
+              textLength += JSON.stringify(block.content ?? null).length;
+            }
+          }
+        }
+      }
+      return { rounds: rounds.length, messages, textLength, toolResults };
+    };
+
+    const canonical = await underMode(TRANSCRIPT_READ_MODE_NEW, () => store.load(id));
+    const legacy = await underMode(TRANSCRIPT_READ_MODE_LEGACY, () => store.load(id));
+
+    assert.equal(canonical.length, 3, "canonical 折叠后应是 3 轮（种子 + 工具轮 + 终稿轮）");
+    assert.equal(
+      legacy.length,
+      3,
+      `legacy 档不得再把消息行当轮宿主（裸消息轮必须消失），实际 ${legacy.length} 轮：`
+        + JSON.stringify(legacy.map((record) => record.dedupKey)),
+    );
+    assert.deepEqual(cellsOf(legacy), cellsOf(canonical), "三格（轮数/条数/正文总长/tool_result 条数）必须与 canonical 相等");
+    assert.equal(cellsOf(legacy).toolResults, 2, "两条 tool_result 都必须读得回来");
+    assert.deepEqual(
+      legacy.map((record) => record.dedupKey),
+      canonical.map((record) => record.dedupKey),
+      "轮的身份集合必须与 canonical 一致（消息行 key 不再单独成轮）",
+    );
+    // 分片 partOf 的正文仍在同一条 user 消息里（折回的是同一条逻辑消息）
+    const toolRound = legacy.find((record) => record.round === 1);
+    assert.deepEqual(
+      toolRound.messages.map((message) => `${message.role}[${message.content.map((block) => block.type).join("+")}]`),
+      ["assistant[reasoning+tool_use+tool_use]", "user[tool_result+tool_result]"],
+      "工具轮的块形状必须是 assistant(思考+两个工具调用) + user(两个结果)",
+    );
+
+    // 老账本：legacy 与 canonical 必须逐轮深相等（分流没有动到它）
+    const legacyShapeCanonical = await underMode(TRANSCRIPT_READ_MODE_NEW, () => store.load(legacyId));
+    const legacyShapeLegacy = await underMode(TRANSCRIPT_READ_MODE_LEGACY, () => store.load(legacyId));
+    const aligned = alignRounds(legacyShapeLegacy, legacyShapeCanonical);
+    assert.equal(aligned.length, legacyShapeLegacy.length, "老账本两侧轮集合必须一一对应");
+    assert.equal(legacyShapeLegacy.filter((record) => record.round === 2).length, 2, "同轮双行必须都还在");
+    for (const entry of aligned) {
+      assert.deepEqual(
+        canonicalize(entry.legacy),
+        canonicalize(entry.new),
+        `老账本第 ${entry.key} 轮两模式必须深相等（分流不得改老账本语义）`,
+      );
+    }
+  });
 }

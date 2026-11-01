@@ -16,6 +16,13 @@
  *        fixture ②（同块仅换序）        → ordering_only  exit=0   ← 改前这里是 exit=3 误报
  *        fixture ③（少一个 text 块 / 改一个字）→ content_diff exit=3
  *
+ * ③ #1227 阶段 3 切片 C2 的回滚演练门禁（`--snapshot` / `--gate --baseline`）：
+ *    三格对账（轮数/条数/正文总长/tool_result 条数）+ 块形状多重集。断言：
+ *      - 0.23 形状请求（有 `kind='message'` 行）在 legacy 与 canonical 之间**只剩块顺序差**；
+ *      - 老账本请求三格与**改动前快照**逐格相等（不因分流丢内容）；
+ *      - 失败判据逐条可定位（cells_mismatch / shape_regression / legacy_cells_drift /
+ *        parity_regression），用**改坏的基线**反证每一条都能红。
+ *
  * 凭据：~/.config/mcp/creds/touwaka-test-db.json（600，不入库）；缺失则 skip。
  */
 
@@ -278,6 +285,213 @@ test("归因实现：只有挂在 content 键下的块数组会被排序；窄�
 
 // ==================== ② 真 fixture + 脚本本体（退出码语义） ====================
 
+// ==================== ③ 回滚演练门禁（#1227 阶段 3 切片 C2） ====================
+
+/** 造一份「一轮两消息」的账本，块按入参给（用来量块形状判据）。 */
+function ledgerOf(blocks) {
+  return [{
+    round: 1,
+    dedupKey: "req:engine:round:1",
+    messages: [
+      { role: "user", content: [{ type: "text", text: "问一句" }] },
+      { role: "assistant", content: blocks },
+    ],
+  }];
+}
+
+const cellSnapshotOf = (overrides = {}) => ({
+  request_id: "req",
+  has_message_rows: false,
+  legacy_cells: { rounds: 2, messages: 3, textLength: 100, toolResults: 1, toolUses: 1 },
+  canonical_cells: { rounds: 2, messages: 3, textLength: 100, toolResults: 1, toolUses: 1 },
+  cells_match: true,
+  mismatched_cells: [],
+  shape_up_to_order: true,
+  shape_reasoning_enriched: false,
+  shape_ok: true,
+  shape_reason: "identical",
+  parity_classification: "identical",
+  parity_issues_content_diff: 0,
+  parity_issues_ordering_only: 0,
+  ...overrides,
+});
+
+test("门禁归因：只有块顺序差 → 判等；少一个块 → 精确报出缺哪条消息的哪个块", () => {
+  const canonical = ledgerOf([TEXT, REASONING]);
+  const reordered = ledgerOf([REASONING, TEXT]);
+  const same = parity.compareBlockShapes(reordered, canonical);
+  assert.deepEqual(
+    { ok: same.ok, equal_up_to_order: same.equal_up_to_order, reason: same.reason },
+    { ok: true, equal_up_to_order: true, reason: "identical" },
+    "块集合与数量全同、只是先后不同 ⇒ 只可能是块顺序差",
+  );
+
+  const lost = ledgerOf([TEXT]);
+  const missing = parity.compareBlockShapes(lost, canonical);
+  assert.equal(missing.ok, false);
+  assert.equal(missing.reason, "shape_diff");
+  assert.deepEqual(missing.missing, [{ round: 1, role: "assistant", index: 1, types: ["reasoning"] }]);
+  assert.deepEqual(missing.extra, []);
+
+  const extraText = parity.compareBlockShapes(ledgerOf([TEXT, REASONING, { type: "text", text: "多一段" }]), canonical);
+  assert.equal(extraText.ok, false, "多出非 reasoning 块不是宿主增强，必须红");
+  assert.deepEqual(extraText.extra, [{ round: 1, role: "assistant", index: 1, types: ["text"] }]);
+
+  // 少一整条消息（不是少一个块）
+  const fewerMessages = parity.compareBlockShapes(
+    [{ round: 1, dedupKey: "req:engine:round:1", messages: [{ role: "user", content: [TEXT] }] }],
+    canonical,
+  );
+  assert.equal(fewerMessages.ok, false);
+  assert.equal(fewerMessages.reason, "message_count");
+});
+
+test("门禁归因：宿主增强 reasoning（legacy 侧是超集）不算丢内容；三格不等就是丢内容", () => {
+  const canonical = ledgerOf([TEXT]);
+  const enriched = parity.compareBlockShapes(ledgerOf([REASONING, TEXT]), canonical);
+  assert.equal(enriched.reasoning_enriched, true);
+  assert.equal(enriched.ok, true, "终稿单写把整个 run 的累积推理写回 reasoning_content（对账器归 host_enriched_reasoning）");
+
+  const cells = parity.compareLedgerCells(
+    ledgerOf([TEXT, REASONING]),
+    ledgerOf([{ type: "text", text: "更长的最终答复" }, REASONING]),
+  );
+  assert.equal(cells.cells_match, false);
+  assert.deepEqual(cells.mismatched_cells, ["textLength"]);
+
+  const equal = parity.compareLedgerCells(ledgerOf([TEXT, REASONING]), ledgerOf([REASONING, TEXT]));
+  assert.equal(equal.cells_match, true);
+  assert.equal(equal.shape.ok, true, "三格相等 + 块形状只差顺序 ⇒ 回滚档可接受");
+});
+
+test("门禁判据：老账本三格漂移 / 0.23 形状回归 / parity 变差 都要红，且逐条可定位", () => {
+  const baseline = {
+    requests: [
+      cellSnapshotOf({ request_id: "legacy-shape" }),
+      cellSnapshotOf({ request_id: "zero23", has_message_rows: true }),
+    ],
+  };
+  const current = {
+    requests: [
+      cellSnapshotOf({ request_id: "legacy-shape" }),
+      cellSnapshotOf({ request_id: "zero23", has_message_rows: true }),
+    ],
+  };
+  const ok = parity.evaluateRollbackGate({ current, baseline });
+  assert.equal(ok.ok, true, `基线自比必须通过：${JSON.stringify(ok.failures)}`);
+  assert.equal(ok.summary.requests_with_message_rows, 1);
+  assert.equal(ok.summary.requests_legacy_shape, 1);
+
+  // ① 三格不等 canonical（任何形状都不允许）
+  const cellsBad = parity.evaluateRollbackGate({
+    current: {
+      requests: [
+        cellSnapshotOf({ request_id: "legacy-shape" }),
+        cellSnapshotOf({
+          request_id: "zero23",
+          has_message_rows: true,
+          cells_match: false,
+          mismatched_cells: ["toolResults"],
+          legacy_cells: { rounds: 2, messages: 3, textLength: 100, toolResults: 0, toolUses: 1 },
+        }),
+      ],
+    },
+    baseline,
+  });
+  assert.equal(cellsBad.ok, false);
+  assert.deepEqual(
+    cellsBad.failures.map((failure) => `${failure.request_id}:${failure.reason}`),
+    ["zero23:cells_mismatch"],
+    "三格不等 canonical 单独一条；这条在基线里是 0.23 形状，故不再叠 legacy_cells_drift（那条只对老账本生效）",
+  );
+
+  // ② 0.23 请求形状回归（不只是块顺序差）
+  const shapeBad = parity.evaluateRollbackGate({
+    current: {
+      requests: [
+        cellSnapshotOf({ request_id: "legacy-shape" }),
+        cellSnapshotOf({
+          request_id: "zero23",
+          has_message_rows: true,
+          shape_up_to_order: false,
+          shape_ok: false,
+          shape_reason: "shape_diff",
+          shape_missing: [{ round: 1, role: "user", index: 1, types: ["tool_result"] }],
+        }),
+      ],
+    },
+    baseline,
+  });
+  assert.equal(shapeBad.ok, false);
+  assert.deepEqual(shapeBad.failures.map((failure) => failure.reason), ["shape_regression"]);
+  assert.deepEqual(shapeBad.failures[0].shape_missing, [{ round: 1, role: "user", index: 1, types: ["tool_result"] }]);
+
+  // ③ 老账本请求的 legacy 三格与改动前不等（分流动了老账本语义）
+  const drift = parity.evaluateRollbackGate({
+    current: {
+      requests: [
+        cellSnapshotOf({
+          request_id: "legacy-shape",
+          legacy_cells: { rounds: 2, messages: 3, textLength: 42, toolResults: 1, toolUses: 1 },
+        }),
+        cellSnapshotOf({ request_id: "zero23", has_message_rows: true }),
+      ],
+    },
+    baseline,
+  });
+  assert.equal(drift.ok, false);
+  assert.deepEqual(drift.failures.map((failure) => `${failure.request_id}:${failure.reason}`), [
+    "legacy-shape:legacy_cells_drift",
+  ]);
+  assert.deepEqual(drift.failures[0].drifted_cells, ["textLength"]);
+
+  // ④ parity 分类变差：identical → content_diff，或 content_diff 条数变多
+  const parityBad = parity.evaluateRollbackGate({
+    current: {
+      requests: [
+        cellSnapshotOf({ request_id: "legacy-shape", parity_classification: "content_diff", parity_issues_content_diff: 1 }),
+        cellSnapshotOf({ request_id: "zero23", has_message_rows: true }),
+      ],
+    },
+    baseline,
+  });
+  assert.equal(parityBad.ok, false);
+  assert.deepEqual(parityBad.failures.map((failure) => failure.reason), ["parity_regression"]);
+
+  const parityWorse = parity.evaluateRollbackGate({
+    current: {
+      requests: [
+        cellSnapshotOf({
+          request_id: "legacy-shape",
+          parity_classification: "content_diff",
+          parity_issues_content_diff: 3,
+        }),
+        cellSnapshotOf({ request_id: "zero23", has_message_rows: true }),
+      ],
+    },
+    baseline: {
+      requests: [
+        cellSnapshotOf({ request_id: "legacy-shape", parity_classification: "content_diff", parity_issues_content_diff: 1 }),
+        cellSnapshotOf({ request_id: "zero23", has_message_rows: true }),
+      ],
+    },
+  });
+  assert.equal(parityWorse.ok, false, "存量 content_diff 从 1 条涨到 3 条也算变差");
+  assert.deepEqual(parityWorse.failures.map((failure) => failure.reason), ["parity_regression"]);
+});
+
+test("门禁 CLI 参数：--gate 必须带 --baseline，--baseline 只用于 --gate", () => {
+  assert.throws(() => parity.parseArgs(["--gate"]), /--baseline/);
+  assert.throws(() => parity.parseArgs(["--baseline", "x.json"]), /只用于 --gate/);
+  assert.deepEqual(
+    parity.parseArgs(["--snapshot", "a.json"]).snapshotPath,
+    "a.json",
+  );
+  const gate = parity.parseArgs(["--gate", "--baseline", "a.json"]);
+  assert.equal(gate.gate, true);
+  assert.equal(gate.baselinePath, "a.json");
+});
+
 if (!creds) {
   test("parity 三分类（llm_kit_test fixture）", { skip: `缺少凭据 ${CREDS_PATH}` }, () => {});
 } else {
@@ -398,6 +612,190 @@ if (!creds) {
     } finally {
       await cleanup(ordering);
       await cleanup(content);
+    }
+  });
+
+  /**
+   * 回滚演练门禁的**端到端**用例（#1227 阶段 3 切片 C2）：
+   * 造一条 0.23 形状请求（载体 + 消息行 + 分片 + 工具轮）和一条老账本形状请求，
+   * 采一次快照、再拿它当基线跑门禁 ⇒ 必须绿；随后**改坏基线**，逐条判据都要红。
+   */
+  test("门禁端到端：0.23 请求只剩块顺序差、老账本三格不变；改坏基线后每条判据都红", async () => {
+    const id023 = requestLabel("gate-023");
+    const idLegacy = requestLabel("gate-legacy");
+    const toolId = `tu-gate-${ns}`;
+    const carrier = (round) => `${id023}:engine:round:${round}`;
+    const store = makeStore();
+    const zero23Records = [
+      {
+        round: 0,
+        roundKey: `${id023}:round:0`,
+        dedupKey: `${id023}:engine:round:0:seed`,
+        ts: "2026-11-01T00:00:00.000Z",
+        messages: [{ role: "system", content: [{ type: "text", text: "seed" }] }],
+      },
+      {
+        round: 1,
+        roundKey: `${id023}:round:1`,
+        dedupKey: carrier(1),
+        ts: "2026-11-01T00:00:01.000Z",
+        response: { stopReason: "tool_use" },
+      },
+      {
+        round: 1,
+        roundKey: `${id023}:round:1`,
+        dedupKey: `${id023}:msg:1:0`,
+        kind: "message",
+        seq: 0,
+        ts: "2026-11-01T00:00:01.100Z",
+        messages: [{
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "先查一下" },
+            { type: "tool_use", id: toolId, name: "list", input: { path: "." } },
+          ],
+        }],
+      },
+      {
+        round: 1,
+        roundKey: `${id023}:round:1`,
+        dedupKey: `${id023}:msg:1:1`,
+        kind: "message",
+        seq: 1,
+        ts: "2026-11-01T00:00:01.200Z",
+        messages: [{ role: "user", content: [{ type: "tool_result", tool_use_id: toolId, content: "ok-1" }] }],
+      },
+      {
+        round: 2,
+        roundKey: `${id023}:round:2`,
+        dedupKey: carrier(2),
+        ts: "2026-11-01T00:00:02.000Z",
+        response: { stopReason: "end_turn" },
+      },
+      {
+        // 终稿轮：reasoning 在前、text 在后 ⇒ legacy 重组成 [text, reasoning]（只差块顺序）
+        round: 2,
+        roundKey: `${id023}:round:2`,
+        dedupKey: `${id023}:msg:2:0`,
+        kind: "message",
+        seq: 0,
+        ts: "2026-11-01T00:00:02.100Z",
+        messages: [{
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "收尾" },
+            { type: "text", text: "做完了" },
+          ],
+        }],
+      },
+    ];
+    const legacyRecords = [
+      {
+        round: 1,
+        roundKey: `${idLegacy}:engine:round:1`,
+        dedupKey: `${idLegacy}:engine:round:1`,
+        ts: "2026-11-01T00:00:01.000Z",
+        messages: [
+          { role: "user", content: [{ type: "text", text: "老账本问一句" }] },
+          {
+            role: "assistant",
+            content: [
+              { type: "text", text: "先查一下" },
+              { type: "tool_use", id: `${toolId}-legacy`, name: "list", input: { path: "." } },
+            ],
+          },
+          {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: `${toolId}-legacy`, content: "ok-legacy" }],
+          },
+        ],
+        response: { stopReason: "tool_use" },
+      },
+      {
+        round: 2,
+        roundKey: `${idLegacy}:engine:round:2`,
+        dedupKey: `${idLegacy}:engine:round:2`,
+        ts: "2026-11-01T00:00:02.000Z",
+        messages: [{ role: "assistant", content: [{ type: "text", text: "老账本收尾" }] }],
+        response: { content: [{ type: "text", text: "老账本收尾" }], stopReason: "end_turn" },
+      },
+    ];
+
+    try {
+      for (const record of zero23Records) await store.appendRound(id023, record);
+      for (const record of legacyRecords) await store.appendRound(idLegacy, record);
+
+      const requests = [{ request_id: id023 }, { request_id: idLegacy }];
+      const snapshot = await parity.collectRollbackSnapshot({
+        sequelize: db.sequelize,
+        store,
+        requests,
+      });
+      const byId = new Map(snapshot.requests.map((entry) => [entry.request_id, entry]));
+
+      const zero23 = byId.get(id023);
+      assert.equal(zero23.has_message_rows, true, "0.23 fixture 必须有 kind='message' 行");
+      assert.equal(zero23.cells_match, true, `三格必须与 canonical 相等：${JSON.stringify(zero23)}`);
+      assert.equal(zero23.shape_up_to_order, true, `0.23 请求只允许块顺序差：${JSON.stringify(zero23)}`);
+      assert.equal(zero23.legacy_cells.rounds, 3, "legacy 档不得把消息行当轮宿主（种子 + 工具轮 + 终稿轮）");
+      assert.equal(zero23.canonical_cells.rounds, 3);
+      assert.equal(zero23.legacy_cells.toolResults, 1, "工具轮的 tool_result 必须读得回来");
+
+      const legacyEntry = byId.get(idLegacy);
+      assert.equal(legacyEntry.has_message_rows, false, "老账本 fixture 不得有 kind='message' 行");
+      assert.equal(legacyEntry.cells_match, true, "老账本三格必须与 canonical 相等（逐行装配语义不变）");
+
+      const gate = parity.evaluateRollbackGate({ current: snapshot, baseline: snapshot });
+      assert.equal(gate.ok, true, `基线自比必须通过：${JSON.stringify(gate.failures)}`);
+      assert.equal(gate.summary.requests_with_message_rows, 1);
+      assert.equal(gate.summary.requests_legacy_shape, 1);
+
+      // 改坏基线：把 0.23 请求的“改动前”写成多两个空轮 + 形状不等（= C2 之前的真实形状）
+      const brokenShape = JSON.parse(JSON.stringify(snapshot));
+      const zero23Broken = brokenShape.requests.find((entry) => entry.request_id === id023);
+      zero23Broken.legacy_cells = { ...zero23Broken.legacy_cells, rounds: 5 };
+      zero23Broken.cells_match = false;
+      zero23Broken.mismatched_cells = ["rounds"];
+      zero23Broken.shape_up_to_order = false;
+      zero23Broken.shape_ok = false;
+      zero23Broken.shape_reason = "shape_diff";
+      const brokenGate = parity.evaluateRollbackGate({ current: brokenShape, baseline: snapshot });
+      assert.equal(brokenGate.ok, false);
+      assert.deepEqual(
+        brokenGate.failures.map((failure) => `${failure.request_id}:${failure.reason}`).sort(),
+        [`${id023}:cells_mismatch`, `${id023}:shape_regression`],
+        "0.23 请求回归必须同时报 cells_mismatch 与 shape_regression（且不报 legacy_cells_drift）",
+      );
+
+      // 改坏基线：老账本请求的三格与“改动前”不等 ⇒ legacy_cells_drift
+      const driftedBaseline = JSON.parse(JSON.stringify(snapshot));
+      const legacyBefore = driftedBaseline.requests.find((entry) => entry.request_id === idLegacy);
+      legacyBefore.legacy_cells = { ...legacyBefore.legacy_cells, textLength: legacyBefore.legacy_cells.textLength - 1 };
+      const driftGate = parity.evaluateRollbackGate({ current: snapshot, baseline: driftedBaseline });
+      assert.equal(driftGate.ok, false);
+      assert.deepEqual(driftGate.failures.map((failure) => failure.reason), ["legacy_cells_drift"]);
+      assert.deepEqual(driftGate.failures[0].drifted_cells, ["textLength"]);
+
+      // === CLI 端到端：--snapshot 采一次，--gate 拿它当基线 ⇒ exit 0 ===
+      const snapPath = path.join(REPORT_DIR, "gate-snapshot.json");
+      const snapRun = runParity(["--request-id", id023, "--snapshot", snapPath,
+        "--report", path.join(REPORT_DIR, "gate-snap-report.json")]);
+      assert.ifError(snapRun.error);
+      assert.equal(snapRun.status, 3, `0.23 fixture 仍有存量 content_diff（展示面既有损点），parity 老口径 exit=3\n${snapRun.stdout}`);
+      const gateRun = runParity(["--request-id", id023, "--gate", "--baseline", snapPath,
+        "--report", path.join(REPORT_DIR, "gate-report.json")]);
+      assert.ifError(gateRun.error);
+      assert.equal(gateRun.status, 0, `--gate 必须 exit 0\nstdout:\n${gateRun.stdout}`);
+      assert.match(gateRun.stdout, /结论：✅ 通过/);
+      assert.match(gateRun.stdout, /0\.23 1 \//, "门禁摘要必须报出 0.23 形状请求数（=1）");
+
+      // --gate 不给基线 ⇒ 用法错误（exit 1，不许默默当成普通比对跑）
+      const noBaseline = runParity(["--request-id", id023, "--gate"]);
+      assert.equal(noBaseline.status, 1, "缺少 --baseline 必须 exit 1");
+      assert.match(`${noBaseline.stderr}${noBaseline.stdout}`, /--baseline/);
+    } finally {
+      await cleanup(id023);
+      await cleanup(idLegacy);
     }
   });
 }
