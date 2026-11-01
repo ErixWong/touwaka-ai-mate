@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 
 import {
   ASSISTANT_LAYOUT,
+  countToolCalls,
   resolveAssistantLayout,
 } from '../frontend/src/components/assistantBubbleLayout.js';
 
@@ -97,4 +98,88 @@ test('错误/超时态即使正文为空也必须给完整气泡（要显示错�
 test('非 assistant 角色（user/tool）永远走各自既有分支，不被本规则收成紧凑行', () => {
   assert.equal(layoutOf(base({ role: 'user', content: '' })), ASSISTANT_LAYOUT.BUBBLE);
   assert.equal(layoutOf(base({ role: 'tool', content: '' })), ASSISTANT_LAYOUT.BUBBLE);
+});
+
+// ============================================================================
+// #1237 切片 C（审计 D2）：`tool_calls === '[]'` 不得绕过 hidden 规则
+// ============================================================================
+//
+// 缺陷：旧判据是 `options.hasToolCalls === true || Boolean(message.tool_calls)`；`'[]'` 是非空
+// 字符串 ⇒ 真 ⇒ 本该 hidden 的空行被留成一条空紧凑行（MessageItem 已经传了解析后的数量，
+// 那个 `|| Boolean(...)` 是自伤兜底）。判据改为**解析后至少一个工具调用**。
+
+/** 空正文、无思考、`tool_calls` 为空的 assistant 行必须真的不渲染。 */
+const assertHiddenWithEmptyToolCalls = (toolCalls, label) => {
+  // 不传 options（历史接口调用方 / 纯函数直接调用）
+  assert.equal(layoutOf(base({ tool_calls: toolCalls })), ASSISTANT_LAYOUT.HIDDEN, `${label}：不传 options 也必须 hidden`);
+  // 传显式“无工具”覆盖（MessageItem 的真实调用形状：`'[]'` 解析后是 0 个）
+  assert.equal(
+    layoutOf(base({ tool_calls: toolCalls }), { hasToolCalls: false }),
+    ASSISTANT_LAYOUT.HIDDEN,
+    `${label}：hasToolCalls=false 时必须 hidden`,
+  );
+};
+
+test('D2：`tool_calls: "[]"` ⇒ hidden（空工具集不是“有工具”）', () => {
+  assertHiddenWithEmptyToolCalls('[]', "'[]'");
+});
+
+test('D2：空工具集的其他等价形状（`[]` / `"[ ]"` / `""`）⇒ hidden', () => {
+  assertHiddenWithEmptyToolCalls([], '[]（已解析数组）');
+  assertHiddenWithEmptyToolCalls('[ ]', "'[ ]'（带空格）");
+  assertHiddenWithEmptyToolCalls('', "''（空串）");
+  assertHiddenWithEmptyToolCalls(null, 'null');
+  assertHiddenWithEmptyToolCalls(undefined, 'undefined');
+});
+
+test('D2：`tool_calls: "[{}]"` ⇒ compact（一个工具调用就算有工具，即便字段为空对象）', () => {
+  assert.equal(layoutOf(base({ tool_calls: '[{}]' })), ASSISTANT_LAYOUT.COMPACT);
+  assert.equal(
+    layoutOf(base({ tool_calls: '[{}]' }), { hasToolCalls: true }),
+    ASSISTANT_LAYOUT.COMPACT,
+  );
+  // 已解析数组 / 单个对象（历史行 `tool_calls` 是对象形状）同样算有工具
+  assert.equal(layoutOf(base({ tool_calls: [{ name: 'x' }] })), ASSISTANT_LAYOUT.COMPACT);
+  assert.equal(layoutOf(base({ tool_calls: { name: 'x' } })), ASSISTANT_LAYOUT.COMPACT);
+});
+
+test('D2：非法 JSON 字符串 ⇒ 不因工具而留行（hidden，解析失败按无工具）', () => {
+  assertHiddenWithEmptyToolCalls('{not json', "'{not json'");
+  assertHiddenWithEmptyToolCalls('undefined', "'undefined'（字符串）");
+  assertHiddenWithEmptyToolCalls('null', "'null'（JSON null）");
+  // 但正文/思考非空时，非法 tool_calls 也不能把它压成 hidden
+  assert.equal(
+    layoutOf(base({ content: '正文', tool_calls: '{not json' })),
+    ASSISTANT_LAYOUT.BUBBLE,
+  );
+  assert.equal(
+    layoutOf(base({ reasoning_content: '思考', tool_calls: '{not json' })),
+    ASSISTANT_LAYOUT.COMPACT,
+  );
+});
+
+test('D2：`options.hasToolCalls === true` 仍是显式覆盖（外部解析结果优先）', () => {
+  assert.equal(
+    layoutOf(base({ tool_calls: '[]' }), { hasToolCalls: true }),
+    ASSISTANT_LAYOUT.COMPACT,
+    '显式覆盖 true ⇒ 按有工具处理（即便 message.tool_calls 是空集）',
+  );
+  assert.equal(
+    layoutOf(base({ tool_calls: '[]' }), { hasToolCalls: 'yes' }),
+    ASSISTANT_LAYOUT.HIDDEN,
+    '非严格 true 不生效（不做真值转换）',
+  );
+});
+
+test('D2：`countToolCalls` 口径与 useToolDataParser.parseToolCallsToArray 一致', () => {
+  assert.equal(countToolCalls(null), 0);
+  assert.equal(countToolCalls('[]'), 0);
+  assert.equal(countToolCalls('  [ ]  '), 0);
+  assert.equal(countToolCalls(''), 0);
+  assert.equal(countToolCalls('not json'), 0);
+  assert.equal(countToolCalls([]), 0);
+  assert.equal(countToolCalls('[{}]'), 1);
+  assert.equal(countToolCalls([{}, {}]), 2);
+  assert.equal(countToolCalls({ name: 'x' }), 1);
+  assert.equal(countToolCalls('{"name":"x"}'), 1);
 });

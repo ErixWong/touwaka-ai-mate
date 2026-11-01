@@ -433,8 +433,23 @@ dry-run 只读自证里也加了全部计划阶段（零写 SQL）。
 - `complete` 事件的 `reasoning_content` 也改成**回读列值**（本轮那段），不再是 `fullReasoningContent`：
   会话内显示要与刷新后（按轮行）逐字一致；`recovering` 仍带跨轮累积串，那只是**重试期的临时显示**
   （`recovered`/`complete` 之后即以库为准）。
-- 测试：`tests/message-run-reasoning.test.mjs`（真库 7 格：等式 / 只挂终稿行 / 窗口截断 / legacy 不猜 /
-  四个查询口一致 / 字段集合与列集合不变）。
+- 测试：`tests/message-run-reasoning.test.mjs`（真库 11 格：等式 / 只挂终稿行 / 窗口截断 / legacy 不猜 /
+  四个查询口一致 / 字段集合与列集合不变 / **role 过滤哨兵 / rounds 段数语义 / D1 无增量不挂**）。
+
+**切片 C（外部审计三条缺陷）**：
+
+- **D1 legacy 整段重复**：单行 legacy 形状（`round_id IS NULL`）下那一行存的就是跨轮累积串，
+  “整段”= 它自己 ⇒ 再挂 `run_reasoning_content` 会让同一气泡渲染两个内容相同的折叠区。
+  规则实现在 `resolveRunReasoningAttachment`（**唯一实现**）：整段与**终稿行自己的**
+  `reasoning_content` 逐字相等 ⇒ 不挂；历史接口与 SSE `complete` 都走它。`loadRunReasoningByRequest`
+  的 `text` 仍是拼接结果本身（等式口径不因该规则打折），另带 `finalReasoningContent` 供判据使用。
+- **D2 `tool_calls === "[]"` 绕过 hidden**：`frontend/src/components/assistantBubbleLayout.js` 的判据
+  改为**解析后至少一个工具调用**（`countToolCalls`，口径同 `useToolDataParser.parseToolCallsToArray`），
+  删掉自伤的 `|| Boolean(message.tool_calls)`；`options.hasToolCalls === true` 保留为显式覆盖。
+- **D3 可选字段阻断 `complete`**：`streamChat` 第 12 步的两次读（回读终稿行思考 / 读侧拼接）各自
+  `try/catch` + `logger.warn` 本地降级，与 REST `MessageController#_attachRunReasoning` 同口径——
+  DB 瞬时故障**不得**把已经落库成功的请求报成失败（`onError` 语义不变）。
+  测试：`tests/chat-service-complete-reasoning.test.mjs`（真库，只有 `agentLoop` 是假的）。
 
 **三格方向 + C 的两个子类**（`REASONING_DIRECTIONS` / `REASONING_C_SUBCLASSES` /
 `collectReasoningDirections` / `planReasoningRewrites` / `applyReasoningRewrites`）：
