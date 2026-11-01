@@ -114,7 +114,9 @@ console.log('\n场景 1（D1-a）：有 canonical 行时 UPDATE 不 INSERT，cha
   assert(update.values.prompt_tokens === 11 && update.values.completion_tokens === 22, 'tokens 更新');
   assert(update.values.latency_ms === 330, 'latency 更新');
   assert(update.values.model_name === 'm1' && update.values.provider_name === 'p1', 'model/provider 更新');
-  assert(update.values.reasoning_content === 'reasoning final', 'reasoning_content 更新');
+  // #1237 切片 A：终稿 UPDATE **不再写** reasoning_content——传进来的是 agent-loop 的跨轮累积串，
+  // 盖在末轮行上会把该行原本的本轮值覆盖掉（同一份思考存两遍）。
+  assert(!('reasoning_content' in update.values), 'reasoning_content 不参与终稿 UPDATE（#1237）');
   const findAllWhere = state.messageFindAll[0].where;
   assert(findAllWhere.request_id === 'req-1' && findAllWhere.role === 'assistant', '按 request_id + assistant 找行');
   assert(findAllWhere.round_id !== undefined && findAllWhere.round_id !== null, 'canonical 行条件含 round_id IS NOT NULL');

@@ -42,6 +42,17 @@
  *   它在生产库被 `assertProjectionApplyAllowed()` 直接拒绝（exit 1，零写入），且会写
  *   `agent_rounds` / `messages` / `chat_tool_calls`——与“只改 canonical”相反。
  *
+ * 存量“累积思考覆盖末轮”回填（#1237 切片 A，开关默认关，**方向与上面两个相反**）
+ *   node scripts/verify-transcript-projection.mjs --limit 40 --fix-reasoning --dry-run --json
+ *   node scripts/verify-transcript-projection.mjs --limit 40 --fix-reasoning            # 真写
+ *   `--fix-reasoning` 的 A 格动作是**改列**：`messages.reasoning_content` 改回**本轮** canonical 值
+ *   （终稿单写曾把 `onReasoningDelta` 的跨轮累积串盖在末轮行上）。写入面**只有 `messages`
+ *   一张表**，与 `--fix-is-error` / `--fix-folded` 的 `agent_transcript_rounds` 并列成**两条独立**
+ *   单表不变量。C 格（canonical 本轮无 reasoning & 列有值）只报告不猜。
+ *   方向为什么相反：跨轮累积串**引擎从不产出**，是宿主投影自己发明的（I2/I3），
+ *   而 `is_error`/`folded` 是列真、canonical 被 2026-10-09 的回填污染。
+ *   判据写在 `lib/llm-kit-adapters/README.md`「两个方向的判据」。
+ *
  * 退出码
  *   0 = 无缺陷（只剩 `host_enriched_reasoning` 这类“非投影缺陷”的信息项，或 legacy 探针的
  *       块顺序差）
@@ -72,21 +83,27 @@ const {
   PROJECTION_DIFF_KINDS,
   TOOL_ERROR_DIRECTIONS,
   FOLDED_DIRECTIONS,
+  REASONING_DIRECTIONS,
+  MESSAGES_TABLE,
   applyCanonicalRecordRewrites,
+  applyReasoningRewrites,
   applyRecordJsonRewrites,
   assertDriftBackfillAllowed,
   assertProjectionApplyAllowed,
   collectBaselineStats,
   collectFoldedDirections,
+  collectReasoningDirections,
   collectToolErrorDirections,
   detectOrphans,
   explainReconcileQueries,
   planCanonicalCleanups,
+  planReasoningRewrites,
   planRecordJsonRewrites,
   probeLegacyVsCarrierOnly,
   projectRequest,
   reconcileRequest,
   summarizeFoldedDirections,
+  summarizeReasoningDirections,
   summarizeToolErrorDirections,
 } = await import("../lib/llm-kit-adapters/transcript-projection.js");
 const { CANONICAL_TABLE } = await import("../lib/llm-kit-adapters/transcript-store.js");
@@ -114,6 +131,8 @@ export function parseArgs(argv) {
     rewriteRecordJson: false,
     // #1227 C2d canonical 假阳性清洗（默认关；与 --fix-is-error 同写一张表）
     fixFolded: false,
+    // #1237 切片 A：messages.reasoning_content 按轮回填（默认关；**只写 messages 一张表**）
+    fixReasoning: false,
     dryRun: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -129,6 +148,7 @@ export function parseArgs(argv) {
     else if (arg === "--report") options.reportPath = String(next());
     else if (arg === "--fix-is-error") options.fixIsError = true;
     else if (arg === "--fix-folded") options.fixFolded = true;
+    else if (arg === "--fix-reasoning") options.fixReasoning = true;
     else if (arg === "--rewrite-record-json") options.rewriteRecordJson = true;
     else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--help" || arg === "-h") options.help = true;
@@ -350,6 +370,51 @@ export function renderFoldedDirections(rows) {
   return lines.join("\n");
 }
 
+/** `reasoning_content` 的三格方向表（#1237 切片 A；**动作指向列**，与上面两个开关相反）。 */
+export function renderReasoningDirections(rows) {
+  const summary = summarizeReasoningDirections(rows);
+  const lines = [
+    "== messages.reasoning_content 三格方向（A=列≠本轮canonical / B=两边相等 / C=canonical 本轮无 reasoning & 列有值）",
+    `  ${Object.entries(REASONING_DIRECTIONS).map(([key, label]) => `${key}=${label}`).join("；")}`,
+    `  A: ${summary.A}\tB: ${summary.B}\tC: ${summary.C}`
+    + `（C-derived: ${summary.C_derived}\tC-opaque: ${summary.C_opaque}）\t合计: ${summary.total}`,
+    "  A → 列改回**本轮** canonical 值；B 无需动作；",
+    "  C-derived（canonical 本轮无 reasoning **且** 列值 == 各轮拼接，可证明是本缺陷产物）→ 清成 NULL（不是空串）；",
+    "  C-opaque（列值 ≠ 拼接，来路不明）→ **不动只点名**（历史形状，不猜）。",
+  ];
+  for (const row of rows) {
+    if (row.direction === "B") continue;
+    const colLen = row.columnValue === null ? "null" : row.columnValue.length;
+    const canLen = row.canonicalValue === null ? "null" : row.canonicalValue.length;
+    const sub = row.subClass === null || row.subClass === undefined ? "" : ` sub=${row.subClass}`;
+    lines.push(
+      `    - [${row.direction}${sub}] ${row.runId} ${row.dedupKey}#${row.sequenceNo}`
+      + ` message=${row.messageId} role=${row.role}`
+      + ` columnLen=${colLen} canonicalLen=${canLen} accumulatedLen=${row.accumulated.length}`
+      + ` columnEqualsAccumulated=${row.columnEqualsAccumulated} action=${row.action}`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/** `--fix-reasoning` 的改写清单（只列定位键 + 长度变化，不倾倒思考正文）。 */
+export function renderReasoningPlan(plans) {
+  const requests = new Set(plans.map((plan) => plan.runId));
+  const lines = [
+    `== reasoning_content 改写清单（--fix-reasoning；写入面只有 ${MESSAGES_TABLE}）`,
+    `  ${plans.length} 行 / ${requests.size} 请求`,
+  ];
+  for (const plan of plans) {
+    const target = plan.newValue === null ? "NULL" : `${plan.newLength} 字符`;
+    const tag = plan.subClass ? `[${plan.direction}/${plan.subClass}]` : `[${plan.direction}]`;
+    lines.push(
+      `    - ${tag} ${plan.runId} ${plan.dedupKey}#${plan.sequenceNo} message=${plan.messageId}`
+      + ` reasoning_content ${plan.oldLength} 字符 → ${target}`,
+    );
+  }
+  return lines.join("\n");
+}
+
 /** canonical 改写清单（只列定位键 + 改动摘要，不倾倒整份 record）。 */
 export function renderCanonicalPlan(plans) {
   const requests = new Set(plans.map((plan) => plan.runId));
@@ -403,7 +468,7 @@ export async function main() {
   if (options.help) {
     console.log("用法：node scripts/verify-transcript-projection.mjs "
       + "[--request-id <id> ...] [--since <ISO>] [--limit <n>] [--apply] [--json] [--explain] [--no-probe] [--report <path>] "
-      + "[--fix-is-error] [--fix-folded] [--rewrite-record-json] [--dry-run]");
+      + "[--fix-is-error] [--fix-folded] [--fix-reasoning] [--rewrite-record-json] [--dry-run]");
     return;
   }
 
@@ -414,11 +479,12 @@ export async function main() {
   // ⚠ 真写靠“不给 --dry-run”触发，**不是** `--apply`（`--apply` 在生产库会被上面那行拒掉，
   // 且它写的是 agent_rounds / messages / chat_tool_calls，与“只改 canonical”相反）。
   const driftWrite = !options.dryRun
-    && (options.fixIsError || options.fixFolded || options.rewriteRecordJson);
+    && (options.fixIsError || options.fixFolded || options.fixReasoning || options.rewriteRecordJson);
   const backfillGate = assertDriftBackfillAllowed({
     database,
     fixIsError: driftWrite && options.fixIsError,
     fixFolded: driftWrite && options.fixFolded,
+    fixReasoning: driftWrite && options.fixReasoning,
     rewriteRecordJson: driftWrite && options.rewriteRecordJson,
     env: process.env,
   });
@@ -440,6 +506,9 @@ export async function main() {
   let canonicalApply = null;
   let recordJsonPlan = null;
   let recordJsonApply = null;
+  let reasoningDirections = null;
+  let reasoningPlan = null;
+  let reasoningApply = null;
   if (options.fixIsError) directions = await collectToolErrorDirections({ sequelize, runIds });
   if (options.fixFolded) foldedDirections = await collectFoldedDirections({ sequelize, runIds });
   if (options.fixIsError || options.fixFolded) {
@@ -449,6 +518,13 @@ export async function main() {
       foldedRows: foldedDirections ?? [],
     });
     if (driftWrite) canonicalApply = await applyCanonicalRecordRewrites({ sequelize, plans: canonicalPlan });
+  }
+  // #1237 切片 A：`--fix-reasoning` 写的是**另一张表**（`messages`），与上面两个 canonical 开关
+  // 各自独立（计划不合并：写入面、判据方向、幂等夹子都不同）。
+  if (options.fixReasoning) {
+    reasoningDirections = await collectReasoningDirections({ sequelize, runIds });
+    reasoningPlan = planReasoningRewrites({ directions: reasoningDirections });
+    if (driftWrite) reasoningApply = await applyReasoningRewrites({ sequelize, plans: reasoningPlan });
   }
   if (options.rewriteRecordJson) {
     recordJsonPlan = await planRecordJsonRewrites({ sequelize, runIds });
@@ -482,13 +558,15 @@ export async function main() {
     mode: options.apply ? "apply" : "dry-run",
     drift_mode: driftWrite
       ? "apply"
-      : ((options.fixIsError || options.fixFolded || options.rewriteRecordJson) ? "dry-run" : "off"),
+      : ((options.fixIsError || options.fixFolded || options.fixReasoning || options.rewriteRecordJson)
+        ? "dry-run"
+        : "off"),
     drift_gate: backfillGate,
     diff_kinds: PROJECTION_DIFF_KINDS,
     requests: entries,
     baseline,
     apply: applyResults,
-    drift: (options.fixIsError || options.fixFolded || options.rewriteRecordJson)
+    drift: (options.fixIsError || options.fixFolded || options.fixReasoning || options.rewriteRecordJson)
       ? {
         tool_error_directions: directions
           ? { summary: summarizeToolErrorDirections(directions), rows: directions }
@@ -508,6 +586,11 @@ export async function main() {
           }))
           : null,
         canonical_apply: canonicalApply,
+        reasoning_directions: reasoningDirections
+          ? { summary: summarizeReasoningDirections(reasoningDirections), rows: reasoningDirections }
+          : null,
+        reasoning_plan: reasoningPlan,
+        reasoning_apply: reasoningApply,
         record_json_plan: recordJsonPlan
           ? recordJsonPlan.map((plan) => ({
             runId: plan.runId,
@@ -541,6 +624,14 @@ export async function main() {
     }
     if (foldedDirections) {
       console.log(renderFoldedDirections(foldedDirections));
+    }
+    if (reasoningDirections) {
+      console.log(renderReasoningDirections(reasoningDirections));
+      console.log(renderReasoningPlan(reasoningPlan));
+      console.log(reasoningApply
+        ? `== reasoning_content 回填结果：written=${reasoningApply.written} 行`
+          + `（写入面只有 ${MESSAGES_TABLE}；agent_transcript_rounds / agent_rounds / chat_tool_calls 一行未写）`
+        : "== reasoning_content 回填结果：dry-run 未写入（去掉 --dry-run 才真写；不要用 --apply）");
     }
     if (canonicalPlan) {
       console.log(renderCanonicalPlan(canonicalPlan));
