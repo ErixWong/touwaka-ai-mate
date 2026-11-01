@@ -51,8 +51,40 @@
 - **实现它**：需要一张 run 状态表（新增表 = DDL，按红线要 Eric 点头），换来"可从中途轮恢复/审计预算"能力；
 - **正式承认为预期降级**：把这两个事件按能力名降噪（例如每请求每能力只记一次），文档写明"宿主不持久化 run-state，恢复靠 canonical 重放"。
 
-## 4. 采不到什么（诚实清单）
+## 4. 接口延迟（#1227 阶段 4 的最后一格，现已有数）
+
+用仓库自身的 JWT 签发路径签短期票，打**生产 3017** 真接口，各 40 次（`curl %{time_total}`，loopback、热连接、单客户端）：
+
+| 接口 | 状态分布 | p50 | p95 | max |
+|---|---|---|---|---|
+| `GET /api/messages/expert/<id>?page=1&limit=20` | 200 × 40 | 14 ms | **17 ms** | 20 ms |
+| `POST /api/messages/query`（终稿行带 `run_reasoning_content` 拼接） | 200 × 40 | 14 ms | **20 ms** | 21 ms |
+
+**读法与限制**（别把这张表当成能外推的数字）：
+- 没有文档化的既有 SLO 阈值可引，所以这里只报**实测值**，不写"达标/不达标"——**整段思考拼接这条新读路径没有把列表接口拖到可感知量级**是本次唯一能下的结论。
+- loopback + 热连接 + 单客户端 + 2678 行 `messages` 的小数据集 ⇒ **不能**当容量规划输入；跨网络/并发/大库要另测。
+- 测量踩坑（值得记）：`POST /api/messages/query` 的契约是 `filter.expert_id`（缺了返回 `code:400`），我第一遍把 `request_id` 放在顶层 ⇒ 40 次全是 400，量出来 **p95=6ms** 看着极快，其实测的是错误响应。**延迟数字必须和状态码分布一起看**，否则就是"绿得没道理"。
+
+## 5. 采不到什么（诚实清单）
 
 1. **append 事务 p95 采不到**：当前**没有任何 append 耗时打点**（日志里搜 `append|transcript` + `ms|duration|elapsed` 零命中）。要这条指标必须先加打点——属于新需求，不混进迁移单。
 2. **无历史对比基线**：本文是第一份。以后任何"迁移后变慢/变大"的结论都必须引用本文的具体数字，而不是"感觉变多了"。
 3. **单实例前提**：所有按请求的单调/一致性结论都只在"单进程写库"下成立（见全局 ID 约定）；多实例部署时要重新评估。
+
+## 6. #1227 阶段门禁逐格裁定（2026-11-02 01:3x 收口）
+
+| 阶段 4 门禁 | 结果 |
+|---|---|
+| `dedup_payload_conflict` 只对应真实冲突 | 近 24h **0 条**冲突事件（且 Phase 2 契约测试钉住语义） |
+| `invalid_messages` / persistence error 不高于基线 | 容器日志真实异常 **0** |
+| 读 parity 无未解释差异 | **全库 41 个请求：三格全等 41、块形状全等 41、`GATE_EXIT=0`**；剩余 15 个 `content_diff` 已归因（展示面不存 `erix` / `metadata` / 浮点 `duration` / 每条消息 `ts` 信封，基线既有、无新增无加重） |
+| 消息列表 p95 | 见 §4：列表 **17ms** / 查询 **20ms**（p50 均 14ms，40/40 全 200） |
+| 演练 `new→legacy` 回滚 | 见 `transcript-rollback-drill.md`：回滚 → **`GATE_EXIT=3`（23 条全 `parity_regression`）** → 修复 → **`GATE_EXIT=0`**，往返与生产 CRC 相同 |
+
+**全库对账（2026-11-02 01:2x，`--limit 200` 覆盖全部 41 个请求）＝零漂移**：`tool_error A=0 / B=11 / C=0 / unchanged=51`、`folded` 全零（193 行）、`reasoning A=0 / B=92 / C=0（C_derived=0 / C_opaque=0）`，`canonical_plan` / `record_json_plan` / `reasoning_plan` **全空**。
+
+**唯一没满的一格是"观察期"本身**——它天然是时间函数，不是我能在一个通宵里造出来的事实。所以**关闭判据写成一条可跑的断言，而不是日期或版本号**：
+
+> 下一次真实业务流量之后，复跑 `node scripts/verify-transcript-projection.mjs --limit 200 --fix-is-error --fix-folded --fix-reasoning --rewrite-record-json --dry-run` 仍得 **三份 plan 全空 + 三个方向 A=0/C=0**，且 `verify-transcript-read-parity.js --gate` 仍 `GATE_EXIT=0` ⇒ #1227 可关闭。
+
+后续工作已全部拆成独立单：**#1246**（批量写备份前置闸 + 回滚 SQL 带 `utf8mb4`）、**#1249**（run snapshot / run-state 持久化二选一）、**#1250**（`complete` 一致性格夹具改单轮）。
