@@ -282,10 +282,14 @@ legacy 读法直接调 `store.load()`。C1 只是把 appendRound 里原本内联
 `extra_tool_row` / `tool_row_mismatch` / `tool_result_mismatch` / `tool_result_missing`。
 
 **已知非缺陷**：`host_enriched_reasoning`。终稿单写
-（`lib/chat-service.js#saveAssistantMessageAndCompleteRequest`）会 UPDATE 引擎已落的 assistant
+（`lib/chat-service.js#saveAssistantMessageAndCompleteRequest`）曾 UPDATE 引擎已落的 assistant
 `messages` 行，把 `reasoning_content` 换成**整个 run 的累积推理**（canonical 每轮只存本轮那一段），
 并补 tokens/latency/model。判据只认「只有 reasoning 一个字段不同 + actual 以 expected 为后缀」，
-其它一律算 `content_mismatch`；`--apply` **不回写**这种行（否则会毁掉现网展示值）。
+其它一律算 `content_mismatch`；`--apply` **不回写**这种行。
+
+> **#1237 切片 A 起写侧已修**：终稿 UPDATE 不再碰 `reasoning_content`（只写 `content` +
+> tokens/latency/model），新请求不会再产生这一类差异；存量行由 `--fix-reasoning` 按轮改回
+> （见下文「`--fix-reasoning`」）。这条分类保留是给**存量与历史账本**用的。
 
 **孤儿检测**：`chat_tool_calls.round_id` 找不到宿主轮 ⇒ `orphan_tool_row`；轮已完成但
 `result_json IS NULL` ⇒ canonical 有结果时报 `tool_result_missing`（真丢正文），canonical 也没有时
@@ -318,6 +322,7 @@ carrier-only 已把轮数与条数拉回与 canonical 一致，**只剩块顺序
 | `--fix-is-error` | `agent_transcript_rounds.record_json`：**删** A 格 `tool_result` 块的 `is_error` 键 | **单向**：只动「canonical `true` 且列 `0`」（A 格）；B（两边真）与 C（列真 & canonical 非真）一律不动，C 只报告 |
 | `--fix-folded` | `agent_transcript_rounds.record_json`：A 格 `folded` → `false`，`foldedRoundRange` 从列推导 | 同上三格表；判据同表，动作指向 canonical |
 | `--rewrite-record-json` | `agent_rounds.record_json` | 用 `buildAgentRoundRecordSnapshot(canonical).recordSnapshot` 重写（唯一快照实现，不另写第二份） |
+| `--fix-reasoning` | **`messages.reasoning_content`**（#1237 切片 A） | A 格改回**本轮** canonical 值；B 不动；C-derived（列值 == 各轮拼接）清成 `NULL`；C-opaque（列值 ≠ 拼接）**不动只点名**。**方向与上面两个相反**，见「两个方向的判据」 |
 
 **生产库写入门槛**：开关本身 + `ALLOW_NON_TEST_DB=1` 必须**同时在场**；缺任一即拒绝，
 code=`ERR_PROJECTION_BACKFILL_NEEDS_ALLOW_NON_TEST_DB`（库名缺失是 `ERR_PROJECTION_BACKFILL_UNKNOWN_DATABASE`）。
@@ -367,9 +372,13 @@ C2b 实现这个开关时的假设是「canonical 是真相」，于是 A 格动
 
 ### 单表不变量与幂等
 
-- 两个开关的写入面**只有 `agent_transcript_rounds`**（唯一写入口 `applyCanonicalRecordRewrites`）。
-  用例用写 SQL 探针钉住：每条写语句必须匹配 `^UPDATE agent_transcript_rounds\b`，且不得出现
-  `chat_tool_calls` / `agent_rounds` / `messages` 的写。
+- **两条独立的单表不变量**（不是一条，别混）：
+  1. `--fix-is-error` / `--fix-folded` 的写入面**只有 `agent_transcript_rounds`**
+     （唯一写入口 `applyCanonicalRecordRewrites`）；
+  2. `--fix-reasoning` 的写入面**只有 `messages`**（唯一写入口 `applyReasoningRewrites`）。
+  用例各用一个写 SQL 探针钉住：前者每条写语句必须匹配 `^UPDATE agent_transcript_rounds\b`，
+  后者必须匹配 `^UPDATE messages\b`；两边都不得出现另外三张表
+  （`agent_rounds` / `chat_tool_calls` / 对方那张）的写，且**计划阶段零写 SQL**。
 - 两个开关的计划**必须合并**（`planCanonicalCleanups`）：同一条 canonical 行可能既带假 `is_error`
   又带假 `folded`（生产实测 29 个假 `is_error` 块全部落在 69 个假 `folded` 轮之内）。分别算
   `newRecord` 再先后写，后一份会盖掉前一份的修复。
@@ -379,8 +388,9 @@ C2b 实现这个开关时的假设是「canonical 是真相」，于是 A 格动
 - 幂等：计划阶段按深比较只收“真的会变”的行；SQL 侧再夹 `record_json <> :recordJson`。
   第二次跑计划为空 ⇒ `written = 0`。`updated_at` 不动（只改内容，回滚只需还原 `record_json`）。
 
-**不碰的边界**：`messages.reasoning_content`（宿主增强累积推理）不回填；`agent_rounds.folded` /
-`chat_tool_calls.is_error` 两列本切片**一行都不写**；`reconstructMessages` 的读档语义不在本切片改（C2c）。
+**不碰的边界**：`agent_rounds.folded` / `chat_tool_calls.is_error` 两列本切片（C2b/C2d）**一行都不写**；
+`reconstructMessages` 的读档语义不在本切片改（C2c）。`messages.reasoning_content` 在 C2b/C2d 里
+**不回填**，改由 #1237 切片 A 的 `--fix-reasoning` 单独处理（写入面不同、方向也不同）。
 
 **测试**：`transcript-projection-reconcile.test.mjs` 里 —— 闸门纯函数（生产库缺 `ALLOW_NON_TEST_DB=1` 拒写）、
 `--fix-is-error` / `--fix-folded` **各一格三格方向**（A 清、B 不动、C 不动且被点名 + 幂等）、
@@ -388,6 +398,80 @@ raw `Buffer` 列（无 typeCast 连接）下判定仍正确、清洗后 canonica
 `foldedRoundRange` 与 `folded` 一致性（列 NULL ⇒ 删键；列有值 ⇒ 用列的值）、单表不变量、
 `--rewrite-record-json` 与 `buildAgentRoundRecordSnapshot` **逐字节相等** + 幂等；
 dry-run 只读自证里也加了全部计划阶段（零写 SQL）。
+
+## `--fix-reasoning`：`messages.reasoning_content` 按轮回填（#1237 切片 A）
+
+**缺陷**：`lib/agent/agent-loop.js` 的 `onReasoningDelta` 把**每一轮**的思考累进
+`fullReasoningContent`（跨轮累积）；终稿落库时 `lib/chat-service.js#saveAssistantMessageAndCompleteRequest`
+把整段累积串当 `reasoning_content` UPDATE 到**最后一轮**的 assistant 行上，把该行原本的“本轮值”
+覆盖掉 ⇒ 同一份思考在同一请求里**存两遍 + 显示两遍**（生产实测 9 个请求命中，
+如 `1230 = 68+99+195+192+453+223`）。
+
+**写侧已修**：终稿 UPDATE 只写 `content` + tokens/latency/model/status，**不再碰 `reasoning_content`**
+（该行的思考值是投影在轮内按 canonical 写好的）。`options.reasoning_content` 仍照旧用于 SSE 的
+`complete` 事件与兜底 INSERT（无 canonical 行时不存在覆盖问题）。**按轮存、需要整段时读取时拼接**：
+不新增列、不加 DDL、不建 run 级思考表。
+
+**读侧拼接（切片 B）必须满足的等式**：
+
+```
+各轮 messages.reasoning_content（按 round_no, sequence_no 顺序，无分隔 join）
+  === 旧实现的 fullReasoningContent（跨轮累积串）
+```
+
+本切片已用测试钉住这条等式（新写入后拼接逐字等于累积串），所以切片 B 改读侧时展示面不会漂。
+
+**三格方向 + C 的两个子类**（`REASONING_DIRECTIONS` / `REASONING_C_SUBCLASSES` /
+`collectReasoningDirections` / `planReasoningRewrites` / `applyReasoningRewrites`）：
+
+| 格 | 判据 | 动作 |
+|---|---|---|
+| **A** | canonical 本轮有 reasoning，列值 ≠ 本轮值（列是跨轮累积串） | 列改回**本轮** canonical 值 |
+| **B** | 列值 == canonical 本轮值 | 不动 |
+| **C-derived** | canonical 本轮 reasoning 为空/缺 **且** 列值 **逐字等于**各轮 canonical reasoning 的拼接（同序、无分隔，与 `agent-loop.js` 的 `fullReasoningContent += reasoningDelta` 同口径） | 清成 **`NULL`** |
+| **C-opaque** | canonical 本轮 reasoning 为空/缺 **但** 列值 ≠ 那个拼接 | **不动，只点名** |
+
+C 的两条判据**缺一不可**，这是“证明”而不是“猜测”：
+
+- 只看拼接会误伤——单轮请求里“拼接恰好等于列值”（如 `86 == 86`）纯属巧合，**只有**
+  「canonical 本轮为空」这条才能把它定性成“不是本轮自己的思考”；
+- 只看 canonical 为空又会把别的写路径塞进来的思考一起清掉。
+
+所以 C 的子类是**判据粒度**的收紧，**不是纪律放宽**：`C-opaque` 一行都不动（反向钉子有专门一格测试），
+报告里两个子类分别计数（生产实测 `A=5 / C-derived=4 / C-opaque=0`）。
+
+**为什么 C-derived 写 `NULL` 而不是空串**：legacy 读路径（`transcript-store.js` 读
+`messages.reasoning_content`）与前端 `v-if="message.reasoning_content"` 对 `NULL`/`''` 的 falsy
+行为不同——清成空串会把“清干净了”伪装成“看起来干净”，SQL 侧再也分不开。测试专门有一格
+断言 `IS NULL` 为真、`CHAR_LENGTH` 为 `NULL`（不是 `0`）。
+
+**回填顺序**（不许颠倒）：dry-run → 备份「行主键 + 旧值」清单 → 写 → `SELECT` 回读 → 幂等（二次写 0）→ 复账。
+
+**测试**：`tests/llm-kit-adapters/reasoning-per-round.test.mjs`（真库，9 格）—— 真跑一轮两轮请求
+（`runErix` 两轮都吐 reasoning + `ChatService` 终稿单写）后逐格断言：末轮行等于本轮 canonical 值、
+`content`/计量列照旧、**末行不得等于累积串**（旧实现下必红）、拼接等式、legacy 读档仍可解释；
+另有三格方向（A 改 / B 不动 / C-derived 清 / C-opaque 不动且点名 + 幂等）、`NULL` 与 `''` 的分界、
+**C-opaque 反向钉子**、单表不变量探针（只 `UPDATE messages`）、生产库闸门（缺 `ALLOW_NON_TEST_DB=1` 拒写）。
+
+## 两个方向的判据：**哪一侧是真相，由“谁发明了这个值”决定**（#1227 C2d vs #1237 切片 A）
+
+本仓有两个回填开关，动作方向**正好相反**。它们都成立，因为**对象不同**。下一个人最容易在这里
+搞混（“上一个开关怎么改，这个就怎么改”是错的），所以判据写死在这里：
+
+| 开关 | 对象 | 真相在 | A 格动作 | 为什么 |
+|---|---|---|---|---|
+| `--fix-is-error` / `--fix-folded`（#1227 C2d） | `agent_transcript_rounds.record_json` 的 `is_error` / `folded` | **列**（`chat_tool_calls.is_error` / `agent_rounds.folded`） | 改 canonical（删 `is_error` 键 / `folded:false`） | 2026-10-09 的 canonical 回填把 `BIT(1)` 的 `Buffer` 当真值判断（`Boolean(Buffer)` 恒真）⇒ **canonical 是被污染的一方**；列是引擎当场写的，没经过那条坏路径 |
+| `--fix-reasoning`（#1237 切片 A） | `messages.reasoning_content` | **canonical**（`agent_transcript_rounds` 每轮那一段） | 改列（改回本轮值） | 跨轮累积串是**宿主投影自己发明**的（`agent-loop` 的 `fullReasoningContent += reasoningDelta`），**引擎从不产出**该字段 ⇒ 违反 I2（投影不得发明字段）/ I3（账本行不得被引擎口径覆盖写） |
+
+判据可以压成一句：**看这个值是不是“引擎口径”。**
+
+- 列值由引擎在当场按块写下来、canonical 是被某次宿主回填**二次加工**过的 ⇒ canonical 错，改 canonical（C2d）。
+- 值本身只在宿主侧存在（跨轮拼接、派生计数），引擎侧只有按轮/按块的原始形态 ⇒ 宿主错，改宿主列（#1237）。
+
+配套的可推导性判据（`--fix-reasoning` 独有）：C 格（canonical 本轮**没有** reasoning，列却有值）
+再分 `C-derived`（列值**逐字等于**各轮 canonical 拼接 ⇒ 可证明是本缺陷的产物 ⇒ 清成 `NULL`）与
+`C-opaque`（列值 ≠ 拼接 ⇒ 来路不明 ⇒ **不动只点名**）。“不猜”这条红线落在 `C-opaque` 上；
+把 C 全清是**过度推断**（会毁掉别的写路径塞进来的真实内容），把 C 全不动则会把可证明的重复思考留在库里。
 
 ## `BIT(1)` 读侧转换（#1227 阶段 3 切片 C2c）
 

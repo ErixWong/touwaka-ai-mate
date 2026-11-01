@@ -814,6 +814,8 @@ if (!creds) {
         fixIsError: false,
         rewriteRecordJson: false,
         fixFolded: false,
+        // #1237 切片 A：`--fix-reasoning` 默认关（写 messages 一张表，方向与 canonical 两个开关相反）。
+        fixReasoning: false,
         dryRun: false,
       },
     );
@@ -832,9 +834,15 @@ if (!creds) {
         fixIsError: true,
         rewriteRecordJson: true,
         fixFolded: false,
+        fixReasoning: false,
         dryRun: true,
       },
     );
+    // #1237 切片 A：`--fix-reasoning` 单独开、且**不带** `--apply`（同上，真写靠不给 --dry-run）。
+    const reasoningOnly = parseArgs(["--fix-reasoning", "--limit", "40", "--dry-run"]);
+    assert.equal(reasoningOnly.fixReasoning, true, "--fix-reasoning 可解析");
+    assert.equal(reasoningOnly.apply, false, "--fix-reasoning 不隐含 --apply");
+    assert.equal(reasoningOnly.dryRun, true, "--dry-run 与开关同用时只预演");
     // #1227 C2d：`--fix-folded` 单独开、且**不带** `--apply`（真写靠“不给 --dry-run”触发）。
     const foldedOnly = parseArgs(["--fix-folded", "--limit", "40"]);
     assert.equal(foldedOnly.fixFolded, true);
