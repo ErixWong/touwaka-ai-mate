@@ -73,12 +73,9 @@ const toolContextIndex = computed<ToolContextIndex>(() => toolParser.buildToolCo
 const handleJumpToMessage = (messageId: string) => {
   highlightedMessageId.value = messageId
 
-  if (messagesContainer.value) {
-    const target = messagesContainer.value.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-  }
+  // #1238：锚点跳转由 useScrollManager 负责（一次到位 + 进入保护窗），
+  // 不再用 scrollIntoView —— 它会被自动滚底覆盖，目标停在视口外。
+  jumpToMessage(messageId)
 
   if (highlightTimer) {
     clearTimeout(highlightTimer)
@@ -98,6 +95,7 @@ const {
   handleScrollToBottom,
   handleLoadMore,
   scrollToBottom,
+  jumpToMessage,
   cleanup,
 } = useScrollManager({
   messages: computed(() => props.messages),
@@ -109,6 +107,7 @@ const {
 defineExpose({
   scrollToBottom,
   handleScrollToBottom,
+  jumpToMessage,
   messagesContainer,
   bottomSentinel,
   showScrollToBottom,
@@ -122,7 +121,13 @@ defineExpose({
   min-height: 0;
   overflow-y: auto;
   padding: 16px;
-  scroll-behavior: smooth;
+  /*
+   * #1238：这里不再用 `scroll-behavior: smooth`。
+   * 平滑滚动会把**每一次**程序化定位（`scrollTop = X`、`scrollIntoView`）变成一段动画，
+   * 动画的头几帧仍落在“近底部”判定带里，于是被自动滚底打断并钉回底部；同时
+   * `scrollTop` 读回的是插值中的位置，程序化滚动不可测、不可控。
+   * 跟随滚动与锚点跳转统一由 useScrollManager 一次到位执行。
+   */
   position: relative;
 }
 
