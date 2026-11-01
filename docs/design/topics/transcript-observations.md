@@ -87,4 +87,22 @@
 
 > 下一次真实业务流量之后，复跑 `node scripts/verify-transcript-projection.mjs --limit 200 --fix-is-error --fix-folded --fix-reasoning --rewrite-record-json --dry-run` 仍得 **三份 plan 全空 + 三个方向 A=0/C=0**，且 `verify-transcript-read-parity.js --gate` 仍 `GATE_EXIT=0` ⇒ #1227 可关闭。
 
+**判据复跑记录（2026-11-02 01:29，#1238 部署之后）**：
+
+```
+tool_error_directions.summary = {"A":0,"B":11,"C":0,"unchanged":51,"total":62}
+folded_directions.summary     = {"A":0,"B":0,"C":0,"unchanged":199,"total":199}
+reasoning_directions.summary  = {"A":0,"B":94,"C":0,"unchanged":0,"total":94,"C_derived":0,"C_opaque":0}
+canonical_plan / reasoning_plan / record_json_plan = 全空
+reconciliation.diffs 非空的请求 = 0 / 43        孤儿请求 = 0
+verify-transcript-read-parity --gate（基线=全库快照）：GATE_EXIT=0
+  请求 43（0.23 形状 13 / 老账本 30）；三格全等 43；块形状全等 43；宿主增强 reasoning 0
+  parity 仍有 20 个会话 content_diff（存量展示面漂移，逐请求与基线比过：无新增、无加重）
+```
+
+两点必须说清，否则这条记录会被高估：
+
+1. **新增的 2 个请求是 agent 自己造的流量**（#1238 真机复验与 worker 验证产生），**不是用户业务流量**。判据的措辞是"业务流量"，所以这一格**形式上过了、语义上还差用户真实使用**——不要因为这条记录就宣布观察期结束。
+2. 两条判据都**必须** `export ALLOW_NON_TEST_DB=1` 才能对生产库跑：脚本的测试库白名单只放 `llm_kit_test`，`--gate` / `--dry-run` 全程只 SELECT，放行时会打 WARN 不静默。另外脚本读 `process.env.DB_*`（**不读** `config/config.json`），宿主上必须显式导出 `DB_HOST=127.0.0.1 DB_PORT=3306`，否则会连到默认库并**安静地返回 0 个请求**（我就据此得出过一次假的"没有匹配的 request_id"）。
+
 后续工作已全部拆成独立单：**#1246**（批量写备份前置闸 + 回滚 SQL 带 `utf8mb4`）、**#1249**（run snapshot / run-state 持久化二选一）、**#1250**（`complete` 一致性格夹具改单轮）。
