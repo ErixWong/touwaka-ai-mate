@@ -829,3 +829,234 @@ test("--fix-reasoning 的库名闸门：生产库缺 ALLOW_NON_TEST_DB=1 一律�
     "测试库无需显式确认",
   );
 });
+
+// ============================================================================
+// issue #1266：终稿正文**按轮取** —— 末轮行的 `content` 必须恰等**该轮自己的**正文
+// ============================================================================
+//
+// 缺陷（已证，真流量 `req_457xy398cytzsb4h`）：`lib/agent/agent-loop.js` 的
+// `onDelta` 把**每一轮**的正文累进 `fullContent`（轮与轮之间**无分隔**），终稿单写
+// `lib/chat-service.js#saveAssistantMessageAndCompleteRequest` 又把这个累积串当 `content`
+// UPDATE 到**最后一轮**那条 assistant 行上 ⇒ 第 1 轮的可见正文在末轮行里又出现一遍
+// （实测 490 = 13 + 477，UI 同一句两次）。canonical（`agent_transcript_rounds`）里末轮
+// 只有 477 那一段 —— **canonical 是真相**，要改的是写侧，不是 canonical。
+//
+// 本节的夹具就是缺陷的触发形状：第 1 轮有可见正文 + 调工具，第 2 轮纯工具（无正文），
+// 第 3 轮出终稿。三格断言缺一不可：
+//   ① 末轮行 `content` **恰等**末轮正文；
+//   ② 它**不等于**跨轮累积串（防“顺手拼接”式假修）；
+//   ③ 前轮那条短正文行**仍在**（不许为了让末轮行变短去改前轮行）。
+
+const C1266_PREAMBLE = '我现在真实调用工具查一下。'; // 第 1 轮可见正文（短）
+const C1266_FINAL = '没有。\n\n我实际调用了工具，查询结果如下：三行结果。'; // 末轮正文
+const C1266_ACCUMULATED = `${C1266_PREAMBLE}${C1266_FINAL}`; // 缺陷形状：无分隔累积串
+
+/** 三轮脚本化专家服务：正文出现在第 1 轮与第 3 轮，第 2 轮纯工具。 */
+function createThreeRoundExpertService(toolCallId) {
+  const toolCall = {
+    id: toolCallId,
+    type: 'function',
+    function: { name: 'echo', arguments: '{"value":42}' },
+  };
+  let streamCalls = 0;
+  return {
+    expertConfig: { expert: { max_tool_rounds: 5, context_strategy: 'full' } },
+    llmClient: {
+      getExpertLLMParams() {
+        return { temperature: 0.7, top_p: 1, frequency_penalty: 0, presence_penalty: 0 };
+      },
+      async callStream(_modelConfig, _messages, options) {
+        streamCalls += 1;
+        options.onUsage({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 });
+        if (streamCalls === 1) {
+          options.onDelta(C1266_PREAMBLE);
+          options.onToolCall([toolCall]);
+          return;
+        }
+        if (streamCalls === 2) {
+          options.onToolCall([{ ...toolCall, id: `${toolCallId}-2` }]);
+          return;
+        }
+        options.onDelta(C1266_FINAL);
+      },
+      async call() {
+        return { content: C1266_FINAL };
+      },
+    },
+    toolManager: {
+      formatToolDisplay(toolId) {
+        return `Tool: ${toolId}`;
+      },
+      formatToolResultsForLLM(results) {
+        return results.map((item) => ({
+          role: 'tool',
+          tool_call_id: item.toolCallId,
+          content: JSON.stringify({ success: item.success, data: item.data, error: item.error }),
+        }));
+      },
+    },
+    createToolResult(call) {
+      return {
+        success: true,
+        data: { value: 42 },
+        duration: 5,
+        toolCallId: call.id,
+        toolName: call.name,
+      };
+    },
+    async handleToolCalls() {
+      throw new Error('runErix should use execute_tools');
+    },
+    _consumeDocRetrievalResult() {
+      return { found: false };
+    },
+  };
+}
+
+let c1266 = null;
+
+test('issue #1266：多轮 delta 下末轮行 content 恰等末轮正文（≠ 跨轮累积串，前轮行仍在）', {
+  skip: skipReason,
+}, async () => {
+  const requestId = `${REQUEST_PREFIX}1266-final-round`;
+  await cleanupRequest(requestId);
+  try {
+    const loop = new AgentLoop({
+      db,
+      execute_tools: async (expertService, input) => {
+        const call = input.collectedToolCalls[0];
+        const result = expertService.createToolResult(call);
+        input.onDelta?.({ type: 'tool_result', result });
+        return [result];
+      },
+      save_llm_payload: () => {},
+      generate_tool_call_summary: () => 'summary',
+    });
+    const result = await loop.runErix(createThreeRoundExpertService(`tool-1266-${ns}`), {
+      modelConfig: { model_name: 'test-model', context_window_tokens: 32768, max_output_tokens: 2048 },
+      thinkingConfig: {
+        thinking: false,
+        reasoning: null,
+        reasoning_effort: null,
+        enable_thinking: false,
+        chat_template_kwargs: null,
+      },
+      tools: [{
+        type: 'function',
+        function: { name: 'echo', description: 'Echo input', parameters: { type: 'object' } },
+      }],
+      currentMessages: [{ role: 'user', content: 'hello' }],
+      llmPayload: { _debug: {} },
+      user_id: testUserId,
+      expert_id: testExpertId,
+      taskContext: { workspace_mode: 'test' },
+      topic_id: null,
+      task_id: null,
+      session: { accessToken: 'token' },
+      request_id: requestId,
+    });
+
+    // ① 引擎返回值层面：终稿正文就是末轮那一段（跨轮累积串不是终稿）
+    assert.equal(result.fullContent, C1266_FINAL, 'agent-loop 交回的终稿正文必须是末轮自己的正文');
+    assert.notEqual(result.fullContent, C1266_ACCUMULATED, '不得把跨轮累积串当终稿');
+
+    const rowsBeforeWrite = await reasoningRowsInRoundOrder(requestId);
+    const preambleRowBefore = rowsBeforeWrite.find((row) => row.content === C1266_PREAMBLE);
+    assert.ok(preambleRowBefore, '第 1 轮那条短正文行必须由引擎按轮落库（夹具前提）');
+
+    // 终稿单写：逐字走 chat-service 的真实调用（`content` 传 agent-loop 交回的终稿正文）
+    const chatService = new ChatService(db);
+    const assistantMessageId = await chatService.saveAssistantMessageAndCompleteRequest(
+      null,
+      testUserId,
+      result.fullContent,
+      {
+        request_id: requestId,
+        prompt_tokens: 12,
+        completion_tokens: 34,
+        latency_ms: 56,
+        model_name: 'test-model',
+        provider_name: 'test-provider',
+        expert_id: testExpertId,
+        reasoning_content: result.fullReasoningContent,
+      },
+    );
+
+    const rowsAfter = await reasoningRowsInRoundOrder(requestId);
+    const terminalRow = rowsAfter.find((row) => row.id === assistantMessageId);
+    assert.ok(terminalRow, '终稿行必须在按轮行里');
+    const maxRound = Math.max(...rowsAfter.map((row) => row.roundNo));
+    assert.equal(terminalRow.roundNo, maxRound, '终稿单写必须绑定**最后一轮**那条行');
+
+    // ① 末轮行 content 恰等末轮正文
+    assert.equal(terminalRow.content, C1266_FINAL, '末轮行 content 必须恰等该轮自己的正文');
+    // ② 不等于跨轮累积串（防“顺手拼接”式假修）
+    assert.notEqual(terminalRow.content, C1266_ACCUMULATED, '末轮行 content 不得是跨轮累积串');
+    assert.equal(
+      terminalRow.content.length,
+      C1266_FINAL.length,
+      `末轮行正文长度必须是 ${C1266_FINAL.length}（实测缺陷形状是 ${C1266_ACCUMULATED.length}）`,
+    );
+    // ③ 前轮的短正文行仍在，且**没有被改写**
+    const preambleRowAfter = rowsAfter.find((row) => row.id === preambleRowBefore.id);
+    assert.ok(preambleRowAfter, '第 1 轮那条行不许被删');
+    assert.equal(preambleRowAfter.content, C1266_PREAMBLE, '第 1 轮行的正文不许被终稿单写改动');
+    // 末轮行里也不许“再出现一遍”第 1 轮那句（UI 同一句两次的直接判据）
+    assert.equal(
+      terminalRow.content.includes(C1266_PREAMBLE),
+      false,
+      '末轮行里不得再出现前一轮那句（否则 UI 同一句出现两次）',
+    );
+
+    // 写侧与 canonical 对账：终稿行不该被对账器判成 content_mismatch（关门判据同口径）
+    const reconciliation = await reconcileRequest({ sequelize: db.sequelize, runId: requestId });
+    const contentMismatches = reconciliation.diffs.filter((diff) => diff.kind === 'content_mismatch');
+    assert.deepEqual(
+      contentMismatches.map((diff) => ({
+        dedupKey: diff.dedupKey,
+        expected: diff.expected?.contentLength,
+        actual: diff.actual?.contentLength,
+      })),
+      [],
+      '终稿单写后 messages 行必须与 canonical 逐轮一致（不许留 content_mismatch）',
+    );
+
+    c1266 = { requestId, assistantMessageId, terminalContent: terminalRow.content };
+  } finally {
+    if (c1266 === null) await cleanupRequest(requestId);
+  }
+});
+
+test('issue #1266：空正文不覆盖终稿行（末轮无正文时不许把更早那轮的正文抹成空串）', {
+  skip: skipReason,
+}, async () => {
+  assert.ok(c1266, '上一格必须先跑出夹具（本格复用它的 request/终稿行）');
+  const chatService = new ChatService(db);
+  const assistantMessageId = await chatService.saveAssistantMessageAndCompleteRequest(
+    null,
+    testUserId,
+    '',
+    {
+      request_id: c1266.requestId,
+      prompt_tokens: 1,
+      completion_tokens: 2,
+      latency_ms: 3,
+      model_name: 'test-model',
+      provider_name: 'test-provider',
+      expert_id: testExpertId,
+      reasoning_content: null,
+    },
+  );
+  assert.equal(assistantMessageId, c1266.assistantMessageId, '仍绑定同一条终稿行');
+  const [rows] = await db.sequelize.query(
+    'SELECT content FROM messages WHERE id = :id',
+    { replacements: { id: assistantMessageId } },
+  );
+  assert.equal(
+    rows[0].content,
+    c1266.terminalContent,
+    '空正文不覆盖列：终稿行保留该轮自己的正文（空串不携带信息，写它就是抹掉别人的正文）',
+  );
+  await cleanupRequest(c1266.requestId);
+  c1266 = null;
+});
