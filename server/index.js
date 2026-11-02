@@ -882,6 +882,14 @@ class ApiServer {
 
       this.initializeControllers();
 
+      // #1264：启动期结算遗留的 running 请求（死进程留下的），并起周期结算。
+      // 不阻塞启动；失败只记日志，不影响服务可用性。
+      if (this.controllers?.stream?.startRequestSettlement) {
+        this.controllers.stream.startRequestSettlement().catch((err) => {
+          logger.error('[Startup] Failed to start request settlement:', err.message);
+        });
+      }
+
       this.setupMiddlewares();
       this.setupRoutes();
 
@@ -993,6 +1001,9 @@ process.on('SIGINT', async () => {
   if (server.clockCore) {
     server.clockCore.stopAll();
   }
+  if (server.controllers?.stream?.stopRequestSettlement) {
+    server.controllers.stream.stopRequestSettlement();
+  }
   process.exit(0);
 });
 
@@ -1012,6 +1023,9 @@ process.on('SIGTERM', async () => {
   }
   if (server.clockCore) {
     server.clockCore.stopAll();
+  }
+  if (server.controllers?.stream?.stopRequestSettlement) {
+    server.controllers.stream.stopRequestSettlement();
   }
   process.exit(0);
 });

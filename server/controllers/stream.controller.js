@@ -58,6 +58,33 @@ const RUNTIME_ALLOWED_TRANSITIONS = {
 // 导致 abort 失败后仍在执行的管线在下一检查点读不到停止命令。
 const RUNTIME_STALE_SWEEP_MS = 30 * 60 * 1000;
 
+// ============================================================
+// #1264：running 请求的自愈结算（启动期 + 周期）
+// ============================================================
+// 事实（生产库只读侦察，见 issue #1264）：跑起来之后 `chat_requests` 只在两端被写——
+// 「用户消息落库（saveUserMessageAndBindRequest）」与「终稿落库
+// （saveAssistantMessageAndBindRequest / onComplete / onError）」；中间的上下文压缩、
+// buildContext、recall、全部 LLM 轮次与工具执行**一次都不写**。
+// ⇒ DB 的 `updated_at` 静默期 ≈ **整个 run 的执行时长**（实测 125 个 completed 最长 779s），
+//   所以它只能用来判断「这行是不是死进程留下的」，**不能**用来判断「活着的 run 有没有进展」。
+//
+// 因此判活分两层：
+//   ① 跨进程（进程已死）：DB `updated_at` 陈旧超阈值 ⇒ 结算。单实例部署下这类行只可能是
+//      死进程留下的；阈值 30min = 2.3× 实测最长 run（779s），与既有
+//      `REQUEST_RUNNING_TIMEOUT_MS` / `RUNTIME_STALE_SWEEP_MS`（同为 30min，注释写明
+//      「与请求最长执行时间同级」）一致。
+//   ② 本进程内（进程活着）：看**内存心跳** `last_progress_at`（零 DDL、不写库），
+//      由 `_touchRequestProgress()` 在每次 onDelta / 相位转移时刷新。心跳静默期只受
+//      「单步最大耗时」约束（一次 LLM 调用 / 一次工具调用，现网超时上限 300s），
+//      不是整个 run ⇒ 一个跑 13min 的正常请求心跳每秒都在动，不会被误杀；
+//      而 promise 泄漏/挂住的 run 心跳停摆，超阈值后被结算。
+const RUNNING_SETTLEMENT_SILENCE_MS = 30 * 60 * 1000;
+// 周期结算间隔：远小于阈值，保证「死掉之后 30min + ≤5min」内被收口。
+const RUNNING_SETTLEMENT_INTERVAL_MS = 5 * 60 * 1000;
+// 零 DDL：枚举里没有 interrupted，用 failed + 固定文案
+// （与 AppClock 的 `interrupted_by_restart` 同型：启动期把未闭合记录结算掉）。
+const RUNNING_SETTLEMENT_ERROR_MESSAGE = '进程中断，请求未完成';
+
 class StreamController {
   constructor(db, chatService) {
     this.db = db;
@@ -98,6 +125,9 @@ class StreamController {
     this.REQUEST_RUNNING_TIMEOUT_MS = 30 * 60 * 1000;
     this.requestMaintenanceReady = false;
     this.requestMaintenancePromise = null;
+    // #1264 running 请求结算（启动一次 + 定时）
+    this.requestSettlementTimer = null;
+    this.requestSettlementRunning = false;
     // 事件序号：Map<expertId:userId, number>
     this.eventSequences = new Map();
     // 最新游标：Map<expertId:userId, { latest_message_id: string | null }>
@@ -125,6 +155,8 @@ class StreamController {
       round_snapshot_ref: null,
       created_at: now,
       updated_at: now,
+      // #1264：内存心跳（ms）。只在有进展时刷新，用来区分「本进程在跑」与「本进程挂住」。
+      last_progress_at: Date.now(),
     };
     this.activeRequests.set(request_id, state);
     this._sweepStaleRuntimeStates();
@@ -158,7 +190,7 @@ class StreamController {
     }
 
     if (prevPhase === nextPhase) {
-      Object.assign(state, cleanPatch, { updated_at: new Date().toISOString() });
+      Object.assign(state, cleanPatch, { updated_at: new Date().toISOString(), last_progress_at: Date.now() });
       return state;
     }
 
@@ -175,6 +207,7 @@ class StreamController {
     Object.assign(state, cleanPatch, {
       phase: nextPhase,
       updated_at: new Date().toISOString(),
+      last_progress_at: Date.now(),
     });
     if (RUNTIME_TERMINAL_PHASES.has(nextPhase)) {
       state.has_active_transport = false;
@@ -314,6 +347,172 @@ class StreamController {
 
     if (updatedCount > 0) {
       logger.warn(`[StreamController] 自动收口 ${updatedCount} 个陈旧未开始请求`);
+    }
+  }
+
+  /**
+   * 打一次内存心跳（不写库）。执行管线每推一个 delta / 每次相位转移都会走到这里。
+   * 热路径（逐 token）：只做一次 Map.get + 数值赋值，不分配对象。
+   */
+  _touchRequestProgress(request_id) {
+    const state = this.activeRequests.get(request_id);
+    if (!state) return;
+    state.last_progress_at = Date.now();
+  }
+
+  /**
+   * 该 request 是否由**本进程**正在执行（内存真相源 activeRequests + 内存心跳）。
+   *
+   * 用于「不许误杀活着的 run」：本进程持有非终态相位、且心跳在阈值内 ⇒ 无论 DB 里的
+   * `updated_at` 多陈旧都不结算。心跳静默期只受「单步最大耗时」约束，所以一个跑十几分钟
+   * 的正常请求（DB 一行都没写）心跳仍在动。
+   *
+   * 反过来，本进程持有但**心跳也陈旧**超阈值 ⇒ 视为 promise 泄漏/挂住（管线还占着相位
+   * 却不再推进），允许结算——这是「周期结算」相对「启动期结算」的增量价值。
+   *
+   * 终态相位（completed/stopped/failed）不算在跑：管线已收口，DB 仍停在 running
+   * 只可能是那次收口写丢了，结算成 failed 是当前可用的最接近真相。
+   */
+  _isRequestOwnedByThisProcess(request_id) {
+    const state = this.activeRequests.get(request_id);
+    if (!state) return false;
+    if (RUNTIME_TERMINAL_PHASES.has(state.phase)) return false;
+
+    const lastProgressAt = Number.isFinite(state.last_progress_at)
+      ? state.last_progress_at
+      : Date.parse(state.updated_at || 0);
+    if (!Number.isFinite(lastProgressAt) || lastProgressAt <= 0) return false;
+
+    return Date.now() - lastProgressAt <= RUNNING_SETTLEMENT_SILENCE_MS;
+  }
+
+  /**
+   * 结算「进程中断」遗留的 running 请求（#1264）。
+   *
+   * 判据：`status='running' AND updated_at <= now - RUNNING_SETTLEMENT_SILENCE_MS`
+   * 且**不是本进程在跑的**。结算为 `failed` + 固定 error_message（零 DDL），
+   * 于是 `retryRequest` 的 409 判据（只拦 accepted/running）自动放行。
+   *
+   * 幂等：WHERE 带 `status='running'`，第二次跑候选集为空 / 影响行数 0。
+   * 并发安全：管线自己的收口写不带 WHERE status，后写者赢；本结算带 WHERE status，
+   * 行已变终态时影响 0 行，不会覆盖真实终态。
+   *
+   * @param {{reason?: 'startup'|'periodic'|'manual'}} options
+   * @returns {Promise<{reason: string, scanned: number, settled: number, request_ids: string[], skipped: string[]}>}
+   */
+  async settleStaleRunningRequests({ reason = 'periodic' } = {}) {
+    const empty = { reason, scanned: 0, settled: 0, request_ids: [], skipped: [] };
+    const cutoff = new Date(Date.now() - RUNNING_SETTLEMENT_SILENCE_MS);
+
+    let candidates;
+    try {
+      candidates = await this.ChatRequest.findAll({
+        where: {
+          status: 'running',
+          updated_at: { [this.db.Op.lte]: cutoff },
+        },
+        attributes: ['request_id', 'updated_at'],
+        raw: true,
+      });
+    } catch (error) {
+      logger.error(`[StreamController] running 结算候选查询失败（${reason}）: ${error.message}`);
+      return empty;
+    }
+
+    const scannedIds = (candidates || []).map((row) => row?.request_id).filter(Boolean);
+    const skipped = [];
+    const targets = [];
+    for (const requestId of scannedIds) {
+      if (this._isRequestOwnedByThisProcess(requestId)) {
+        skipped.push(requestId);
+        continue;
+      }
+      targets.push(requestId);
+    }
+
+    if (skipped.length > 0) {
+      logger.warn(`[StreamController] running 结算跳过本进程在跑的请求 ${skipped.length} 个（${reason}）: ${skipped.join(',')}`);
+    }
+
+    if (targets.length === 0) {
+      logger.debug(`[StreamController] running 结算无候选（${reason}）: scanned=${scannedIds.length}`);
+      return { ...empty, scanned: scannedIds.length, skipped };
+    }
+
+    let updatedCount = 0;
+    try {
+      [updatedCount] = await this.ChatRequest.update({
+        status: 'failed',
+        error_message: RUNNING_SETTLEMENT_ERROR_MESSAGE,
+        completed_at: new Date(),
+        updated_at: new Date(),
+      }, {
+        where: {
+          status: 'running',
+          request_id: { [this.db.Op.in]: targets },
+          updated_at: { [this.db.Op.lte]: cutoff },
+        },
+      });
+    } catch (error) {
+      logger.error(`[StreamController] running 结算写库失败（${reason}）: ${error.message}`);
+      return { ...empty, scanned: scannedIds.length, skipped };
+    }
+
+    if (updatedCount > 0) {
+      // requestStore 是 DB 行的读缓存投影：不清掉会让 getRequestStatus/retryRequest
+      // 继续读到 status='running'，把刚放行的重试又堵回 409。
+      for (const requestId of targets) {
+        this.requestStore.delete(requestId);
+      }
+      logger.warn(`[StreamController] 自动收口 ${updatedCount} 个中断的 running 请求（${reason}）: ${targets.join(',')}`);
+    }
+
+    return {
+      reason,
+      scanned: scannedIds.length,
+      settled: updatedCount,
+      request_ids: targets,
+      skipped,
+    };
+  }
+
+  /**
+   * 启动 running 结算（#1264）：立即跑一次（启动期结算）+ 周期跑（覆盖进程活着但
+   * 某个 run 的 promise 泄漏/被 GC 掉的情形）。
+   * 幂等：重复调用不叠加定时器。
+   */
+  async startRequestSettlement() {
+    if (this.requestSettlementTimer) return;
+
+    try {
+      await this.settleStaleRunningRequests({ reason: 'startup' });
+    } catch (error) {
+      logger.error(`[StreamController] 启动期 running 结算失败（非致命）: ${error.message}`);
+    }
+
+    this.requestSettlementTimer = setInterval(() => {
+      if (this.requestSettlementRunning) return;
+      this.requestSettlementRunning = true;
+      this.settleStaleRunningRequests({ reason: 'periodic' })
+        .catch((error) => {
+          logger.error(`[StreamController] 周期 running 结算失败: ${error.message}`);
+        })
+        .finally(() => {
+          this.requestSettlementRunning = false;
+        });
+    }, RUNNING_SETTLEMENT_INTERVAL_MS);
+    // 不因这个定时器拖住进程退出
+    if (typeof this.requestSettlementTimer.unref === 'function') {
+      this.requestSettlementTimer.unref();
+    }
+    logger.info(`[StreamController] running 请求结算已启动: interval=${RUNNING_SETTLEMENT_INTERVAL_MS}ms, silence=${RUNNING_SETTLEMENT_SILENCE_MS}ms`);
+  }
+
+  stopRequestSettlement() {
+    if (this.requestSettlementTimer) {
+      clearInterval(this.requestSettlementTimer);
+      this.requestSettlementTimer = null;
+      logger.info('[StreamController] running 请求结算已停止');
     }
   }
 
@@ -764,6 +963,8 @@ class StreamController {
         },
         // onDelta - 流式数据回调（广播到所有连接）
         (delta) => {
+          // #1264：任何 delta 都是「这个 run 还活着」的证据（纯内存心跳，不写库）
+          this._touchRequestProgress(request_id);
           if (delta.type === 'start') {
             this._broadcastToConnections(expert_id, user_id, userConnections, 'start', {
               request_id,
