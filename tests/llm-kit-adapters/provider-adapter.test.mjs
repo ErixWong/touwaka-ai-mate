@@ -115,7 +115,7 @@ test("canonical tools are converted to OpenAI function tools", async () => {
   }]);
 });
 
-test("stream callbacks and events preserve delta, reasoning, tool fragments, and usage order", async () => {
+test("stream callbacks preserve delta, reasoning, tool fragments, and usage order（适配器不造宿主事件）", async () => {
   const events = [];
   const callbacks = [];
   const llmClient = createMockClient([
@@ -152,13 +152,12 @@ test("stream callbacks and events preserve delta, reasoning, tool fragments, and
     onEvent: (event) => events.push(event),
   });
 
-  assert.deepEqual(events.map((event) => event.type), [
-    "delta",
-    "reasoning_delta",
-    "tool_call",
-    "tool_call",
-    "usage",
-  ]);
+  // issue #1263：引擎从不给 provider 传 `onEvent`（`provider-runner.js:207-236` 的 request 字段表里
+  // 没有它；宿主事件 `delta`/`reasoning_delta`/`tool_call`/`usage` 由引擎在 `queueEvent(...)` 里
+  // 包装这四个回调产生）。所以这里即使宿主硬塞一个 `onEvent`，适配器也**不得**凭空造事件。
+  // 原断言「events 等于 5 条」钉的正是本单要删的空转行为；改成「events 恒为空」是同一条契约的
+  // **更强**表述（旧代码在这里会推 5 条假事件）。四个回调的断言与响应断言逐字保留。
+  assert.deepEqual(events, []);
   assert.deepEqual(callbacks, [
     ["delta", "hello "],
     ["reasoning", "think "],
