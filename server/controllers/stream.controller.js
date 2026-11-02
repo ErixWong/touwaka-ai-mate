@@ -484,6 +484,16 @@ class StreamController {
   async startRequestSettlement() {
     if (this.requestSettlementTimer) return;
 
+    // #1271：启动横幅必须在**动手之前**、且整条启动路径恰好一条。
+    // 判据：只看到这一行就能回答「作业已注册吗、参数是多少」——阈值 + 周期 + 启动期立即结算。
+    // 位置放在结算之前：若启动期结算本身挂住/抛错，收尾再打横幅就会和「根本没注册」
+    // 在日志里长得一模一样（这正是 #1271 要消除的歧义）。
+    logger.info(
+      `[StreamController] running 请求结算作业已启用（startup-settle=立即，启动期先结算一次）: `
+      + `silence=${RUNNING_SETTLEMENT_SILENCE_MS}ms(${RUNNING_SETTLEMENT_SILENCE_MS / 60000}min), `
+      + `interval=${RUNNING_SETTLEMENT_INTERVAL_MS}ms(${RUNNING_SETTLEMENT_INTERVAL_MS / 60000}min)`
+    );
+
     try {
       await this.settleStaleRunningRequests({ reason: 'startup' });
     } catch (error) {
@@ -505,7 +515,6 @@ class StreamController {
     if (typeof this.requestSettlementTimer.unref === 'function') {
       this.requestSettlementTimer.unref();
     }
-    logger.info(`[StreamController] running 请求结算已启动: interval=${RUNNING_SETTLEMENT_INTERVAL_MS}ms, silence=${RUNNING_SETTLEMENT_SILENCE_MS}ms`);
   }
 
   stopRequestSettlement() {

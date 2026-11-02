@@ -13,6 +13,9 @@
  *      心跳陈旧超阈值（promise 泄漏/挂住）才允许结算——那是周期结算的增量价值。
  *   3. 幂等 + 可观测 + 重试放行：第二次跑影响行数 0、日志含条数与 request_id 列表、
  *      结算后 requestStore 缓存被清（否则重试继续 409）。
+ *   4. 启动横幅（#1271）：启动路径**恰好一条** INFO，含阈值与周期两个真实数值 +
+ *      「启动期立即结算」这一事实，且先于启动期结算打印；`:438` 的「无候选」日志
+ *      **仍为 debug**（防「为了可见性把周期日志刷成噪音」这种反向改法）。
  *
  * 纯内存假象（假 db + 假 ctx），不连数据库、不写生产库。
  */
@@ -408,4 +411,99 @@ test('启动期立刻结算一次 + 周期定时器（5min）+ stop 后停掉', 
 
   controller.stopRequestSettlement();
   assert.equal(controller.requestSettlementTimer, null, 'stop 后句柄必须清空');
+});
+
+// ---------------------------------------------------------------- 7. 启动横幅（#1271）
+
+/** 横幅识别：只认这一条专属文案，不靠「含 interval=」这种宽口径（会误抓其它行） */
+const isSettlementBanner = (line) => String(line).includes('running 请求结算作业已启用');
+
+/** 把 setInterval 换成不落地的桩，返回已捕获的 {fn, ms} */
+async function withStubbedInterval(fn) {
+  const originalSetInterval = globalThis.setInterval;
+  const captured = [];
+  globalThis.setInterval = (cb, ms) => {
+    captured.push({ fn: cb, ms });
+    return { unref() {} };
+  };
+  try {
+    await fn();
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+  }
+  return captured;
+}
+
+test('启动横幅：启动路径恰好一条 INFO，含阈值与周期两个数值 + 启动期立即结算事实', async () => {
+  logLines.info.length = 0;
+  const { controller } = createController();
+
+  // 在启动期结算**入口**处记录当时已打出的横幅条数：钉住「横幅先于结算」
+  const bannerCountAtSettleStart = [];
+  controller.settleStaleRunningRequests = async ({ reason }) => {
+    bannerCountAtSettleStart.push(logLines.info.filter(isSettlementBanner).length);
+    return { reason, scanned: 0, settled: 0, request_ids: [], skipped: [] };
+  };
+
+  const captured = await withStubbedInterval(async () => {
+    await controller.startRequestSettlement();
+    // 重复启动（例如热重载）不许再刷一条：恰好一条才叫横幅
+    await controller.startRequestSettlement();
+  });
+  assert.equal(captured.length, 1, '只许挂一个周期定时器（重复启动不叠加）');
+
+  const banners = logLines.info.filter(isSettlementBanner);
+  assert.equal(banners.length, 1, `启动路径必须恰好一条 INFO 横幅，实际 ${banners.length} 条: ${JSON.stringify(banners)}`);
+
+  const banner = banners[0];
+  // 两个真实数值（不是「参数是多少」这种无参数字样）：阈值 30min / 周期 5min
+  assert.ok(
+    banner.includes(String(30 * 60 * 1000)),
+    `横幅必须含静默期阈值 1800000ms，实际: ${banner}`
+  );
+  assert.ok(
+    banner.includes(String(5 * 60 * 1000)),
+    `横幅必须含周期间隔 300000ms，实际: ${banner}`
+  );
+  // 人能一眼读懂的等价写法也不许丢（30min / 5min）
+  assert.ok(banner.includes('30min'), `横幅必须含 30min 人读形式，实际: ${banner}`);
+  assert.ok(banner.includes('5min'), `横幅必须含 5min 人读形式，实际: ${banner}`);
+  // 「启动期立即结算」这一事实
+  assert.ok(
+    banner.includes('立即'),
+    `横幅必须写明启动期立即结算（否则与「只是挂了个定时器」不可区分），实际: ${banner}`
+  );
+  // 横幅先于启动期结算：结算挂住/抛错时横幅已经落地
+  assert.deepEqual(
+    bannerCountAtSettleStart,
+    [1],
+    '横幅必须在启动期结算动手之前就打出来（否则结算挂住时日志与「没注册」同形）'
+  );
+});
+
+test('无候选日志保留 debug（没被升级成 INFO/WARN，避免每周期刷噪音）', async () => {
+  logLines.info.length = 0;
+  logLines.warn.length = 0;
+  logLines.debug.length = 0;
+  const { controller } = createController({ runningRows: [] });
+
+  const result = await controller.settleStaleRunningRequests({ reason: 'periodic' });
+
+  assert.equal(result.scanned, 0);
+  const debugLine = logLines.debug.find((line) => line.includes('无候选'));
+  assert.ok(debugLine, '无候选必须留 debug 痕迹（排查时能看到「跑了但没东西要收」）');
+  assert.ok(debugLine.includes('periodic'), 'debug 行必须能区分启动期/周期');
+  assert.ok(debugLine.includes('scanned=0'), 'debug 行必须带扫描条数');
+
+  // 反向改法（把 :438 的 debug 升成 info/warn 换可见性）必须被挡住
+  assert.equal(
+    logLines.info.filter((line) => line.includes('无候选')).length,
+    0,
+    '「无候选」不许升级成 INFO（每 5min 一条噪音）'
+  );
+  assert.equal(
+    logLines.warn.filter((line) => line.includes('无候选')).length,
+    0,
+    '「无候选」也不许升级成 WARN（它只是常态，不是异常）'
+  );
 });
