@@ -250,7 +250,11 @@ test('runErix persists a real tool round in all transcript tables', {
       input,
     );
     assert.equal(result.llmCallsCount, 2);
-    assert.equal(result.fullContent, 'Need tool任务完成 Final answer');
+    // issue #1266：`fullContent` 是**终稿轮自己的**正文（第 2 轮那段），不是跨轮累积串。
+    // 旧断言钉的正是缺陷本身（'Need tool' + '任务完成 Final answer'，无分隔拼在一起），
+    // 写进末轮行就是“前一轮的可见文本又出现一遍”（UI 同一句两次）。第 1 轮那句
+    // 'Need tool' 有它自己的行，见下方 `agent_rounds` 形状断言。
+    assert.equal(result.fullContent, '任务完成 Final answer');
 
     // issue #1227：erix 0.23 起「一条消息一落盘」⇒ 展示表 agent_rounds **一轮多行**
     //（载体轮行 + 每条消息一行，见 erix-agent `src/store/message-rows.js` 文件头与
@@ -517,7 +521,8 @@ test('runErix returns the established result shape after a tool round', async ()
   assert.equal(executeToolCalls[0].collectedToolCalls[0].id, 'call_1');
   assert.equal(executeToolCalls[0].collectedToolCalls[0].name, 'echo');
   assert.equal(executeToolCalls[0].collectedToolCalls[0].arguments, '{"value":42}');
-  assert.equal(result.fullContent, 'Need tool任务完成 Final answer');
+  // issue #1266：终稿正文 = 末轮自己的正文（累积串 'Need tool任务完成 Final answer' 是缺陷形状）
+  assert.equal(result.fullContent, '任务完成 Final answer');
   assert.equal(result.fullReasoningContent, 'Thinking');
   assert.deepEqual(result.tokenUsage, {
     prompt_tokens: 4,
@@ -560,7 +565,8 @@ test('runErix maps evidence and multimodal tool results before the next provider
     docRetrievalResults: [{ tool_name: 'echo' }],
   });
   const evidenceResult = await createLoop().runErix(evidenceExpert, createInput());
-  assert.equal(evidenceResult.fullContent, 'Need tool任务完成 Final answer');
+  // issue #1266：同上，终稿只取末轮那一段
+  assert.equal(evidenceResult.fullContent, '任务完成 Final answer');
   const evidenceMessage = evidenceExpert.getSecondRoundMessages().find(message => (
     message.role === 'system' && message.content === 'DOCUMENT EVIDENCE'
   ));
@@ -745,10 +751,8 @@ test('runErix stops after four consecutive no-tool transition rounds', async () 
 
   assert.equal(expertService.getStreamCalls(), 5);
   assert.equal(result.llmCallsCount, 5);
-  assert.equal(
-    result.fullContent,
-    'Need tool过渡文本 1过渡文本 2过渡文本 3过渡文本 4',
-  );
+  // issue #1266：终稿正文 = **最后一轮**（第 4 轮过渡文本）那一段；前 4 轮各有自己的行
+  assert.equal(result.fullContent, '过渡文本 4');
 });
 
 test('runErix emits the tool limit event when every round uses a tool', async () => {

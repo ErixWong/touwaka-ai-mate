@@ -208,7 +208,10 @@ async function testRunExecutesToolsAndContinuesToNextRound() {
   assert.equal(executedToolInputs.length, 1);
   assert.equal(executedToolInputs[0].collectedToolCalls.length, 1);
   assert.equal(executedToolInputs[0].collectedToolCalls[0].function.name, 'demo_tool');
-  assert.equal(result.fullContent, 'Need tool任务完成 Final answer');
+  // issue #1266：终稿正文是**最后一轮自己的**正文（'任务完成 Final answer'），
+  // 不是跨轮累积串（'Need tool任务完成 Final answer'）——后者正是“末轮行里前一轮的
+  // 可见文本又出现一遍”（UI 同一句两次）的成因。第 1 轮那句 'Need tool' 有它自己的行。
+  assert.equal(result.fullContent, '任务完成 Final answer');
   assert.equal(result.allToolCalls.length, 1);
   assert.equal(result.allToolCalls[0].result.data.value, 42);
   assert.deepEqual(deltas.map(event => event.type), ['delta', 'tool_call', 'delta']);
