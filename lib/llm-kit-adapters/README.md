@@ -160,7 +160,10 @@ provider 调用与 transcript persistence 写入重试。Agent 流式路径直�
 结构化 error 日志记录 `request_id`、port、phase、operation、runId、fatal、sideEffect
 及错误 message/code；其他 erix 事件按类型记录安全摘要，不记录 `tool_use` /
 `tool_result` 正文。`persistence_capability_degraded` 是可选 store 能力未实现的预期降级，
-只记 warn，不视为持久化失败。
+不视为持久化失败；#1249 起**按 capability 名分流**（`lib/agent/agent-loop.js` 的
+`EXPECTED_UNIMPLEMENTED_CAPABILITIES`）：清单内（`markRunState` / `saveRunState` / `saveRunSnapshot`）
+打 DEBUG + 计数，**清单外的方法名与缺 `method` 字段仍打 WARN**（详见
+`docs/design/topics/transcript-observations.md` §8）。
 
 ## 与 erix-agent 0.22 / 0.23 的行为变化（touwaka 侧知悉项，issue #1220）
 

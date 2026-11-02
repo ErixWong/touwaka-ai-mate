@@ -127,7 +127,7 @@ test("unrecognized erix events are warned by type without logging their payload"
   assert.doesNotMatch(JSON.stringify(entries), /sensitive event body|must not be logged/);
 });
 
-test("persistence capability degradation is warned without calling it a failure", () => {
+test("persistence capability degradation is a non-failure diagnostic (expected capability is debug, #1249)", () => {
   const { entries, logger } = createRecordingLogger();
   const onEvent = createErixEventHandler({
     request_id: "request-capability",
@@ -142,7 +142,13 @@ test("persistence capability degradation is warned without calling it a failure"
   });
 
   assert.equal(entries.length, 1);
-  assert.equal(entries[0].level, "warn");
+  // issue #1249（Eric 裁定 B）：`saveRunSnapshot` 是**我们刻意没实现**的可选 capability，
+  // 已进 `EXPECTED_UNIMPLEMENTED_CAPABILITIES` ⇒ 降噪为 DEBUG（生产 `LOG_LEVEL=info` ⇒ 不再进日志）。
+  // 本格守的是「它**不是失败**」这条语义（不打 error、不出现 failure 字样、不泄漏载荷），
+  // 级别断言跟着裁定走：warn → debug。未知 method 仍 WARN 的护栏见
+  // `tests/agent/erix-expected-capability-degradation.test.mjs`。
+  assert.equal(entries[0].level, "debug");
+  assert.notEqual(entries[0].level, "error");
   assert.equal(entries[0].fields.runId, "run-capability");
   assert.equal(entries[0].fields.method, "saveRunSnapshot");
   assert.doesNotMatch(JSON.stringify(entries), /失败|failure|not for logging/i);

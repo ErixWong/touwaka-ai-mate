@@ -51,6 +51,10 @@
 - **实现它**：需要一张 run 状态表（新增表 = DDL，按红线要 Eric 点头），换来"可从中途轮恢复/审计预算"能力；
 - **正式承认为预期降级**：把这两个事件按能力名降噪（例如每请求每能力只记一次），文档写明"宿主不持久化 run-state，恢复靠 canonical 重放"。
 
+> **2026-11-02 裁定：选后者（B）**——正式承认为预期降级并按 capability 名降噪，**不补**端口、**不动 DDL**。
+> 上面那行「两个口」在本单里被更正为**三个方法**（漏了 `markRunState`）。落地细节、三条成立判据、
+> 以及「什么变化会让 B 失效」全部收在 **§8**。
+
 ## 4. 接口延迟（#1227 阶段 4 的最后一格，现已有数）
 
 用仓库自身的 JWT 签发路径签短期票，打**生产 3017** 真接口，各 40 次（`curl %{time_total}`，loopback、热连接、单客户端）：
@@ -133,7 +137,7 @@ verify-transcript-read-parity --gate（基线=全库快照）：GATE_EXIT=0
 | 4 | `recovered` | `loop/provider-runner.js:279`、`:294` | 已处理（常量） |
 | 5 | `usage` | `loop/provider-runner.js:184`、`loop/orchestrator.js:4849`、`:4921` | 已处理（常量） |
 | 6 | `round_end` | `loop/orchestrator.js:5474` | 已处理（常量） |
-| 7 | `persistence_capability_degraded` | `loop/orchestrator.js:1243`（启动期直调） | 已处理（warn） |
+| 7 | `persistence_capability_degraded` | `loop/orchestrator.js:1243`（启动期直调） | 已处理（**按 `method` 分流**：#1249 起清单内 debug、清单外仍 warn，见 §8） |
 | 8 | `forced_final` | `loop/termination.js:648` | 已处理（warn） |
 | 9 | `tool_output_aggregate` | `loop/run-snapshot-executor.js:217` | 已处理（info/error/warn 按 action） |
 | 10 | `final_guard` | `loop/termination.js:381/391/423/437/448/463/493/507`、`loop/orchestrator.js:5534/5549/5626` | 已处理（按 action 分三级） |
@@ -185,3 +189,91 @@ verify-transcript-read-parity --gate（基线=全库快照）：GATE_EXIT=0
 宿主只打一条 INFO（不落库、不加 DDL），字段：`request_id` / `runId` / `model` / `rounds` / `termination.{reason,errorCode,forcedFinal,detail}` / `verification.status`，其中**所有字符串字段截断到 500 字符**（`termination.detail` 可能是整条错误 message 或预算串）。缺失字段写 `null`，不写字符串 `"undefined"`。
 
 在此之前「这个 run 怎么结束的」在生产上是黑洞（`grep -rn "\.termination" lib/ server/` = 0 命中）。判据格在 `tests/agent/erix-event-policy.test.mjs`（8 格，含「未知事件仍 WARN」与「白名单与 switch case 不相交」两条自证）。
+
+## 8. `persistence_capability_degraded` 的裁定 B：预期降级 + 按 capability 名降噪（#1249）
+
+> 裁定：Eric，2026-11-02。**降噪生效日：2026-11-02**（代码落在 `lib/agent/agent-loop.js` 的
+> `EXPECTED_UNIMPLEMENTED_CAPABILITIES`，与 #1255 的事件白名单**同一哲学、同一实现位置**）。
+> 本节写的是**判据与触发条件**，不写排期、不写版本号。
+
+§3 那条「二选一，没有第三条路」在本单定了：选 **B —— 正式承认为预期降级并降噪**。
+**不补** run-state / run-snapshot 端口，**不动 DDL**（`llm_kit_run_checkpoint` 空表**保留**，退役 = DDL，未排期）。
+
+### 8.1 现网事实（2026-11-02，近 24h 容器日志）
+
+| `method` | 条数 |
+|---|---|
+| `markRunState` | 4 |
+| `saveRunState` | 4 |
+| `saveRunSnapshot` | 1 |
+| **合计** | **9** |
+
+**是三个方法，不是两个**——§3 当时只数到 `saveRunSnapshot` / `saveRunState`，漏了 `markRunState`
+（run 起止标记，同属 run-state 一族，同样每 run 一条）。
+
+引擎语义（erix-agent **0.29.0**，`node_modules/erix-agent/src/loop/orchestrator.js:1230-1257`）：
+`saveRunSnapshot` / `loadLatestRunSnapshot` 与 `saveRunState` / `loadRunState` / `markRunState` 全是
+**可选 capability**；缺失 ⇒ **每方法一条** `persistence_capability_degraded`（`Set` 去重、每 run 每方法一条），
+然后**整轮跳过**，**run 正常执行**（只失去中途 crash resume）。必需面只有 `{appendRound, load}`。
+
+### 8.2 B 成立的三条判据（可复核事实，不是判断）
+
+| # | 判据 | 复核方式（`file:line` / 命令） |
+|---|---|---|
+| ① | 宿主**刻意只实现 4 个方法**，run-state / run snapshot / checkpoint 一族全不实现 | `lib/llm-kit-adapters/loop-bridge.js:330`（`createErixStore` 返回对象只有 `appendRound` / `load` / `loadByDedupKey` / `loadMaxRound`）；「有意不实现」的理由注释在同文件 `:313-317` |
+| ② | 这些端口的**唯一读者是 `resume`**，而 touwaka 从不传 `resume` | 读者：`node_modules/erix-agent/src/loop/resume-manager.js:157`（`loadRunState`）、`:284`/`:469`（`loadLatestRunSnapshot`），且 `:158` 的守卫是 `if (!ctx.resume …) return "absent"` ⇒ 不传 resume 时连读都不读；宿主侧 `grep -rn "resume" lib/llm-kit-adapters/loop-bridge.js lib/agent/agent-loop.js` **只有注释**，`grep -rn "resume" lib/agent/ lib/chat-service.js` 无 `config.run.resume` 赋值 |
+| ③ | 压缩侧同样没有「中途恢复」的需求在驱动它 | 生产 30 天 **压缩 0 次、`folded` 全 0**。复核：容器日志 `grep -c '"event":"erix.compaction"'`；库侧 `SELECT COUNT(*) FROM agent_transcript_rounds WHERE JSON_EXTRACT(record_json,'$.folded') = TRUE;`（两条都应为 0） |
+
+三条合起来：**补这些端口买不到调用方**（①②），也没有压缩/长跑的需求在推（③）
+⇒ 每 run 3 条 WARN 换不来任何能力，纯噪声。
+
+### 8.3 降噪是怎么做的（按 capability 名，不按事件类型）
+
+在 `case 'persistence_capability_degraded'` **之内**读载荷的 `method` 字段（引擎真实字段名是 `method`，
+不是日志里那句 `"method":"saveRunState"` 的文本形状——载荷结构见 `orchestrator.js:1243-1250`：
+`{type, runId, parentRunId?, method, detail}`），然后三分：
+
+| 情形 | 处置 | 为什么 |
+|---|---|---|
+| `method` ∈ `EXPECTED_UNIMPLEMENTED_CAPABILITIES`（当前 3 个） | **DEBUG** + 按方法名计数（`erix.persistence_capability_degraded_expected`） | 我们知道自己没实现、且已裁定不实现 |
+| `method` **不在**清单里（如引擎把某个必需端口报成降级） | **WARN**（`erix.persistence_capability_degraded`，字段与降噪前逐字段一致） | 这是**信号**：端口该有却没有了。绝不能哑 |
+| **缺 `method` 字段** / 脏值 | **WARN** | 防引擎换字段名 = 发现通道被静默拔掉 |
+
+**为什么不按事件类型整体降噪**：这一种事件同时承载两件性质相反的事——「我们刻意没实现的可选端口」
+（噪声）与「引擎认为该有的端口不见了」（信号）。把 `persistence_capability_degraded` 整个塞进
+§7.1 那张类型白名单，等于把后者一起埋掉，也就把「将来引擎换端口」这条唯一的发现通道拆了。
+
+**降噪的机制只有一个**：生产 `LOG_LEVEL` 缺省是 `info`，而 `lib/logger.js:109` 的 `debug()` 在非 `debug`
+级别直接 return ⇒ 这 3 条不再进生产日志。没有改采样、没有改事件名（WARN 那条保持原名，既有看板/grep
+口径不变）、没有落库、没有 DDL。
+
+**刻意不进清单的两条**：`loadRunState` / `loadLatestRunSnapshot`（`resume-manager.js:161`、`:469`）。
+它们同属「没实现的可选端口」，但只在 resume 路径上发；现在恒不发。把它们也塞进清单，等于「哪天有人接了
+resume 却忘了实现 loader」时我们哑掉——那恰恰是最该报警的场面。
+
+### 8.4 什么变化会让 B 失效（触发条件，不是排期）
+
+三条任一成立 ⇒ 回来看这张清单，删掉对应方法名（或整张表）、补端口，并把
+`resume_journal_skipped` / `tool_replay_decision_required`（同属 resume 路径，见 §7.2）一起重新评估。
+
+| # | 触发条件（可复核事实） | 为什么它推翻 B |
+|---|---|---|
+| a | **出现第一条真死在 `running` 的请求**：#1264 的自愈把它结算成 `failed` 且 `error_message='进程中断，请求未完成'`，且**一周内 ≥3 条** | 「进程中断即丢」的代价从理论变成事实：此时 resume 有真实调用方，② 不再成立 |
+| b | **常态轮数明显超过当前均值 4.59**（口径：`agent_transcript_rounds` 里每请求 `MAX(round_no)` 的均值，`SELECT AVG(m) FROM (SELECT MAX(round_no) AS m FROM agent_transcript_rounds GROUP BY request_id) t;`），**且带副作用工具的重试开始造成重复写** | 长 run 里「重跑整段」会重放写操作，重放安全（snapshot / run-state）不再是理论问题 |
+| c | **有人要接「长任务 / 关页面后续跑」产品需求** | 需求侧直接要求 resume，① 与 ② 同时被推翻 |
+
+> 这三条**不是计划表**：没有日期、没有版本号、没有负责人。它们只回答「什么证据出现时，这份『预期』
+> 就不再成立」。判据 a 的 4.59 / ≥3 两个数字都是**当前实测值**，不是目标值。
+
+### 8.5 `llm_kit_run_checkpoint` 空表：保留
+
+表已存在、**0 行、无写入方**（`docs/design/data-model.md` §3）。B 的裁定**不动它**：
+退役一张表 = DDL，未排期；保留的代价是零行零索引开销，而删掉会让「将来决定补 run-snapshot」多一次迁移。
+`persistence_capability_degraded` 的降噪**不依赖**这张表存在与否（引擎只问 store 有没有方法）。
+
+### 8.6 判据格
+
+`tests/agent/erix-expected-capability-degradation.test.mjs`（9 格）：清单内 3 方法 DEBUG + 计数且零 WARN、
+**未知方法名仍 WARN**（本单最重要的一格）、必需端口（`appendRound`/`load`）仍 WARN、缺 `method` 仍 WARN、
+脏值不做宽松匹配、清单常量与实现双向一致（引擎侧发射点交叉核对 + `createErixStore` 反向核对）、
+降噪不波及同窗口的 `run_outcome`（仍 INFO）。每格都配了能把它打红的变异，红名单见 #1249 执行报告。

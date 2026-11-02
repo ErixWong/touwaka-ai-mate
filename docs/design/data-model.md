@@ -96,6 +96,12 @@ CAS 一起退役，错误文案不再提版本）。`record_version` 列继续�
 
 索引：`PRIMARY KEY (run_id)`。`run-state` 语义继续不实现并接受 `degraded` 诊断。
 
+**当前状态（#1249，2026-11-02）：0 行、无写入方、刻意未用。** 复核：`grep -rn "llm_kit_run_checkpoint" lib/ server/`
+只有 DDL 与注释（零读写代码），库里该表 0 行。Eric 已裁定走 **B（正式承认 erix 可选 capability
+未实现是预期降级并降噪）**：**不补** run-snapshot / run-state 端口、**不动 DDL**——本表**保留**，
+退役一张表也是 DDL，未排期（保留的代价是零行零索引开销）。「什么证据出现时这份『预期』不再成立」
+的三条触发条件写在 `topics/transcript-observations.md` §8.4。
+
 DDL 双侧：`scripts/upgrade-database.js`（存量库，步骤名含 `#1156 Stage A`）与
 `scripts/init-database.js`（新装库基线）逐字段一致，`tests/llm-kit-adapters/transcript-rounds-ddl.test.mjs`
 断言两侧不漂移。
