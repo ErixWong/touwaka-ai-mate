@@ -55,8 +55,12 @@ const QUARANTINE_PATH = join(TESTS_DIR, 'QUARANTINE.mjs');
  * 已知 skip-pattern —— 与 `package.json` 的 `test:llm-kit` / `test:store-contract`
  * **逐字相同**（守卫格钉死）。含义：这批 run snapshot / run-state 用例要的存储面
  * 尚未落地，两个既有脚本早已显式跳过；聚合入口继承同一口径，既不放宽也不扩大。
- * 注意：实测当前匹配 **0** 个用例（`# skipped 0`），即这条 pattern 目前是惰性的，
- * 保留它是为了「一条都不许放宽」的等价性，而不是为了掩盖红。
+ * 实测（issue #1253 第 1 阶段，别被 `# skipped 0` 骗了）：这条 pattern **不是惰性的**——
+ * 它把 7 个用例整条从运行里摘掉（`test:llm-kit` 535 → 528 例），而 `# skipped` 仍报 0：
+ * node 的 `--test-skip-pattern` 是**过滤**不是 skip，被摘掉的用例在 TAP 里完全不留痕。
+ * 摘掉的 7 条里 6 条现在会红（run snapshot / run-state 六条），1 条会过
+ * （`run snapshot/run-state 写失败向上抛出`）。这是本单**继承**的既有口径，
+ * 第 2 阶段要不要动它由 Eric 定；本阶段一条未改。
  */
 export const KNOWN_SKIP_PATTERN =
   'run snapshot 往返保真与 latest-only 覆盖语义$|run snapshot 未知 runId 返回 undefined$|run snapshot/run-state 多 runId 隔离$|新写入的 run-state 快照不包含终态 state$|run snapshot/run-state 写失败向上抛出$|run-state 快照保真且终态独立读取$|run-state 未知 runId 返回 undefined$';
