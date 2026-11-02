@@ -5,6 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-02
+
+> 主线是 **erix-agent 0.20 → 0.29 的宿主侧迁移与消息面收口**（#1227 全四阶段：调用面命名空间、store 契约、投影重建与对账、回滚演练），
+> 以及围绕它显形的一批可靠性/观测性修复。v0.5.0 之后共 33 个提交。**升级必读下方「升级步骤」，含 DDL 与破坏性调用面变更。**
+
+### 升级步骤（破坏性，按顺序）
+
+1. `npm i` —— `erix-agent` 现为 `^0.29.0`。
+2. **必须**跑 `node scripts/upgrade-database.js`：`agent_rounds` 新增 3 个虚拟生成列 `kind` / `seq` / `part_of`（由 `record_json` 派生）与索引 `idx_agent_rounds_request_kind`。**不跑这一步，0.29 的 store 契约与投影读路径不成立。**
+3. **调用面破坏性变更**：`runToolLoop` 的顶层扁平选项在 0.29 一律拒收（`unknown runToolLoop option`），必须走 `config.*` / `capabilities.*` 命名空间。touwaka 侧 15 处调用点已迁；外部若直接调 `runToolLoop` 需同步改。
+4. 老库（0.23 以前写入的）可选跑 `node scripts/verify-transcript-projection.mjs --rewrite-record-json` 对齐 `record_json`；生产已执行。**注意**：`--apply` 按设计拒绝业务库，生产用「省略 `--dry-run`」路径。
+5. 升级后立刻 `node scripts/verify-transcript-read-parity.js --snapshot <基线路径>` 采一份基线，之后用 `--gate --baseline <基线>` 当回归闸（`GATE_EXIT=0` 才算平）。
+6. 语义变更：同一 `recordKey` 但 payload 不同不再重试也不失败，落 `dedup_payload_conflict` 冲突指纹并丢弃该次写（#1227 B2）。
+
+### Added
+
+**erix 观测面**
+- **`run_outcome` 转 INFO 观测面** - 终止原因 / 轮数 / 校验状态入日志，并加「显式忽略清单」（结构性不可达事件），未知事件仍 WARN (#1255)
+- **可选 capability 降级按名分流** - 已知未实现的能力降噪，未知 / 脏数据仍 WARN，避免整类事件被静音 (#1249)
+
+**数据可靠性工具**
+- **批量写前备份前置闸 `runWithPreWriteBackup`** - 首次写之前整表 dump + 六格回读校验 + 备份失败即零写入；回滚 SQL 首行强制 `SET NAMES utf8mb4;`、时间戳走 `DATE_FORMAT`、生成列按 `information_schema.EXTRA` 排除 (#1246)
+- **回滚备份回放脚本** `scripts/replay-transcript-backup.mjs` - 按主键参数化 `UPDATE` + 影响行数核对（绕开 Sequelize `-FOUND_ROWS` 导致「同值写入返回 0」的歧义）+ 强制 `--expect-database` 库名闸门 (#1246)
+- **投影重建对账器与孤儿检测** - 复用写侧函数不造第二份投影实现 (#1227 阶段3 C1)
+- **legacy 读档按请求形状分流 + 回滚演练门禁** `--snapshot` / `--gate --baseline` (#1227 阶段3 C2)
+
+**运行时可靠性**
+- **卡在 `running` 的 `chat_request` 自愈** - 两层判活（库侧静默 30min + 进程内心跳 `last_progress_at`，含 `onDelta`），零 DDL，收口为 `failed` 并允许重试 (#1264)
+- **`running` 结算启动横幅前移** - 横幅在启动期结算动手之前打印，避免「结算挂住」与「没注册作业」日志同形 (#1271)
+
+**测试入口**
+- **`npm test` 变真聚合入口** - 磁盘发现测试文件 + 串行运行器 + 隔离清单（9 项显式隔离并打印原因），不再是 `exit 1` 占位符【阶段 1】(#1253)
+
+### Changed
+
+- **折叠逻辑委托上游 `foldMessageRows`** - 删除宿主第二份实现 (#1227 阶段2 B0)
+- **写侧身份键统一到上游 `recordKey` 口径** (#1227 阶段2 B1)
+
+### Fixed
+
+- **终稿正文按轮取** - 末轮行只写末轮正文，不再把跨轮累积串写进展示面；空正文不覆盖已有终稿行 (#1266)
+- **思考过程重复显示 / 空 assistant 气泡** - 写侧按轮存思考、读取时拼接整段、`empty tool_calls` 绕过 hidden、可选字段不再阻断 `complete`（切片 A/B/C）(#1237)
+- **聊天区抢滚动** - 上翻后停止自动滚底并保护程序化滚动（跟随带 100px→24px、哨兵不再主动滚、移除容器 CSS smooth、程序化滚动保护 1200ms）(#1238)
+- **`BIT(1)` 恒真导致 `tool_result` 假 `is_error` 与假 `folded`** - 含存量清洗与 `--fix-is-error` 方向改判（删 canonical 的假键，而非写列）(#1227 阶段3 C2c / C2d)
+- **`provider-adapter` 5 处恒空转的 `request.onEvent?.()`** - 在 erix 0.29 引擎路径下是误导性 API，删除并用源码 grep 钉住 (#1263)
+- **同 key 异 payload 落 `dedup_payload_conflict` 冲突指纹** - 不再重试或让 run 失败 (#1227 阶段2 B2)
+- **`agent_rounds` 行形状对齐上游 0.23 契约** - 生成列 + 形状断言 (#1227 阶段1/形状对齐)
+
+### 测试与验证（发布前实测）
+
+- `npm test`：72 文件 / **647 通过 / 0 失败** / 9 项显式隔离；`npm run test:store-contract` 33/33；后端与前端 lint 0；前端 `npm run build` 0
+- 生产读侧门禁 `--gate`：`GATE_EXIT=0`，48 请求三格全等 48、块形状全等 48
+- **空库安装演练**（新）：全新库跑 `npm run init-db` → 74 张表、**生产缺表 0**；转录相关 4 张表（`chat_requests` / `messages` / `agent_rounds` / `agent_transcript_rounds`）与生产**逐列一致**且生成列与索引齐备；灌入生产全库数据后门禁 `GATE_EXIT=0`（48/48）
+- 阶段 4 回滚演练：克隆库回放后 `GATE_EXIT=3`（23 条全为 `parity_regression`，符合预期），修复后 `GATE_EXIT=0`
+
+### 已知未修（历史遗留，随本版本一起存在，非本版本引入）
+
+- **MCP 工具永远拿不到** - `buildToolContext` 不带 `accessToken`，每次 run 一条 `HTTP 401`，配好的 MCP 服务形同摆设 (#1265)
+- **`els` app tick 连续失败** - 注册为 active 但表从未安装 (#1261 / #1192)
+- **`install-git-hooks.js` 硬编码 `.git/hooks`** - 在 `git worktree` 下 `npm install` 必失败；用 worktree / CI 装实例会撞到 (#1206)
+- **空库安装与生产的列漂移**（与本次升级无关）：`kb_paragraphs.embedding` 新装为 `vector(384)` 而生产为 `vector(1536)`（新实例装 1536 维 embedding 会撞），另有 `knowledge_bases.embedding_model_id` 32/50、`user_skill_parameters.skill_id` 32/64、`tasks.status` 枚举等 5 处；生产另有 16 张新装不会创建的表（App 运行期建的 + 6 张 `_backup_*` 噪声）(#1172)
+- 测试入口阶段 2（vitest 风格 6 个文件、`--test-skip-pattern` 语义、运行期测试清单）(#1253)、备份闸门边角（`INSERT`/`DELETE` 回滚语义、备份分片）(#1246)
+
 ## [0.5.0] - 2026-10-27
 
 > 本轮跨度 339 个提交（v0.4.0 之后），主线是 **erix 引擎接入与消息面第一性重构**（epic #1094 / #1156），
