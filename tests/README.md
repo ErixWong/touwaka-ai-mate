@@ -2,6 +2,33 @@
 
 本目录包含项目的各类测试与调试脚本，按功能分类如下。
 
+## 聚合入口：`npm test`（issue #1253）
+
+```bash
+# 硬前置：缺一个就非零退出并打印缺哪几个，绝不静默跳过
+export DB_HOST=127.0.0.1 DB_PORT=3306 DB_USER=touwaka DB_NAME=touwaka_mate \
+  DB_PASSWORD=$(docker exec touwaka-mate env | grep '^DB_PASSWORD=' | cut -d= -f2-)
+
+npm test                 # = npm run test:all，从磁盘发现 tests/**/*.test.{js,mjs} 并串行跑
+npm run test:verify-quarantine   # 把隔离项真跑一遍，报「哪些已经能过」
+node scripts/run-tests.mjs --list          # 只打印发现/隔离/实跑清单
+node scripts/run-tests.mjs --include-quarantine  # 连隔离项一起跑（诊断用，不作闸）
+```
+
+- **文件清单不手填**：`scripts/run-tests.mjs` 递归扫 `tests/` 下的 `*.test.js` / `*.test.mjs`，
+  新增测试文件不需要改 `package.json`。
+- **隔离清单**：`tests/QUARANTINE.mjs`（长期红的文件 + 实跑出来的报错首行 + 成因）。
+  隔离是**显式记账**，不是跳过问题：`npm run test:all` 每次都把它们逐条打印出来，
+  `--verify-quarantine` 一旦发现某项已转绿就非零退出（防名单只增不减）。
+  守卫格：`tests/quarantine-manifest.test.mjs`。
+- **串行 + 互斥锁**：`--test-concurrency=1`（共享 `llm_kit_test` 库，
+  `transcript-rounds-ddl.test.mjs` 会 DROP/重建两张新表），另按 `DB_HOST/DB_PORT/DB_NAME`
+  在 `$TMPDIR` 取一把跨进程锁——**多个 worktree 同时跑同一套库会互相打断**
+  （实测症状：`Table 'llm_kit_test.agent_transcript_rounds' doesn't exist`、
+  `Deadlock found when trying to get lock`、`canonical_rows_before` 计数漂移）。
+- `test:llm-kit` / `test:store-contract` **保持原样**（含各自的 `--test-skip-pattern`），
+  聚合入口沿用同一份 skip-pattern，不放宽也不扩大。
+
 ## 单元测试
 
 | 脚本 | 说明 |
