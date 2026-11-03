@@ -29,7 +29,9 @@ folding: { context: { budgetTokens, keepRounds, stripHistoricalImages } }
 | `fold-statistical` | 统计式摘要折叠，零 LLM | 0 | 无 |
 | **`fold-llm`（默认）** | 语义摘要折叠；摘要器由引擎用**本次 run 的 provider** 注入 | **1 次** | 有：摘要器坏/超时/空文本 ⇒ 本次 run `failed` |
 
-复合档（引擎的 `fold-statistical+fold-llm`）**刻意不开放**：宿主只暴露这三档，
+**引擎只有这三档**（上表逐字等于 erix-agent 0.30.0 的 `src/compact/strategy-resolution.js` ▸
+`BUILTIN_COMPACTION_STRATEGIES` 的三个键）。在 0.30.0 产物 `src/` 里 grep 复合策略名（如
+`fold-statistical+fold-llm`）零命中 ⇒ 宿主也只暴露这三档，
 多开放一档就多一条没有用例覆盖的路径。
 
 ## 3. 配置面
