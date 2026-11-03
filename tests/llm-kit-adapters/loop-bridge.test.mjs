@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runToolLoop } from "erix-agent";
+import { runToolLoop, estimateMessageTokens } from "erix-agent";
 import {
   createErixEventHandler,
   createErixPersistenceErrorHandlers,
@@ -885,6 +885,180 @@ test("引擎侧生效：config.folding.context 的预算真的驱动折叠，回
   );
   assert.equal(fold.foldedRounds, 1, "keepRounds=1 时每次折叠 1 轮");
   assert.ok(Array.isArray(fold.messages) && fold.messages.length > 0, "onAfterFold 必须拿到折叠后的消息");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// issue #1276（erix-agent 0.30.0）：预算兜底不再「把能折的全折掉」（上游 #643）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 造「上下文略超预算、可折轮数 ≤ keepRounds」的现场——正是上游 #643 的病发条件：
+ * 上下文 14,679 / 预算 12,000（1.22×）且只有 5 轮（≤ keepRounds 默认 6）。
+ *
+ * 0.29.0 在这一格的表现（上游 issue 正文实测）：配置策略折 **0** 轮，兜底写死
+ * `keepRounds: 0` ⇒ 把 14,692 tok 清成 **150 tok**，摘要器一次没调，模型只剩任务原文 + 一行 stub，
+ * 只好把同一批文件重读一遍又一遍。
+ */
+const FOLD_UNIT = "alpha bravo charlie delta echo foxtrot golf hotel ";
+
+function budgetFixture(rounds = 5, unitsPerRound = 177) {
+  const messages = [
+    { role: "system", content: [{ type: "text", text: "sys" }] },
+    { role: "user", content: [{ type: "text", text: "任务描述：请读文件并总结" }] },
+  ];
+  for (let i = 1; i <= rounds; i += 1) {
+    messages.push({
+      role: "assistant",
+      content: [{ type: "tool_use", id: `t${i}`, name: "read_file", input: { path: `f${i}.txt` } }],
+    });
+    messages.push({
+      role: "user",
+      content: [{
+        type: "tool_result",
+        tool_use_id: `t${i}`,
+        content: [{ type: "text", text: `[ROUND${i}] ${FOLD_UNIT.repeat(unitsPerRound)}` }],
+      }],
+    });
+  }
+  return messages;
+}
+
+test("预算兜底折到够用就停（#643）：超预算 22% 只折最老 1 轮，最新轮与机械摘要都还在", async () => {
+  const BUDGET = 12000;
+  const KEEP_ROUNDS = 6;
+  const ROUNDS = 5;
+  const initial = budgetFixture(ROUNDS);
+  const estimate = estimateMessageTokens(initial);
+  // #1253 的教训：夹具自己先证「变化真的会发生」，否则这条用例会空断言成假绿。
+  assert.ok(
+    estimate > BUDGET,
+    `夹具必须真的超预算（否则兜底不会被触发）：estimate=${estimate} budget=${BUDGET}`,
+  );
+  assert.ok(
+    ROUNDS <= KEEP_ROUNDS,
+    `可折轮数必须 ≤ keepRounds（这是 #643 的病发条件）：rounds=${ROUNDS} keepRounds=${KEEP_ROUNDS}`,
+  );
+
+  // 本项目 agent-loop 的现网姿势：只给 folding.context 的三个数据成员，**不配 strategy**
+  // （lib/agent/agent-loop.js:1628/1715）⇒ 入口策略是库层 sliding-window、超预算后必走兜底。
+  const provider = createFakeProviderWithChat([textResponse("DONE")], [textResponse("收尾")]);
+  const options = buildErixRunOptions({
+    provider: provider.provider,
+    executeTool: async () => "live tool result",
+    signals: ["DONE"],
+    modelConfig: { context_window_tokens: 200000, max_output_tokens: 4096 },
+    config: {
+      input: { messages: initial, wrapup: false },
+      run: {
+        runId: "run-1276-budget-fit",
+        maxRounds: 4,
+        stallDetection: false,
+        completion: { maxNoToolRounds: 2 },
+        stream: true,
+      },
+      folding: {
+        context: { budgetTokens: BUDGET, keepRounds: KEEP_ROUNDS, stripHistoricalImages: true },
+      },
+    },
+  });
+
+  const result = await runToolLoop(options);
+  const stats = result.compactionStats ?? [];
+  assert.ok(stats.length > 0, "超预算必须产生 compactionStats 条目（否则这条用例什么都没测）");
+
+  const first = stats[0];
+  assert.ok(
+    first.tokensBefore > BUDGET,
+    `兜底触发时折叠前必须超预算：tokensBefore=${first.tokensBefore} budget=${BUDGET}`,
+  );
+  // ① 折到够用就停：折后必须真的落回预算内（0.29 也会「落回」，所以这条单独不够）。
+  assert.ok(
+    first.tokensAfter <= BUDGET,
+    `兜底折完必须落回预算内：tokensAfter=${first.tokensAfter} budget=${BUDGET}`,
+  );
+  // ② 关键判据：**不是**「把能折的全折掉」——只折够用的那几轮。
+  assert.ok(
+    first.foldedRounds > 0 && first.foldedRounds < ROUNDS,
+    `必须「折到够用就停」而不是全折：foldedRounds=${first.foldedRounds} / 总轮数=${ROUNDS}`,
+  );
+  // ③ 没被清成极小值（0.29 的现场是 14,692 → 150）：保留下来的内容至少是预算的一半量级。
+  assert.ok(
+    first.tokensAfter > BUDGET / 2,
+    `折后上下文不得被清成极小值：tokensAfter=${first.tokensAfter} 应 > ${BUDGET / 2}`,
+  );
+
+  // ④ 下一轮真正发给模型的 prompt 里，**最新一轮的正文还在**（内容没被清空）。
+  const firstCallBody = JSON.stringify(provider.calls[0]?.messages ?? []);
+  assert.ok(
+    firstCallBody.includes("[ROUND5]"),
+    "折叠后最新一轮（ROUND5）的正文必须仍在 prompt 里——0.29 会把整段清成 stub",
+  );
+  // ⑤ #643 B 档：兜底自己也要产机械摘要（0.29 里模型只拿到任务原文 + 一行通用 stub）。
+  assert.match(
+    firstCallBody,
+    /已折叠/,
+    "兜底这一折必须把机械摘要（「…已折叠」范围句）prepend 进 head，而不是只留 stub",
+  );
+  assert.match(firstCallBody, /工具足迹/, "机械摘要必须带工具足迹（read_file×N）");
+});
+
+test("折叠账本说真话（#657）：策略折 0 轮时 strategyName 归给真正折叠的兜底层", async () => {
+  const BUDGET = 12000;
+  const initial = budgetFixture(5);
+  // 注入一个「折 0 轮」的策略对象（名字刻意可区分）：入口选中的是它，真正干活的是兜底。
+  const noopStrategy = {
+    name: "probe-noop",
+    async shouldCompact() {
+      return true;
+    },
+    async compact(messages) {
+      return {
+        messages,
+        compacted: false,
+        foldedRounds: 0,
+        tokensAfter: estimateMessageTokens(messages),
+        layers: {},
+      };
+    },
+  };
+  const provider = createFakeProviderWithChat([textResponse("DONE")], [textResponse("收尾")]);
+  const options = buildErixRunOptions({
+    provider: provider.provider,
+    executeTool: async () => "live tool result",
+    signals: ["DONE"],
+    modelConfig: { context_window_tokens: 200000, max_output_tokens: 4096 },
+    config: {
+      input: { messages: initial, wrapup: false },
+      run: {
+        runId: "run-1276-attribution",
+        maxRounds: 4,
+        stallDetection: false,
+        completion: { maxNoToolRounds: 2 },
+        stream: true,
+      },
+      folding: { context: { budgetTokens: BUDGET, keepRounds: 6, stripHistoricalImages: true } },
+    },
+    capabilities: { ports: { strategy: noopStrategy } },
+  });
+
+  const result = await runToolLoop(options);
+  const stats = result.compactionStats ?? [];
+  assert.ok(stats.length > 0, "夹具必须真的触发折叠（否则归因无从谈起）");
+  const first = stats[0];
+  assert.ok(
+    first.foldedRounds > 0,
+    `兜底必须真的折了轮，否则这条断言测不到归因：foldedRounds=${first.foldedRounds}`,
+  );
+  assert.notEqual(
+    first.strategyName,
+    "probe-noop",
+    "0.29 的缺陷：账上把功劳记给「一轮都没折」的入口策略；0.30 必须记真正折叠的那一层",
+  );
+  assert.equal(
+    first.strategyName,
+    "sliding-window",
+    "真正折叠的是引擎另建的库层兜底实例（createSlidingWindowStrategy）",
+  );
 });
 
 test("引擎侧生效：capabilities.ports.judgeProvider 是 reflection.judge.provider 的能力槽位", async () => {
