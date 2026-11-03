@@ -13,6 +13,10 @@ import fs from 'fs/promises';
 import crypto from 'crypto';
 
 import { getWorkspaceRoot } from '../../lib/paths.js';
+// issue #1282：DATETIME 列写入的唯一口径（UTC 挂钟，与进程 TZ 无关）。
+// 下面两处 `INSERT INTO task_token (…, expires_at)` 走 db.insert（裸 SQL + replacements），
+// `SqlString.escape(Date)` 按**进程本地时区**格式化 ⇒ TZ≠UTC 时 token 过期时间偏 8 小时。
+import { toDbDatetime } from '../../lib/db-datetime.js';
 
 // 工作空间根目录
 const WORKSPACE_ROOT = getWorkspaceRoot();
@@ -309,7 +313,9 @@ export default (controller) => {
         `SELECT * FROM task_token 
          WHERE task_id = ? AND user_id = ? AND expires_at > ?
          ORDER BY expires_at DESC LIMIT 1`,
-        [id, userId, new Date(Date.now() + 60000)]
+        // #1282：expires_at 列里存的是 UTC 挂钟，比较值也必须同口径（本处是**比较**不是写入，
+        // 但走的是同一条 `SqlString.escape(Date)` 序列化通道，TZ≠UTC 时会偏 8 小时）。
+        [id, userId, toDbDatetime(new Date(Date.now() + 60000))]
       );
 
       if (existingTokens && existingTokens.length > 0) {
@@ -328,7 +334,7 @@ export default (controller) => {
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
       await controller.db.insert(
         `INSERT INTO task_token (token, task_id, user_id, expires_at) VALUES (?, ?, ?, ?)`,
-        [token, id, userId, expiresAt]
+        [token, id, userId, toDbDatetime(expiresAt)]
       );
 
       ctx.success({
@@ -381,7 +387,7 @@ export default (controller) => {
       
       await controller.db.insert(
         `INSERT INTO task_token (token, task_id, user_id, expires_at) VALUES (?, ?, ?, ?)`,
-        [newToken, id, userId, expiresAt]
+        [newToken, id, userId, toDbDatetime(expiresAt)]
       );
 
       ctx.success({

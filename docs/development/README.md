@@ -48,6 +48,7 @@
 | 文档 | 说明 |
 |------|------|
 | [数据库手册](../database/README.md) | 数据库概览与脚本入口 |
+| [DATETIME 时区契约](./datetime-timezone-contract.md) | DATETIME 列一律写 UTC 挂钟、与进程 `TZ` 无关；裸 SQL 写时间必须过 `toDbDatetime()`（#1282） |
 | [查询 API 设计](../database/api-query-design.md) | 复杂查询参数与分页约定 |
 | [设计文档索引](../design/README.md) | 所有设计文档总入口 |
 | [Phase 1](../design/phase1/README.md) | Mind Core |
