@@ -800,11 +800,19 @@ test('runErix emits history_compacted with the compaction shape', async () => {
 
   await withEnv('CHAT_COMPACT_BUDGET_TOKENS', '1', async () => {
     await withEnv('CHAT_COMPACT_KEEP_ROUNDS', '0', async () => {
-      await createLoop().runErix(expertService, createInput({
-        tools: [],
-        currentMessages: historicalMessages,
-        onDelta: event => events.push(event),
-      }));
+      // issue #1277：本用例钉的是**压缩事件的形状** + 「机械折叠真的把 tokens 降下来了」。
+      // 后者是 `sliding-window` 的专属性质，**不是**语义折叠的性质：默认档从 #1277 起是
+      // `fold-llm`，在预算=1 这种荒谬预算下摘要文本本身就可能比被折掉的原文更长
+      // （实测 52 → 111 tok），`tokensAfter < tokensBefore` 在那一档不成立也不该成立。
+      // 所以这里把策略钉在 `sliding-window`，保持本用例的原意；`fold-llm` 档的折叠判据在
+      // `tests/agent/fold-strategy-contract.test.mjs`（含 `history_compacted` 与摘要成本）。
+      await withEnv('ERIX_FOLDING_STRATEGY', 'sliding-window', async () => {
+        await createLoop().runErix(expertService, createInput({
+          tools: [],
+          currentMessages: historicalMessages,
+          onDelta: event => events.push(event),
+        }));
+      });
     });
   });
 

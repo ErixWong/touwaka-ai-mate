@@ -368,14 +368,28 @@ test('#1277 摘要器抛错 ⇒ run 终局 failed / summarizer_failed，日志�
 test('#1277 变异自证：摘要器换成恒成功 ⇒ 同一格判据必须变绿（终局不是 failed）', async () => {
   const llmClient = createFakeLLMClient({ summarizer: 'ok' });
   const requestId = `req-1277-summarizer-ok-${Date.now()}`;
+  const deltas = [];
 
   const result = await withEnv({ ...COMPACT_ENV, [FOLDING_STRATEGY_ENV]: undefined }, async () => (
-    createLoop().runErix(createFakeExpertService(llmClient), createRunInput({ requestId }))
+    createLoop().runErix(createFakeExpertService(llmClient), createRunInput({
+      requestId,
+      onDelta: delta => deltas.push(delta),
+    }))
   ));
 
   assert.equal(result.fullContent, '任务完成 Final answer');
   // 默认档 fold-llm 真的生效了：摘要器被调用过（这条同时钉住「默认值落到了引擎」）
   assert.ok(llmClient.chatCalls.length >= 1, '默认档 fold-llm 必须真的调用摘要器');
+
+  // 折叠成功 ⇒ 用户可见的压缩提示照旧发，且形状与改造前一致（既有事件面不动）
+  const compactedDeltas = deltas.filter(delta => delta.type === 'history_compacted');
+  assert.ok(compactedDeltas.length >= 1, '折叠成功时必须发 history_compacted');
+  for (const delta of compactedDeltas) {
+    assert.ok(delta.foldedRounds > 0);
+    assert.ok(delta.tokensBefore > delta.tokensAfter,
+      `正常预算下语义折叠必须把上下文压下来：${delta.tokensBefore} -> ${delta.tokensAfter}`);
+    assert.match(delta.content, /自动压缩/);
+  }
   // 没有 erix.summarizer_failed 日志（对照组）
   const entries = readLogEntries(requestId);
   assert.equal(entries.filter(entry => entry.event === 'erix.summarizer_failed').length, 0);
