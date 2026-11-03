@@ -139,7 +139,16 @@ unset ERIX_FOLDING_STRATEGY
 | C：`isSummarizerFailure` 恒 `false`（假装认不出） | **6 例红**（失败可读整组） |
 | D：`compaction` 日志回到「从顶层读」的旧写法 | **1 例红**（`erix.compaction` 四格不再是 null 的断言） |
 
-## 9. 取证边界
+## 9. 一处既有用例的校正（透明记录）
+
+`tests/agent/agent-loop-erix.test.mjs` 的「`runErix` emits `history_compacted` with the compaction shape」
+原先顺带断言 `tokensBefore > tokensAfter`。**这条是 `sliding-window` 的专属性质**：机械折叠靠丢头部
+缩量，而语义折叠在预算=1 这种荒谬预算下，摘要文本本身可能比被折掉的原文更长（实测 52 → 111 tok）。
+默认档改成 `fold-llm` 后该断言失效——不是回归，是断言写死了旧默认档的性质。
+处置：该用例把策略钉在 `sliding-window`（保持它原本要测的东西），语义折叠档的折叠判据改由
+`fold-strategy-contract.test.mjs` 覆盖（含 `history_compacted` 形状与摘要成本）。
+
+## 10. 取证边界
 
 - 打开过：`lib/agent/agent-loop.js`（`runErix` 全文、事件处理器、`foldContext` 装配点）、
   `lib/llm-kit-adapters/provider-adapter.js`（`chat` / `chatStream` / usage 归一）、
