@@ -21,6 +21,14 @@
  *      `--test-skip-pattern` 一条都不放宽，本脚本用**同一份字符串**（守卫格
  *      `tests/quarantine-manifest.test.mjs` 断言它与 package.json 逐字相等）。
  *
+ * issue #1280（计数与 rc 的真实性）追加的约束：
+ *   6. **两种 reporter 都认**：TAP（`# tests N` / `not ok N - 名字`，Node 22 默认）与
+ *      spec（`ℹ tests N` / `✖ 名字`，Node 24 默认）都能解析——选双解析而不是强制
+ *      `--test-reporter=tap`，理由见「输出解析」小节；
+ *   7. **「一条都没读到」必须判红**：解析到 0 个用例 / 汇总缺项 / 汇总自相矛盾 /
+ *      用例数比实跑文件数还少 / fail>0 却没有失败明细，任何一条都非零退出。
+ *      `0` 永远不许读成「全绿」；截断的输出判「没读到」，**不补默认值 0**。
+ *
  * 用法：
  *   node scripts/run-tests.mjs                     # 等价 npm run test:all / npm test
  *   node scripts/run-tests.mjs --list              # 只打印发现/隔离/实跑清单，不跑
@@ -28,7 +36,7 @@
  *   node scripts/run-tests.mjs --include-quarantine# 连隔离项一起跑（诊断用，不作闸）
  *   node scripts/run-tests.mjs --no-lock           # 跳过跨进程互斥锁（诊断用）
  *
- * 退出码：0 = 通过；1 = 有失败（或隔离项已转绿，见 --verify-quarantine）；2 = 用法/环境错误。
+ * 退出码：0 = 通过（且计数真的读到了）；1 = 有失败 / 计数不可信（见约束 7）；2 = 用法/环境错误。
  */
 
 import { spawnSync } from 'node:child_process';
@@ -248,17 +256,63 @@ export function firstDiagnosticLine(output) {
   return null;
 }
 
-/** 解析 TAP：汇总计数 + 逐条失败（名字 / 文件 / 首行报错）。 */
-export function parseTap(output) {
-  const lines = output.split('\n');
-  const summary = { tests: 0, pass: 0, fail: 0, skipped: 0, cancelled: 0, todo: 0 };
+// ---------------------------------------------------------------------------
+// 输出解析（issue #1280：两种 reporter 都要认）
+// ---------------------------------------------------------------------------
+//
+// 由来：`node --test` 的**默认 reporter 随版本变了**。Node 22 默认 TAP
+// （`# tests 682` / `not ok 3 - 名字`），Node 24 默认 spec（`ℹ tests 682` / `✖ 名字 (1.2ms)`）。
+// 老解析器只认 TAP，于是在 Node 24 上**一个用例都没读到**，`summary` 全 0 而 rc=0
+// ——`npm test` 报「用例 0」还判通过（issue #1280 的形态：计数假、rc 也假）。
+//
+// 选型（为什么双解析，而不是强制 `--test-reporter=tap`）：
+//   1. 强制 tap 会让**生产路径**与默认 reporter 脱钩：本仓 dev 手跑 `node --test` 看到的是
+//      spec，闸里看到的却是 tap，两边形状不同反而更容易再漂；
+//   2. 双解析让「spec 解析」成为 Node 24 上**真正被每次 npm test 走到的路径**，
+//      不是只有单测喂样本才碰的死代码；
+//   3. 不依赖 reporter 旗标名（`--test-reporter` 的可用值随版本增删过），少一个可漂的假设。
+//
+// 计数语义（判据 2 的根）：`null` = **没读到**，`0` = 真读到 0。二者绝不互相顶替——
+// 截断的输出必须判「没读到」，不许补默认值 0。
+
+const SUMMARY_KEYS = ['tests', 'pass', 'fail', 'skipped', 'cancelled', 'todo'];
+/** 判定「这次跑出来的数字能不能当结论」时**必须**读到的三个计数器。 */
+const GATE_SUMMARY_KEYS = ['tests', 'pass', 'fail'];
+
+const TAP_SUMMARY_RE = /^# (tests|pass|fail|skipped|cancelled|todo) (\d+)$/;
+/** spec reporter 的汇总行：`ℹ tests 682`（U+2139 + 空格）。 */
+const SPEC_SUMMARY_RE = /^\u2139 (tests|pass|fail|skipped|cancelled|todo) (\d+)$/;
+const SPEC_FAILING_HEADER_RE = /^✖ failing tests:\s*$/;
+const SPEC_FAILURE_LOCATION_RE = /^test at (.+?):(\d+):(\d+)$/;
+const SPEC_FAILURE_NAME_RE = /^✖ (.*?)(?: \(\d+(?:\.\d+)?ms\))?$/;
+
+function emptySummary() {
+  const summary = {};
+  for (const key of SUMMARY_KEYS) summary[key] = null;
+  return summary;
+}
+
+/**
+ * 把 `location` / `test at` 的路径归一到「仓库相对路径」：两种方言都带 `:行:列` 尾巴，
+ * 去掉才能和磁盘发现的文件清单对上（`filesWithoutTrace` 就靠这个字符串包含关系）。
+ */
+function normalizeLocation(path) {
+  const bare = path.replace(/:\d+:\d+$/, '');
+  return bare.startsWith(ROOT) ? relative(ROOT, bare).split(sep).join('/') : bare;
+}
+
+/** TAP 方言：汇总 `# tests N` + 逐条 `not ok N - 名字`（含 location / error 明细）。 */
+function parseTapDialect(lines) {
+  const summary = emptySummary();
   const failures = [];
+  let summaryIndex = -1;
   let current = null;
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
-    const count = /^# (tests|pass|fail|skipped|cancelled|todo) (\d+)$/.exec(line);
+    const count = TAP_SUMMARY_RE.exec(line);
     if (count) {
       summary[count[1]] = Number.parseInt(count[2], 10);
+      summaryIndex = i;
       continue;
     }
     const notOk = /^not ok \d+ - (.*)$/.exec(line);
@@ -274,9 +328,7 @@ export function parseTap(output) {
     if (!current) continue;
     const location = /^\s+location: '(.*)'$/.exec(line);
     if (location && !current.file) {
-      current.file = location[1].startsWith(ROOT)
-        ? relative(ROOT, location[1]).split(sep).join('/')
-        : location[1];
+      current.file = normalizeLocation(location[1]);
       continue;
     }
     const err = /^\s+error: (.*)$/.exec(line);
@@ -295,7 +347,163 @@ export function parseTap(output) {
       if (boom) current.error = boom[1];
     }
   }
-  return { summary, failures };
+  return { dialect: 'tap', sawSummary: summaryIndex >= 0, summaryIndex, summary, failures };
+}
+
+/**
+ * spec 方言的失败明细。**只扫末尾 `✖ failing tests:` 段**：spec 在跑到失败时已经
+ * 就地打过一次 `✖ 名字 (xms)`，段内会再打一次；只扫段内才不会把一条失败数成两条。
+ */
+function parseSpecFailures(lines) {
+  const sectionStart = lines.findIndex((line) => SPEC_FAILING_HEADER_RE.test(line));
+  if (sectionStart === -1) return [];
+  const failures = [];
+  let current = null;
+  for (let i = sectionStart + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    const at = SPEC_FAILURE_LOCATION_RE.exec(line);
+    if (at) {
+      current = { name: null, file: normalizeLocation(at[1]), error: null };
+      failures.push(current);
+      continue;
+    }
+    if (!current) continue;
+    if (current.name === null) {
+      const head = SPEC_FAILURE_NAME_RE.exec(line);
+      if (head) current.name = head[1];
+      continue;
+    }
+    if (current.error !== null) continue;
+    if (line.trim() === '') continue;
+    if (/^\s{2,}\S/.test(line)) {
+      current.error = line.trim().replace(/^['"]|['"]$/g, '');
+    }
+  }
+  // 名字没读到就退回文件名（spec 对「整个文件 import 失败」就是这么打的）。
+  for (const failure of failures) {
+    if (failure.name === null) failure.name = failure.file ?? '(未命名失败)';
+  }
+  return failures;
+}
+
+/** spec 方言：汇总 `ℹ tests N` + 末尾失败段。 */
+function parseSpecDialect(lines) {
+  const summary = emptySummary();
+  let summaryIndex = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const count = SPEC_SUMMARY_RE.exec(lines[i]);
+    if (!count) continue;
+    summary[count[1]] = Number.parseInt(count[2], 10);
+    summaryIndex = i;
+  }
+  const failures = parseSpecFailures(lines);
+  return { dialect: 'spec', sawSummary: summaryIndex >= 0, summaryIndex, summary, failures };
+}
+
+/**
+ * 解析 `node --test` 的输出：TAP 与 spec 两种方言都认（issue #1280）。
+ *
+ * 两套汇总块同时出现时以**更靠后**的为准：node 自己的汇总永远在输出末尾，靠前的
+ * 只可能是用例自己打印的噪音（测试里 echo 一行 `# tests 3` 之类）。
+ *
+ * 返回的 `summary` 里 `null` 表示**没读到**（不是 0）；`missingCounters` 列出
+ * 闸门必须读到的计数里缺了哪些。
+ */
+export function parseTestOutput(output) {
+  const lines = String(output ?? '').split('\n');
+  const tap = parseTapDialect(lines);
+  const spec = parseSpecDialect(lines);
+
+  let chosen = null;
+  if (tap.sawSummary && spec.sawSummary) {
+    chosen = spec.summaryIndex > tap.summaryIndex ? spec : tap;
+  } else if (tap.sawSummary) {
+    chosen = tap;
+  } else if (spec.sawSummary) {
+    chosen = spec;
+  }
+
+  if (!chosen) {
+    return {
+      dialect: null,
+      sawSummary: false,
+      summary: emptySummary(),
+      failures: [],
+      missingCounters: [...GATE_SUMMARY_KEYS],
+    };
+  }
+  return {
+    dialect: chosen.dialect,
+    sawSummary: true,
+    summary: chosen.summary,
+    failures: chosen.failures,
+    missingCounters: GATE_SUMMARY_KEYS.filter((key) => chosen.summary[key] === null),
+  };
+}
+
+/**
+ * 判「这次跑出来的数字能不能当结论」。**`0` 永远不许读成「全绿」**（issue #1280 的形态）。
+ *
+ * 任一条成立即判红（返回非空 reasons）：
+ *   1. 没读到汇总（reporter 变了 / 输出被截断 / 进程被杀）；
+ *   2. 汇总缺项（`tests` / `pass` / `fail` 有没读到的——缺项不补 0）；
+ *   3. 解析到 0 个用例；
+ *   4. 解析到的用例数比实跑文件数还少（每个文件至少贡献 1 条）；
+ *   5. 汇总自相矛盾（tests ≠ pass+fail+skipped+cancelled+todo）；
+ *   6. 汇总说 fail>0，却一条失败明细都没解析到；
+ *   7. node --test 退出码非 0 / 被信号杀掉。
+ */
+export function assessRun({ status, signal = null, targets = [], parsed }) {
+  const reasons = [];
+  const { summary, failures, missingCounters, sawSummary } = parsed;
+
+  if (!sawSummary) {
+    reasons.push(
+      '没读到汇总：输出里既没有 TAP 的 "# tests N" 也没有 spec 的 "ℹ tests N"' +
+        '（reporter 换了 / 输出被截断 / 进程被杀）',
+    );
+  } else {
+    if (missingCounters.length > 0) {
+      reasons.push(`汇总缺项：没读到 ${missingCounters.join(' / ')}（缺项按「没读到」处理，绝不补 0）`);
+    }
+    if (summary.tests === 0) {
+      reasons.push(`解析到 0 个用例（本次实跑 ${targets.length} 个文件）：0 永远不是「全绿」`);
+    }
+    if (summary.tests !== null && targets.length > 0 && summary.tests < targets.length) {
+      reasons.push(
+        `解析到的用例数（${summary.tests}）比实跑文件数（${targets.length}）还少：` +
+          '每个文件至少贡献 1 条，少说明有文件根本没报数',
+      );
+    }
+    const additive = ['pass', 'fail', 'skipped', 'cancelled', 'todo'].map((key) => summary[key]);
+    if (summary.tests !== null && additive.every((value) => value !== null)) {
+      const summed = additive.reduce((total, value) => total + value, 0);
+      if (summed !== summary.tests) {
+        reasons.push(
+          `汇总自相矛盾：tests=${summary.tests}，但 pass+fail+skipped+cancelled+todo=${summed}`,
+        );
+      }
+    }
+    if (summary.fail !== null && summary.fail > 0 && failures.length === 0) {
+      reasons.push(`汇总说 fail=${summary.fail}，却一条失败明细都没解析到（不许当通过）`);
+    }
+  }
+  if (signal) reasons.push(`node --test 被信号 ${signal} 终止`);
+  if (status !== 0) reasons.push(`node --test 退出码 ${status}`);
+
+  return { ok: reasons.length === 0, reasons };
+}
+
+/**
+ * 哪些实跑文件在输出里**查不到任何记录**（判红时用来点名「哪个文件没报数」）。
+ *
+ * 事实边界：node 的聚合 reporter（TAP / spec 都一样）只在**失败**或**脚本式文件**
+ * （整个文件就是一条用例）时打出文件名，正常多用例文件不带文件名——所以这里能给的
+ * 是「完全没留下痕迹的文件」，不是「每文件用例数」。拿不到就说拿不到，不编。
+ */
+export function filesWithoutTrace(output, targets) {
+  const text = String(output ?? '');
+  return targets.filter((file) => !text.includes(file));
 }
 
 function writeLog(text) {
@@ -418,14 +626,18 @@ async function main(argv) {
   const elapsedMs = Date.now() - started;
   const combined = `${result.stdout}\n${result.stderr}`;
   const logPath = writeLog(combined);
-  const { summary, failures } = parseTap(combined);
+  const parsed = parseTestOutput(combined);
+  const { summary, failures } = parsed;
+  const verdict = assessRun({ status: result.status, signal: result.signal, targets, parsed });
+  const shown = (value) => (value === null ? '未读到' : String(value));
 
   console.log('');
   console.log(
     `[test:all] 汇总：文件 ${targets.length} 跑 / ${quarantine.length} 隔离 ｜ ` +
-      `用例 ${summary.tests}（pass ${summary.pass} / fail ${summary.fail} / skipped ${summary.skipped}）` +
+      `用例 ${shown(summary.tests)}（pass ${shown(summary.pass)} / fail ${shown(summary.fail)} / skipped ${shown(summary.skipped)}）` +
       ` ｜ 耗时 ${(elapsedMs / 1000).toFixed(1)}s`,
   );
+  console.log(`[test:all] 输出方言：${parsed.dialect ?? '未识别（两种 reporter 的汇总都没读到）'}`);
   if (logPath) console.log(`[test:all] 完整日志：${logPath}`);
 
   if (failures.length > 0) {
@@ -441,16 +653,19 @@ async function main(argv) {
     }
   }
 
-  const ok = result.status === 0 && failures.length === 0;
-  if (ok) {
+  if (verdict.ok) {
     console.log('[test:all] 结果：通过（隔离项见上，不在本次实跑范围内）');
     return 0;
   }
-  if (failures.length === 0) {
-    console.error(`[test:all] 结果：失败（node --test 退出码 ${result.status}，但 TAP 未解析到失败条目，请读日志）`);
-    return 1;
+
+  console.error(`[test:all] 结果：失败（${verdict.reasons.length} 条判定理由）：`);
+  for (const reason of verdict.reasons) console.error(`  ✗ ${reason}`);
+  const untraced = filesWithoutTrace(combined, targets);
+  if (untraced.length > 0) {
+    console.error(`[test:all] 以下 ${untraced.length} 个实跑文件在输出里查不到任何记录（无法确认它们报过数）：`);
+    for (const file of untraced.slice(0, 20)) console.error(`  ? ${file}`);
+    if (untraced.length > 20) console.error(`  …还有 ${untraced.length - 20} 个（完整清单见日志：${logPath ?? '未落盘'}）`);
   }
-  console.error(`[test:all] 结果：失败（${failures.length} 条，见上）`);
   return 1;
 }
 
@@ -462,8 +677,16 @@ function verifyQuarantine(quarantine) {
     const started = Date.now();
     const result = runNodeTest([item.file], { skipPattern: null });
     const combined = `${result.stdout}\n${result.stderr}`;
-    const { summary, failures } = parseTap(combined);
-    const green = result.status === 0 && summary.fail === 0 && failures.length === 0;
+    const parsed = parseTestOutput(combined);
+    const { summary, failures } = parsed;
+    // 「转绿」必须是**真读到**的绿：0 用例 / 汇总缺项一律不算过（issue #1280）。
+    const green =
+      result.status === 0 &&
+      summary.fail === 0 &&
+      failures.length === 0 &&
+      summary.tests !== null &&
+      summary.tests > 0 &&
+      parsed.missingCounters.length === 0;
     const diagnostic = firstDiagnosticLine(combined);
     const firstError = failures[0]?.error && failures[0].error !== 'test failed'
       ? failures[0].error
@@ -478,7 +701,10 @@ function verifyQuarantine(quarantine) {
       log: writeLog(combined),
     });
     const mark = green ? '✅ 已能过（该解除隔离）' : '❌ 仍红';
-    console.log(`  ${mark} ${item.file}  rc=${result.status} tests=${summary.tests} fail=${summary.fail}`);
+    const shown = (value) => (value === null ? '未读到' : String(value));
+    console.log(
+      `  ${mark} ${item.file}  rc=${result.status} tests=${shown(summary.tests)} fail=${shown(summary.fail)}`,
+    );
     if (!green && failures[0]) {
       console.log(`      首条失败：${failures[0].name}`);
       if (firstError) console.log(`      报错首行：${firstError}`);
