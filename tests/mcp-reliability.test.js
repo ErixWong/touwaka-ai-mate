@@ -45,7 +45,7 @@ test('ToolManager maps MCP tool definitions using resident payload contract', as
   };
 
   const toolManager = createToolManager(residentSkillManager);
-    const definitions = await toolManager.getMcpToolDefinitions({ userId: 'user-1' });
+    const definitions = await toolManager.getMcpToolDefinitions({ userId: 'user-1', accessToken: 'test-token' });
 
     assert.equal(definitions.length, 1);
     assert.equal(definitions[0].function.name, 'mcp_github_search_repositories');

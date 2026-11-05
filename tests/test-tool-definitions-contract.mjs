@@ -94,7 +94,9 @@ async function testFinalDefinitionsStripInternalMeta() {
   {
     const tools = await manager.getToolDefinitions({
       userId: 'user-1',
-      session: { roles: ['admin'] },
+      // Issue #1287：MCP 工具拉取必须有用户凭证（`/internal/mcp/config` 挂在用户 JWT 下），
+      // chat 路径的凭证只在 session 里（lib/chat/turn-context-builder.js 的 toolContext）。
+      session: { roles: ['admin'], accessToken: 'session-access-token' },
     });
     const toolNames = tools.map(tool => tool.function?.name || tool.name);
 
@@ -113,7 +115,7 @@ async function testFinalDefinitionsStripInternalMeta() {
         skillId: 'mcp-client',
         toolName: 'invoke',
         params: { action: 'list_tools' },
-        context: { userId: 'user-1' },
+        context: { userId: 'user-1', accessToken: 'session-access-token' },
         timeoutMs: 30000,
       },
     ]);
