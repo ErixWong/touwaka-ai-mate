@@ -16,6 +16,15 @@
  *   collect()  → 真机跑 S1–S4，把**SQL/API 回读到的原始事实**写进 facts JSON
  *   verify()   → 纯函数 facts × EXPECT（字面期望），产出逐条 check 结果
  *   --self-test → 逐条篡改 EXPECT，喂同一份 facts，**必须变红**；没红的就是假断言
+ *
+ * #1279 改了什么（裁定结论见 PR）：
+ *   1. canonical 行数断言从「一轮一行」的裸数字改为**按 recordKey 形状分桶**
+ *      （seed / engine_round / message / input / other）：0.23.0 起落盘就是一轮多行，
+ *      上游契约见 node_modules/erix-agent/docs/host-consumer-contract_cn.md:2288-2295、4520-4535、4628-4645。
+ *   2. 公开视图查询姿势对齐生产（ASC + window=latest，frontend/src/api/services.ts:97-105）；
+ *      旧姿势 DESC+latest 命中 0 行是 message.controller.js:196-200 的窗口切法不看排序方向。
+ *   3. S4 的 stop→retry 从「读到 SSE 终态就立刻读 DB」改为**轮询等 chat_requests.status 进入终态**
+ *      （stopRequest 先广播再落库，实测 3–15s 的真实跨事务竞态，不是靠 sleep 掩盖）。
  */
 
 import assert from 'node:assert/strict';
@@ -52,6 +61,13 @@ const CANONICAL_TABLE = 'agent_transcript_rounds';
 /**
  * **期望表（字面量，与 facts 无关）**：--self-test 只篡改这里，facts 保持真机回读值。
  * 任何一条被改坏后 verify 必须变红，否则对应 check 是假断言。
+ *
+ * #1279 起「canonical 行数」不再是一个裸数字：**按 recordKey 形状分桶**（见
+ * {@link canonicalKeyShape}），因为 erix-agent 0.23.0 起落盘形状就是「一轮多行」——
+ * `…:engine:round:<n>`（轮载体，只留元数据）、`…:msg:<round>:<seq>`（一条消息一行）、
+ * `…:engine:round:0:seed`（种子行）、`…:input:<id>`（宿主 appendUserTurn 预写行）。
+ * 权威出处：node_modules/erix-agent/docs/host-consumer-contract_cn.md:2288-2295、4520-4535、
+ * 4628-4645（「行数 ≥ 轮数是常态…不得假设记录与轮次一一对应」）。
  */
 function defaultExpectations() {
   return {
@@ -59,9 +75,10 @@ function defaultExpectations() {
       userRows: 1,               // 无工具单轮：恰好 1 条 user 行（带 MARKER 的那句）
       assistantRowsMin: 1,       // 至少 1 条 assistant 行
       toolRoleRows: 0,           // erix 路径停写 role='tool' 行（agent-loop.js:1023 D2-i）
-      canonicalRowsExact: 2,     // 1 行 seed（round 0）+ 1 行引擎轮（round 1）
+      // 无工具单轮的确定形状：seed（round 0）+ 轮载体（round 1）+ assistant 消息行（round 1）
+      canonicalShapeBuckets: { seed: 1, engine_round: 1, message: 1, input: 0, other: 0 },
       canonicalSeedRows: 1,
-      canonicalRoundNos: [0, 1],
+      canonicalRounds: [0, 1],   // **去重后的轮号**：seed 独占 0，其余行同属 round 1
       // #1147 更正后的预期（Eric 2026-10-09 拍定）：messages[].meta 只在**引擎合成轮**
       // （meta.source = "judge-control"，上游 host-consumer-contract_cn.md:706）才有值，
       // **普通对话轮 meta_json 为 NULL 是正确行为**（不是"未落库"）。
@@ -77,6 +94,9 @@ function defaultExpectations() {
       toolCallRowsMin: 1,
       durationMsGt: 0,           // #1151 活数据首证：每一行都要 > 0
       canonicalRowsMin: 3,       // seed + 工具轮 + 收尾轮
+      // 工具轮/收尾轮会各写「轮载体 + 若干消息行」；message 是下限（模型多调一次工具就多行）
+      canonicalShapeBucketsMin: { seed: 1, engine_round: 2, message: 3 },
+      canonicalShapeBucketsExact: { input: 0, other: 0 },
       canonicalRoundsWithToolBlockMin: 1,   // record_json 内含 tool_use/tool_result 子块
       toolUseProjectedExact: true,          // 每个 tool_use 块都有同名 chat_tool_calls 行
       toolResultHasResultJson: true,        // 每个 tool_result 块都落 result_json
@@ -85,18 +105,23 @@ function defaultExpectations() {
       canonicalTextMessagesMin: 1,          // 等价比对口径不能是空集
     },
     s3: {
-      rowsAtReusedRound: 2,      // 头号风险：INSERT IGNORE 若吞了用户行 → 只有 1 行
-      distinctDedupKeys: 2,
+      // 头号风险：INSERT IGNORE 若吞了 appendUserTurn 的用户行 → input 桶 = 0。
+      // 期望形状 = S2 收尾轮已有的 msg+轮载体，加上本次预写的 :input: 行。
+      bucketsAtReusedRound: { seed: 0, engine_round: 1, message: 1, input: 1, other: 0 },
+      distinctDedupKeys: 3,
       engineKeyNamespaces: 1,    // 其中 1 行是 :engine:round:N
       inputKeyNamespaces: 1,     // 其中 1 行是 :input:<messageId>
       secondCallWritten: false,  // 同 messageId 重放必须幂等
-      secondCallRows: 2,
     },
     s4: {
       rounds: 3,
       sameTopicExact: 1,         // 3 轮必须同一个 topic
       roundStart: 0,             // 每个 request_id 内从 0 开始连续递增
-      duplicateRoundTolerance: 0,
+      // 一轮多行是既定形状（#326 / 0.23.0），但**每个轮号只能有一个载体行**，
+      // 且非种子轮至少有一条消息行。重复轮号 = 丢载体/多写载体，才是真缺陷。
+      carriersPerRound: 1,
+      messageRowsPerRoundMin: 1,
+      otherShapesExact: 0,
       orphanToolRowsExact: 0,    // #1168：单事务之后孤儿 tool 行必须为 0
       resumeRequestIdPrefix: 'req_',
       resumeOriginalStatus: 'stopped',
@@ -304,11 +329,47 @@ async function readCanonical(requestId) {
       FROM ${CANONICAL_TABLE} WHERE request_id = :requestId
      ORDER BY round_no ASC, created_at ASC, id ASC
   `, { requestId });
-  return summarizeCanonical(rows);
+  return summarizeCanonical(rows, requestId);
 }
 
-/** 把 canonical 行拆成"可断言形状"：轮号序列 + 每轮的块类型 + meta 情况。 */
-function summarizeCanonical(rows) {
+/**
+ * canonical 行的 **recordKey 形状分类**（#1279）。
+ *
+ * 引擎 0.23.0 起的落盘形状（上游 host-consumer-contract_cn.md:2288-2295 / 4520-4535）：
+ *   - `…:engine:round:0:seed` → `seed`（种子行：完整初始上下文）
+ *   - `…:engine:round:<n>`    → `engine_round`（轮载体，只留元数据，无 messages）
+ *   - `…:msg:<round>:<seq>`   → `message`（一条消息一行，seq 轮内递增）
+ *   - `…:input:<messageId>`   → `input`（宿主 appendUserTurn 预写的用户轮）
+ * 其余（`:control:<slot>` / `:fold:<fp>` / `:ttl:<fp>` 等）→ `other`：本轮场景不该出现，
+ * 出现即形状回归（因此 other 桶也进断言）。
+ *
+ * 判据只看 **recordKey 形状**，不看内容 —— 与上游 `transcript-dedup.js#recordKey`
+ * 同一套命名空间口径。
+ */
+function canonicalKeyShape(runId, dedupKey) {
+  const key = String(dedupKey ?? '');
+  const prefix = `${String(runId)}:`;
+  if (!key.startsWith(prefix)) return 'other';
+  const rest = key.slice(prefix.length);
+  if (rest === 'engine:round:0:seed') return 'seed';
+  if (/^engine:round:\d+$/.test(rest)) return 'engine_round';
+  if (/^msg:\d+:\d+$/.test(rest)) return 'message';
+  if (/^input:/.test(rest)) return 'input';
+  return 'other';
+}
+
+function emptyShapeBuckets() {
+  return { seed: 0, engine_round: 0, message: 0, input: 0, other: 0 };
+}
+
+function countShapes(runId, rows) {
+  const buckets = emptyShapeBuckets();
+  for (const row of rows) buckets[canonicalKeyShape(runId, row.dedup_key)] += 1;
+  return buckets;
+}
+
+/** 把 canonical 行拆成"可断言形状"：轮号序列 + 形状分桶 + 每轮的块类型 + meta 情况。 */
+function summarizeCanonical(rows, runId) {
   const per_round = rows.map(row => {
     let record = null;
     try { record = JSON.parse(row.record_json); } catch { record = null; }
@@ -333,7 +394,8 @@ function summarizeCanonical(rows) {
     return {
       round_no: Number(row.round_no),
       dedup_key: String(row.dedup_key),
-      is_seed: String(row.dedup_key).endsWith(':seed'),
+      shape: canonicalKeyShape(runId, row.dedup_key),
+      is_seed: canonicalKeyShape(runId, row.dedup_key) === 'seed',
       has_tool_block: blocks.includes('tool_use') || blocks.includes('tool_result'),
       block_types: blocks,
       tool_use: content2uses(record),
@@ -348,10 +410,21 @@ function summarizeCanonical(rows) {
   // 所以等价比对只取非种子轮；种子轮另存一份供报告用。
   const nonSeed = per_round.filter(row => !row.is_seed);
   const seed = per_round.filter(row => row.is_seed);
+  const shape_buckets_by_round = {};
+  for (const row of per_round) {
+    const bucket = shape_buckets_by_round[row.round_no] ?? emptyShapeBuckets();
+    bucket[row.shape] += 1;
+    shape_buckets_by_round[row.round_no] = bucket;
+  }
+  const round_nos = per_round.map(row => row.round_no);
   return {
     total: rows.length,
-    round_nos: per_round.map(row => row.round_no),
+    round_nos,
+    unique_round_nos: [...new Set(round_nos)].sort((a, b) => a - b),
+    non_seed_round_nos: nonSeed.map(row => row.round_no),
     dedup_keys: per_round.map(row => row.dedup_key),
+    shape_buckets: countShapes(runId, per_round),
+    shape_buckets_by_round,
     seed_rows: per_round.filter(row => row.is_seed).length,
     rounds_with_tool_block: per_round.filter(row => row.has_tool_block).length,
     messages_with_meta: per_round.reduce((sum, row) => sum + row.messages_with_meta, 0),
@@ -417,6 +490,37 @@ async function sendRound({ token, expert_id, content, label }) {
   assert.equal(typeof request_id, 'string', `${label} 没拿到 request_id`);
   log(`${label} request_id=${request_id}`);
   return request_id;
+}
+
+/** chat_requests 的终态（stream.controller.js:584 的 terminalStatuses 同一集合）。 */
+const TERMINAL_REQUEST_STATUSES = ['completed', 'failed', 'stopped', 'timeout'];
+
+/**
+ * 等 `chat_requests.status` 真的进入终态（#1279 竞态裁定）。
+ *
+ * **为什么必须轮询而不是 sleep**：`stopRequest` 先广播 SSE `stopped`
+ * （server/controllers/stream.controller.js:1199），再 `await _updateRequestRecord(...)`（:1201）；
+ * 而这条 DB 写要排在引擎正在跑的写事务之后——实测同一份数据连跑 16 次，
+ * 「收到 SSE stopped 时 DB 仍为 running」出现 6/16，等待时长 10.7–15.0s（未竞态时 3–29ms）。
+ * 所以这是**真实的跨事务竞态**，修法是等状态跃迁（带上限），不是盲加 sleep。
+ */
+async function waitForRequestStatus(requestId, statuses, {
+  label, timeoutMs = REQUEST_TIMEOUT_MS, intervalMs = 250,
+} = {}) {
+  const startedAt = Date.now();
+  let last = null;
+  let polls = 0;
+  while (Date.now() - startedAt < timeoutMs) {
+    const row = (await sql('SELECT status FROM chat_requests WHERE request_id = :id', { id: requestId }))[0];
+    last = row?.status ?? null;
+    polls += 1;
+    if (last !== null && statuses.includes(last)) {
+      return { status: last, waited_ms: Date.now() - startedAt, polls, timed_out: false };
+    }
+    await sleep(intervalMs);
+  }
+  log(`${label} 等状态超时：request_id=${requestId} 最后状态=${last}（等了 ${Date.now() - startedAt}ms / ${polls} 次）`);
+  return { status: last, waited_ms: Date.now() - startedAt, polls, timed_out: true };
 }
 
 /** 把 SSE 读到本 request 的终态事件（complete/error/stopped）才返回。 */
@@ -553,16 +657,24 @@ async function collect(token, expert) {
 /**
  * 公开面回读：GET /api/chat/requests/:id + POST /api/messages/query（消息面主入口，
  * 走 message.controller.getMessageListAttributes + mergeToolCallRows + formatMessage）。
- * 另存一份 GET /api/topics/:topicId/messages 的状态码（现网该入口回 500，见报告"发现"）。
+ * 另存一份 GET /api/topics/:topicId/messages 的状态码（现网该入口回 404，见报告"发现"）。
+ *
+ * #1279：查询姿势必须是**生产姿势**（`created_at ASC + id ASC + window=latest`，与
+ * frontend/src/api/services.ts:97-105 的 getMessagesByExpert 逐字一致）。
+ * 旧姿势是 `created_at DESC + window=latest`：message.controller.js:196-200 的 latest 窗口
+ * **不看排序方向**，一律取排序后数组的**末尾页**，于是 DESC 下 page 1 = 最旧 100 行，
+ * 本轮新写入的行永远不在这一页里（实测：DESC+latest 命中 0 行，ASC+latest 命中 4 行）。
+ * 断言本身一个字未改，只把查询姿势对齐生产。
  */
 async function readPublicApi(token, requestId, { expert_id, topic_id }) {
   const status = await requestJson(`/api/chat/requests/${requestId}`, { token });
+  const sort = [{ field: 'created_at', order: 'asc' }, { field: 'id', order: 'asc' }];
   const query = await requestJson('/api/messages/query', {
     method: 'POST',
     token,
     body: {
       filter: { expert_id },
-      sort: [{ field: 'created_at', order: 'desc' }],
+      sort,
       pagination: { page: 1, size: 100, window: 'latest' },
     },
   });
@@ -579,6 +691,8 @@ async function readPublicApi(token, requestId, { expert_id, topic_id }) {
     request_status_body: status.text,
     messages_query_http: query.status,
     messages_query_body: query.text.slice(0, 400000),
+    messages_query_sort: sort,
+    messages_query_pagination: payload.pagination ?? null,
     messages_query_rows: rows.map(row => ({
       request_id: row.request_id ?? null,
       role: row.role,
@@ -633,10 +747,16 @@ async function collectS3(requestId, requestRow, marker) {
     first_dedup_key: first.dedupKey,
     rows_at_round: afterAtRound.length,
     dedup_keys_at_round: afterAtRound.map(row => row.dedup_key),
-    engine_keys_at_round: afterAtRound.filter(row => row.dedup_key.includes(':engine:round:')).length,
-    input_keys_at_round: afterAtRound.filter(row => row.dedup_key.includes(':input:')).length,
+    // #1279：按 recordKey 形状分桶（不再只数总行数）——INSERT IGNORE 吞掉用户行时
+    // input 桶归 0，而引擎行仍在，桶形状当场对不上。
+    buckets_at_round: countShapes(requestId, afterAtRound),
+    engine_keys_at_round: afterAtRound.filter(row => canonicalKeyShape(requestId, row.dedup_key) === 'engine_round').length,
+    input_keys_at_round: afterAtRound.filter(row => canonicalKeyShape(requestId, row.dedup_key) === 'input').length,
     second_written: second.written,
     rows_at_round_after_second: after2.per_round.filter(row => row.round_no === reusedRound).length,
+    buckets_at_round_after_second: countShapes(
+      requestId, after2.per_round.filter(row => row.round_no === reusedRound),
+    ),
     canonical_total_after: after.total,
   };
   log('S3 完成', JSON.stringify(out));
@@ -680,17 +800,21 @@ async function collectS4({ token, expert, sse, events }) {
     events, request_id: stopRequestId, label: 'S4STOP', allow: ['stopped', 'complete', 'error'],
   });
 
-  const stoppedRow = (await sql('SELECT status FROM chat_requests WHERE request_id = :id', { id: stopRequestId }))[0];
+  // #1279：SSE 终态 ≠ DB 终态。stopRequest 先广播 `stopped`（stream.controller.js:1199）
+  // 再 `await _updateRequestRecord(...)`（:1201）；这条 DB 写要排在引擎正在跑的写事务之后
+  // （实测 3–15s），所以必须**按状态轮询**等它真的落到终态，不能靠固定 sleep 猜时长。
+  const stopStatus = await waitForRequestStatus(stopRequestId, TERMINAL_REQUEST_STATUSES, { label: 'S4STOP' });
   const retry = await requestJson(`/api/chat/requests/${stopRequestId}/retry`, {
     method: 'POST', token,
   });
   const resumeRequestId = retry.data?.data?.request_id ?? null;
+  let resumeStatus = null;
   if (typeof resumeRequestId === 'string' && resumeRequestId !== stopRequestId) {
     await waitForTerminal({
       events, request_id: resumeRequestId, label: 'S4RESUME', allow: ['complete', 'error', 'stopped'],
     });
+    resumeStatus = await waitForRequestStatus(resumeRequestId, TERMINAL_REQUEST_STATUSES, { label: 'S4RESUME' });
   }
-  await sleep(1500); // 等落库收尾（appendRound 与请求状态更新不同事务）
 
   const allIds = [...roundIds, stopRequestId, resumeRequestId].filter(Boolean);
   const perRequest = [];
@@ -698,12 +822,14 @@ async function collectS4({ token, expert, sse, events }) {
     const canonical = await readCanonical(requestId);
     const messages = await readMessages(requestId);
     const toolCalls = await readToolCalls(requestId);
-    const sorted = [...canonical.round_nos].sort((a, b) => a - b);
+    const statusRow = (await sql('SELECT status FROM chat_requests WHERE request_id = :id', { id: requestId }))[0];
     perRequest.push({
       request_id: requestId,
+      status: statusRow?.status ?? null,
       round_nos: canonical.round_nos,
-      sorted_round_nos: sorted,
-      duplicates: sorted.length - new Set(sorted).size,
+      unique_round_nos: canonical.unique_round_nos,
+      shape_buckets: canonical.shape_buckets,
+      shape_buckets_by_round: canonical.shape_buckets_by_round,
       canonical_total: canonical.total,
       messages_total: messages.total,
       tool_rows: toolCalls.total,
@@ -719,19 +845,27 @@ async function collectS4({ token, expert, sse, events }) {
     stop_http: stopResult?.status ?? null,
     stop_body: stopResult?.text ?? null,
     stop_terminal_event: stopRound.terminal_event,
-    stopped_status: stoppedRow?.status ?? null,
+    stopped_status: stopStatus.status,
+    stopped_status_waited_ms: stopStatus.waited_ms,
+    stopped_status_polls: stopStatus.polls,
+    stopped_status_timed_out: stopStatus.timed_out,
     retry_http: retry.status,
     retry_body: retry.text,
     resume_request_id: resumeRequestId,
+    resume_status: resumeStatus?.status ?? null,
+    resume_status_waited_ms: resumeStatus?.waited_ms ?? null,
     per_request: perRequest,
     orphan_tool_rows_total: await orphanToolRows(allIds),
   };
   log('S4 完成', JSON.stringify({
     per_request: perRequest.map(row => ({
-      id: row.request_id, rounds: row.round_nos, dups: row.duplicates, orphan: row.orphan_tool_rows,
+      id: row.request_id, status: row.status, rounds: row.unique_round_nos,
+      buckets: row.shape_buckets, orphan: row.orphan_tool_rows,
     })),
     stopped_status: out.stopped_status,
+    stopped_status_waited_ms: out.stopped_status_waited_ms,
     resume: out.resume_request_id,
+    resume_status: out.resume_status,
   }));
   return out;
 }
@@ -793,17 +927,27 @@ function verify(facts, exp = defaultExpectations()) {
     assert.equal(s1.messages.tool_role_rows, exp.s1.toolRoleRows,
       `role='tool' 行数=${s1.messages.tool_role_rows}，期望 ${exp.s1.toolRoleRows}`);
   });
-  check('s1.canonical-row-count', () => {
-    assert.equal(s1.canonical.total, exp.s1.canonicalRowsExact,
-      `canonical 行数=${s1.canonical.total}，期望 ${exp.s1.canonicalRowsExact}（轮号=${JSON.stringify(s1.canonical.round_nos)}）`);
+  check('s1.canonical-row-buckets', () => {
+    // #1279：一轮多行是既定形状（0.23.0 起），按 recordKey 形状分桶逐类断言；
+    // 总数由桶之和导出，不再维护一个和现实脱节的裸数字。
+    assert.deepEqual(s1.canonical.shape_buckets, exp.s1.canonicalShapeBuckets,
+      `canonical 行形状分桶=${JSON.stringify(s1.canonical.shape_buckets)}，期望 ${JSON.stringify(exp.s1.canonicalShapeBuckets)}` +
+      `（轮号=${JSON.stringify(s1.canonical.round_nos)}，dedup_key=${JSON.stringify(s1.canonical.dedup_keys)}）`);
+    assert.equal(s1.canonical.total,
+      Object.values(exp.s1.canonicalShapeBuckets).reduce((sum, count) => sum + count, 0),
+      `canonical 行数=${s1.canonical.total}，期望=形状桶之和`);
   });
   check('s1.canonical-seed-rows', () => {
     assert.equal(s1.canonical.seed_rows, exp.s1.canonicalSeedRows,
       `seed 行数=${s1.canonical.seed_rows}，期望 ${exp.s1.canonicalSeedRows}`);
   });
   check('s1.canonical-round-sequence', () => {
-    assert.deepEqual(s1.canonical.round_nos, exp.s1.canonicalRoundNos,
-      `轮号序列=${JSON.stringify(s1.canonical.round_nos)}，期望 ${JSON.stringify(exp.s1.canonicalRoundNos)}`);
+    // 去重后的轮号：seed 独占 round 0，消息行与轮载体同属 round 1（同轮多行）。
+    assert.deepEqual(s1.canonical.unique_round_nos, exp.s1.canonicalRounds,
+      `去重轮号=${JSON.stringify(s1.canonical.unique_round_nos)}，期望 ${JSON.stringify(exp.s1.canonicalRounds)}` +
+      `（逐行轮号=${JSON.stringify(s1.canonical.round_nos)}）`);
+    assert.ok(s1.canonical.non_seed_round_nos.every(round => round === exp.s1.canonicalRounds.at(-1)),
+      `非种子行跨越了多个轮号：${JSON.stringify(s1.canonical.non_seed_round_nos)}`);
   });
   check('s1.meta-json', () => {
     if (exp.s1.metaColumnMustExist) {
@@ -847,6 +991,17 @@ function verify(facts, exp = defaultExpectations()) {
     assert.ok(s2.canonical.total >= exp.s2.canonicalRowsMin,
       `canonical 行数=${s2.canonical.total} < ${exp.s2.canonicalRowsMin}`);
   });
+  check('s2.canonical-shape-buckets', () => {
+    // 工具轮与收尾轮各有一条轮载体；message 桶是下限（模型多调一次工具就多行）
+    for (const [shape, min] of Object.entries(exp.s2.canonicalShapeBucketsMin)) {
+      assert.ok((s2.canonical.shape_buckets[shape] ?? 0) >= min,
+        `${shape} 桶=${s2.canonical.shape_buckets[shape] ?? 0} < ${min}（全桶=${JSON.stringify(s2.canonical.shape_buckets)}）`);
+    }
+    for (const [shape, exact] of Object.entries(exp.s2.canonicalShapeBucketsExact)) {
+      assert.equal(s2.canonical.shape_buckets[shape] ?? 0, exact,
+        `${shape} 桶=${s2.canonical.shape_buckets[shape] ?? 0}，期望 ${exact}（全桶=${JSON.stringify(s2.canonical.shape_buckets)}）`);
+    }
+  });
   check('s2.canonical-tool-subblock', () => {
     assert.ok(s2.canonical.rounds_with_tool_block >= exp.s2.canonicalRoundsWithToolBlockMin,
       `含 tool 子块的 canonical 轮数=${s2.canonical.rounds_with_tool_block} < ${exp.s2.canonicalRoundsWithToolBlockMin}`);
@@ -870,13 +1025,19 @@ function verify(facts, exp = defaultExpectations()) {
   check('s2.view-equals-canonical', () => {
     const viewRows = s2.api.messages_query_rows.filter(row => row.request_id === s2.request_id);
     assert.ok(viewRows.length >= exp.s2.viewRequireMinRows,
-      `公开视图（POST /api/messages/query）里本轮的消息行数=${viewRows.length} < ${exp.s2.viewRequireMinRows}`);
+      `公开视图（POST /api/messages/query，sort=${JSON.stringify(s2.api.messages_query_sort)}）` +
+      `里本轮的消息行数=${viewRows.length} < ${exp.s2.viewRequireMinRows}`);
     for (const row of s2.tool_calls.rows) {
       assert.ok(exp.s2.expectToolNames.includes(row.name),
         `出现了期望之外的工具名 ${row.name}，期望集合=${JSON.stringify(exp.s2.expectToolNames)}`);
     }
     const viewHashes = new Set(viewRows.map(row => row.content_hash));
     const dbHashes = new Set(s2.messages.rows.map(row => row.content_hash));
+    // messages 表 → 公开视图：本轮的每一条消息行（含用户行）都必须出现在视图里
+    for (const row of s2.messages.rows) {
+      assert.ok(viewHashes.has(row.content_hash),
+        `messages 表行（role=${row.role} len=${row.content_len} hash=${row.content_hash}）在公开视图里找不到`);
+    }
     // 非种子轮的每条文本消息：canonical → messages 投影 → 公开视图，三处内容逐字一致
     for (const message of s2.canonical.text_messages) {
       assert.ok(dbHashes.has(message.content_hash),
@@ -892,10 +1053,13 @@ function verify(facts, exp = defaultExpectations()) {
   });
 
   // ---- S3
-  check('s3.two-rows-same-round', () => {
-    assert.equal(s3.rows_at_round, exp.s3.rowsAtReusedRound,
-      `round_no=${s3.reused_round} 上 canonical 行数=${s3.rows_at_round}，期望 ${exp.s3.rowsAtReusedRound}` +
-      `（=1 说明 INSERT IGNORE 把 appendUserTurn 的用户行吞了）dedup_key=${JSON.stringify(s3.dedup_keys_at_round)}`);
+  check('s3.round-shape-buckets', () => {
+    // 头号风险：INSERT IGNORE 若吞了 appendUserTurn 的用户行 → input 桶归 0。
+    assert.deepEqual(s3.buckets_at_round, exp.s3.bucketsAtReusedRound,
+      `round_no=${s3.reused_round} 上形状分桶=${JSON.stringify(s3.buckets_at_round)}，` +
+      `期望 ${JSON.stringify(exp.s3.bucketsAtReusedRound)}（dedup_key=${JSON.stringify(s3.dedup_keys_at_round)}）`);
+    assert.equal(s3.rows_at_round, Object.values(exp.s3.bucketsAtReusedRound).reduce((sum, n) => sum + n, 0),
+      `round_no=${s3.reused_round} 上 canonical 行数=${s3.rows_at_round}，期望=形状桶之和`);
   });
   check('s3.distinct-dedup-keys', () => {
     assert.equal(new Set(s3.dedup_keys_at_round).size, exp.s3.distinctDedupKeys,
@@ -911,8 +1075,9 @@ function verify(facts, exp = defaultExpectations()) {
     assert.equal(s3.first_written, true, `首次 appendUserTurn written=${s3.first_written}，期望 true`);
     assert.equal(s3.second_written, exp.s3.secondCallWritten,
       `同 messageId 重放 written=${s3.second_written}，期望 ${exp.s3.secondCallWritten}`);
-    assert.equal(s3.rows_at_round_after_second, exp.s3.secondCallRows,
-      `重放后同轮行数=${s3.rows_at_round_after_second}，期望 ${exp.s3.secondCallRows}`);
+    assert.deepEqual(s3.buckets_at_round_after_second, exp.s3.bucketsAtReusedRound,
+      `重放后同轮形状分桶=${JSON.stringify(s3.buckets_at_round_after_second)}，` +
+      `期望 ${JSON.stringify(exp.s3.bucketsAtReusedRound)}（重放不得多出行）`);
   });
 
   // ---- S4
@@ -924,13 +1089,24 @@ function verify(facts, exp = defaultExpectations()) {
   });
   check('s4.round-nos-monotonic', () => {
     for (const row of s4.per_request) {
-      const sorted = [...row.sorted_round_nos];
-      assert.equal(sorted.length - new Set(sorted).size, exp.s4.duplicateRoundTolerance,
-        `${row.request_id} 轮号重复数=${sorted.length - new Set(sorted).size}，期望 ${exp.s4.duplicateRoundTolerance}` +
-        `（轮号=${JSON.stringify(row.sorted_round_nos)}）`);
-      for (let index = 0; index < sorted.length; index += 1) {
-        assert.equal(sorted[index], exp.s4.roundStart + index,
-          `${row.request_id} 轮号不连续：${JSON.stringify(sorted)}（第 ${index} 位应为 ${exp.s4.roundStart + index}）`);
+      const unique = row.unique_round_nos;
+      for (let index = 0; index < unique.length; index += 1) {
+        assert.equal(unique[index], exp.s4.roundStart + index,
+          `${row.request_id} 去重轮号不连续：${JSON.stringify(unique)}（第 ${index} 位应为 ${exp.s4.roundStart + index}）` +
+          `（逐行轮号=${JSON.stringify(row.round_nos)}）`);
+      }
+      assert.equal(row.shape_buckets.other, exp.s4.otherShapesExact,
+        `${row.request_id} 出现未知 recordKey 形状 ${row.shape_buckets.other} 行（${JSON.stringify(row.shape_buckets)}）`);
+      // 被 stop 打断的请求允许"半轮/无轮"（契约里的崩溃形状），只对完成的请求要完整轮形状
+      if (row.status !== 'completed') continue;
+      assert.ok(unique.length >= 2, `${row.request_id} 完成的请求只有 ${unique.length} 个轮号：${JSON.stringify(unique)}`);
+      for (const [round, buckets] of Object.entries(row.shape_buckets_by_round)) {
+        assert.equal((buckets.seed ?? 0) + (buckets.engine_round ?? 0), exp.s4.carriersPerRound,
+          `${row.request_id} round=${round} 载体行数=${(buckets.seed ?? 0) + (buckets.engine_round ?? 0)}，` +
+          `期望 ${exp.s4.carriersPerRound}（形状=${JSON.stringify(buckets)}）`);
+        if (Number(round) === 0) continue; // round 0 的正文在 seed 行里（整轮跳过拆行）
+        assert.ok((buckets.message ?? 0) >= exp.s4.messageRowsPerRoundMin,
+          `${row.request_id} round=${round} 消息行数=${buckets.message ?? 0} < ${exp.s4.messageRowsPerRoundMin}`);
       }
     }
   });
@@ -939,6 +1115,8 @@ function verify(facts, exp = defaultExpectations()) {
       `本会话孤儿 tool 行=${s4.orphan_tool_rows_total}，期望 ${exp.s4.orphanToolRowsExact}`);
   });
   check('s4.stop-produced-stopped', () => {
+    assert.equal(s4.stopped_status_timed_out, false,
+      `等 stop 终态超时（等了 ${s4.stopped_status_waited_ms}ms / ${s4.stopped_status_polls} 次），最后状态=${s4.stopped_status}`);
     assert.equal(s4.stopped_status, exp.s4.resumeOriginalStatus,
       `stop 后状态=${s4.stopped_status}，期望 ${exp.s4.resumeOriginalStatus}`);
   });
@@ -965,9 +1143,9 @@ const TAMPERS = [
   { id: 'T01', target: 's1.userRows', to: 0, desc: 'S1 user 行数期望 1→0' },
   { id: 'T02', target: 's1.assistantRowsMin', to: 99, desc: 'S1 assistant 行数下限 1→99' },
   { id: 'T03', target: 's1.toolRoleRows', to: 1, desc: 'S1 期望出现 1 条 role=tool 行（实际 0）' },
-  { id: 'T04', target: 's1.canonicalRowsExact', to: 1, desc: 'S1 canonical 期望行数 2→1（方案给的篡改例）' },
+  { id: 'T04', target: 's1.canonicalShapeBuckets.seed', to: 2, desc: 'S1 形状桶 seed 1→2（旧版是 canonicalRowsExact 2→1）' },
   { id: 'T05', target: 's1.canonicalSeedRows', to: 0, desc: 'S1 seed 行期望 1→0' },
-  { id: 'T06', target: 's1.canonicalRoundNos', to: [0, 2], desc: 'S1 轮号序列改成 [0,2]' },
+  { id: 'T06', target: 's1.canonicalRounds', to: [0, 2], desc: 'S1 去重轮号改成 [0,2]' },
   { id: 'T07', target: 's1.metaJsonNonNullMax', to: -1, desc: 'S1 把"普通轮 meta_json 预期 NULL"推到不可能（0→-1）' },
   { id: 'T29', target: 's1.metaJsonParity', to: false, desc: 'S1 把 parity 翻成"两边必须不等"（真数据 0==0 → 必须变红）' },
   { id: 'T08', target: 's1.publicForbiddenKeys', to: ['meta_json', 'content'], desc: 'S1 公开面禁字段加上确实存在的 content' },
@@ -978,12 +1156,16 @@ const TAMPERS = [
   { id: 'T13', target: 's2.expectToolNames', to: ['fs__list_files'], desc: 'S2 期望工具名换成实际没出现的 fs__list_files' },
   { id: 'T14', target: 's2.viewRequireMinRows', to: 99, desc: 'S2 公开视图行数下限 1→99' },
   { id: 'T28', target: 's2.canonicalTextMessagesMin', to: 99, desc: 'S2 非种子轮文本消息下限 1→99（防"空集也算等价"）' },
-  { id: 'T15', target: 's3.rowsAtReusedRound', to: 1, desc: 'S3 同轮期望 2 行→1 行（头号风险的篡改例）' },
+  { id: 'T30', target: 's2.canonicalShapeBucketsMin.message', to: 99, desc: 'S2 message 形状桶下限 3→99' },
+  { id: 'T31', target: 's2.canonicalShapeBucketsExact.other', to: 1, desc: 'S2 期望出现 1 行未知 recordKey 形状（实际 0）' },
+  { id: 'T15', target: 's3.bucketsAtReusedRound.input', to: 0, desc: 'S3 同轮期望没有 :input: 行（模拟 INSERT IGNORE 吞用户行）' },
   { id: 'T16', target: 's3.distinctDedupKeys', to: 1, desc: 'S3 期望 dedup_key 只有 1 个' },
   { id: 'T17', target: 's3.inputKeyNamespaces', to: 0, desc: 'S3 期望 :input: 命名空间行数 1→0' },
   { id: 'T18', target: 's3.secondCallWritten', to: true, desc: 'S3 期望重放 written=true（实际幂等 false）' },
-  { id: 'T19', target: 's3.secondCallRows', to: 3, desc: 'S3 期望重放后同轮 3 行' },
-  { id: 'T20', target: 's4.duplicateRoundTolerance', to: 3, desc: 'S4 允许重复轮号 0→3（方案给的篡改例）' },
+  { id: 'T19', target: 's3.bucketsAtReusedRound.message', to: 2, desc: 'S3 期望同轮有 2 条消息行（实际 1）' },
+  { id: 'T20', target: 's4.carriersPerRound', to: 2, desc: 'S4 每个轮号允许 2 个载体行（实际 1）' },
+  { id: 'T32', target: 's4.messageRowsPerRoundMin', to: 99, desc: 'S4 每轮消息行下限 1→99' },
+  { id: 'T33', target: 's4.otherShapesExact', to: 9, desc: 'S4 期望 9 行未知 recordKey 形状（实际 0）' },
   { id: 'T21', target: 's4.roundStart', to: 1, desc: 'S4 轮号起始 0→1（要求从 1 开始连续）' },
   { id: 'T22', target: 's4.orphanToolRowsExact', to: 9, desc: 'S4 孤儿 tool 行期望 0→9' },
   { id: 'T23', target: 's4.resumeOriginalStatus', to: 'completed', desc: 'S4 stop 后状态期望改成 completed' },
