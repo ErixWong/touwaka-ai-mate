@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 import ToolManager from '../lib/tool-manager.js';
-import CapabilityRegistry from '../lib/capability-registry.js';
+import CapabilityRegistry, { CAPABILITY_KINDS } from '../lib/capability-registry.js';
 import { __testing as mcpClientTesting } from '../data/skills/mcp-client/index.js';
 
 const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -32,6 +32,10 @@ function createToolManager(residentSkillManager) {
     capabilityRegistry: new CapabilityRegistry(),
     mcpToolRegistry: new Map(),
     getMcpToolDefinitions: ToolManager.prototype.getMcpToolDefinitions,
+    getToolInfo: ToolManager.prototype.getToolInfo,
+    getCapabilityPermissionDenied: ToolManager.prototype.getCapabilityPermissionDenied,
+    getUserRole: ToolManager.prototype.getUserRole,
+    executeMcpTool: ToolManager.prototype.executeMcpTool,
   };
 }
 
@@ -81,6 +85,32 @@ test('#1287：真没有用户凭证时不发那一发注定 401 的请求（懒�
 
   assert.deepEqual(definitions, []);
   assert.equal(calls.length, 0, '无凭证时不应再向驻留进程发起 list_tools（否则空 Bearer ⇒ 401）');
+});
+
+test('#1287：真调 MCP 工具（call_tool）时同样要带凭证，否则工具列得出来却调不动', async () => {
+  const { calls, manager } = captureResident();
+  const toolManager = createToolManager(manager);
+  toolManager.mcpToolRegistry.set('mcp_mineru_list_tasks', {
+    serverName: 'mineru',
+    toolName: 'list_tasks',
+  });
+  toolManager.capabilityRegistry.register({
+    id: 'mcp_mineru_list_tasks',
+    kind: CAPABILITY_KINDS.MCP,
+    definition: { type: 'function', function: { name: 'mcp_mineru_list_tasks' } },
+  });
+
+  const result = await toolManager.executeMcpTool(
+    'mcp_mineru_list_tasks',
+    { limit: 1 },
+    { user_id: 'user-1', session: { id: 'user-1', accessToken: 'jwt-from-session' } },
+    'MCP/mineru/list_tasks',
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].params.action, 'call_tool');
+  assert.equal(calls[0].userContext.accessToken, 'jwt-from-session');
 });
 
 test('#1287：技能侧无凭证时不请求 /internal/mcp/config，而是抛可区分的 NO_CREDENTIAL', async () => {

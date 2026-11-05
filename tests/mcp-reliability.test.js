@@ -80,7 +80,12 @@ test('ToolManager sends snake_case params when invoking MCP tools', async () => 
     const result = await toolManager.executeMcpTool(
       'mcp_alpha_echo',
       { text: 'hello' },
-      { userId: 'user-1', taskContext: { absolute_workspace_path: '/data/work/user-1/task-1' } },
+      {
+        userId: 'user-1',
+        taskContext: { absolute_workspace_path: '/data/work/user-1/task-1' },
+        // Issue #1287：call_tool 也要过 /internal/mcp/config，凭证（chat 路径只在 session 里）必须透传
+        session: { id: 'user-1', accessToken: 'session-access-token' },
+      },
       'MCP/alpha/echo'
     );
 
@@ -96,6 +101,7 @@ test('ToolManager sends snake_case params when invoking MCP tools', async () => 
       },
       userContext: {
         userId: 'user-1',
+        accessToken: 'session-access-token',
         workingDirectory: '/data/work/user-1/task-1',
       },
     });
