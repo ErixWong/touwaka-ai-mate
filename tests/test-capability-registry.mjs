@@ -47,7 +47,7 @@ async function testResidentInjectionDoesNotReadGlobal() {
     const manager = new ToolManager(null, 'capability-registry-test', {
       residentSkillManager: injected,
     });
-    await manager.getMcpToolDefinitions({ userId: 'user-1' });
+    await manager.getMcpToolDefinitions({ userId: 'user-1', accessToken: 'test-token' });
     assert.equal(calls.length, 1);
     assert.equal(calls[0][0], 'mcp-client');
   } finally {

@@ -103,6 +103,17 @@ function sendResponse(data) {
  */
 async function fetchConfig(userContext = {}) {
   const accessToken = userContext.accessToken || process.env.INTERNAL_TOKEN || '';
+
+  // Issue #1287：`/internal/mcp/config` 挂在用户 JWT 中间件下（server/index.js:714），
+  // 空 Bearer 打过去只会换回 401，把「本次调用没有用户上下文」伪装成「鉴权失败」。
+  // 干脆不发这一发，并给出可区分的错误码 + 日志（不静默）。
+  if (!accessToken) {
+    const reason = 'NO_CREDENTIAL: 无用户凭证（userContext.accessToken 与 INTERNAL_TOKEN 均为空），不请求 /internal/mcp/config';
+    logError(reason);
+    const err = new Error(reason);
+    err.code = 'NO_CREDENTIAL';
+    throw err;
+  }
   
   try {
     const response = await fetch(`${API_BASE}/internal/mcp/config`, {
@@ -755,7 +766,9 @@ async function processCommand(command, params, user) {
  */
 async function processAction(action, params, userId, accessToken, workingDirectory = '') {
   // 不需要 fetchConfig 的 action
-  if (action === 'shutdown') {
+  // Issue #1287：宿主 ResidentProcess.stop() 发的是 `exit`（lib/resident-skill-manager.js:181），
+  // 关闭链路本来就没有用户上下文，拉配置只会换来一次空 Bearer 401。
+  if (action === 'shutdown' || action === 'exit') {
     for (const [key] of connections) {
       await disconnectServer(key);
     }
