@@ -317,7 +317,9 @@ function parseTapDialect(lines) {
     }
     const notOk = /^not ok \d+ - (.*)$/.exec(line);
     if (notOk) {
-      current = { name: notOk[1], file: null, error: null };
+      // TAP 会把名字开头的 `#` 转义成 `\#`（否则会被当成注释行）：还原一下，
+      // 不然同一批失败在 TAP 与 spec 两个版本下名字不一样，逐名对账对不上。
+      current = { name: notOk[1].replace(/\\#/g, '#'), file: null, error: null };
       failures.push(current);
       continue;
     }
@@ -660,7 +662,15 @@ async function main(argv) {
 
   console.error(`[test:all] 结果：失败（${verdict.reasons.length} 条判定理由）：`);
   for (const reason of verdict.reasons) console.error(`  ✗ ${reason}`);
-  const untraced = filesWithoutTrace(combined, targets);
+  // 只在「计数本身不可信」时才点名文件：普通用例失败时逐条列 78 个「无痕迹文件」
+  // 只是噪音（聚合 reporter 本来就不打全绿文件名），失败明细已经在上面。
+  const countingBroken =
+    !parsed.sawSummary ||
+    parsed.missingCounters.length > 0 ||
+    summary.tests === null ||
+    summary.tests === 0 ||
+    summary.tests < targets.length;
+  const untraced = countingBroken ? filesWithoutTrace(combined, targets) : [];
   if (untraced.length > 0) {
     console.error(`[test:all] 以下 ${untraced.length} 个实跑文件在输出里查不到任何记录（无法确认它们报过数）：`);
     for (const file of untraced.slice(0, 20)) console.error(`  ? ${file}`);
