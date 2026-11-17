@@ -334,6 +334,31 @@ export async function listAnchoredSections(standardId: string): Promise<Anchored
   )
 }
 
+/**
+ * 副本正文里的一张图。
+ *
+ * `url` 已是可直接放进 `<img src>` 的绝对地址（private 附件带 token，与知识库查看器同一条通路）；
+ * 签发失败时为 null，前端就保留原样不猜测。
+ */
+export interface StandardImageItem {
+  filename: string | null
+  markdown_path: string | null
+  attachment_id: string
+  media_type: string | null
+  alt_text: string | null
+  file_size: number | null
+  sort_order: number | null
+  referenced_in_markdown: number | null
+  url: string | null
+}
+
+/** 获取正文图片的路径->可访问 URL 映射数据 */
+export async function listStandardImages(standardId: string): Promise<{ images: StandardImageItem[] }> {
+  return apiRequest<{ images: StandardImageItem[] }>(
+    apiClient.get(`${PREFIX}/standards/${standardId}/images`),
+  )
+}
+
 /** 获取引用锚点列表 */
 export async function listRefAnchors(
   standardId: string,

@@ -289,7 +289,7 @@ import { Pointer } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { useMarkdownFormatter } from '@/composables/useMarkdownFormatter'
 import { renderAnchoredText } from '../utils/anchor-render'
-import { getReferencedBy } from '../api/standard-mgr'
+import { getReferencedBy, listStandardImages } from '../api/standard-mgr'
 import type {
  StandardItem,
  AnchoredSection,
@@ -556,13 +556,85 @@ function handleSaveMetadata() {
 
 const markdownFormatter = useMarkdownFormatter()
 
+// ---------------------------------------------------------------------------
+// 正文里的图片显示
+//
+// 副本正文存的是 OCR 产物的相对路径（`imgs/x.jpg` / `images/x.jpg`）：
+//   · 浏览器会拿它去请求 SPA 路由下的相对地址（实测 404）；
+//   · 附件 access_level=private，`/attach/public/:id` 直接 403，
+//     `/api/attachments/:id/content` 要 Bearer 头而 `<img>` 带不上；
+//   · 可用通路只有 `/attach/t/<token>/<attachment_id>`（与知识库查看器同一条）。
+// 所以拿后端给的路径映射把 src 换成带 token 的绝对 URL；换不到就原样留着，不自己造 URL。
+// 图能不能显示不该影响正文与锚点阅读，所以加载失败只记警告。
+// ---------------------------------------------------------------------------
+const imageUrlMap = ref<Map<string, string>>(new Map())
+
+async function loadImageUrlMap(standardId: string | null) {
+  imageUrlMap.value = new Map()
+  if (!standardId) return
+  try {
+    const { images } = await listStandardImages(standardId)
+    const map = new Map<string, string>()
+    for (const item of images) {
+      if (!item.url) continue
+      const candidates = [item.markdown_path, item.filename]
+        .filter(Boolean)
+        .map(value => String(value).replace(/^\.\//, '').trim())
+      for (const key of candidates) {
+        if (!key) continue
+        const fileOnly = key.split('/').pop() || ''
+        // 两边前缀不完全统一（`imgs/` 与 `images/` 都有），所以多键位兼容
+        for (const variant of [
+          key, `./${key}`, fileOnly, `./${fileOnly}`,
+          `images/${fileOnly}`, `./images/${fileOnly}`,
+          `imgs/${fileOnly}`, `./imgs/${fileOnly}`,
+        ]) {
+          if (variant && !map.has(variant)) map.set(variant, item.url)
+        }
+      }
+    }
+    imageUrlMap.value = map
+  } catch (err) {
+    console.warn('[standard-mgr] 图片映射加载失败:', err)
+  }
+}
+
+/** 把正文里的 markdown 图片路径换成可访问 URL（没映射的保留原样） */
+function resolveImagePaths(text: string): string {
+  if (!text || imageUrlMap.value.size === 0) return text
+  return text.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (match, alt: string, raw: string) => {
+    const key = raw.replace(/^\.\//, '').trim()
+    const fileOnly = key.split('/').pop() || ''
+    const url = imageUrlMap.value.get(raw) || imageUrlMap.value.get(key) || imageUrlMap.value.get(fileOnly)
+    return url ? `![${alt}](${url})` : match
+  })
+}
+
+/**
+ * 随内容变化的渲染缓存键。
+ *
+ * `formatMessage(content, cacheKey)` 只按 cacheKey 命中缓存（useMarkdownFormatter.ts 里
+ * `effectiveCacheKey = cacheKey || content`），传固定的 `sm-<outline_id>` 会造成
+ * “内容变了但键没变”——图片映射是异步到达的，第一次渲染（映射还空）会把带相对路径的
+ HTML 缓存住，之后永远返回旧值（实测：同一文档先渲染的章节图不显示，后选的文档却正常）。
+ */
+function renderCacheKey(outlineId: string, html: string): string {
+  let h = 5381
+  for (let i = 0; i < html.length; i++) h = ((h << 5) + h + html.charCodeAt(i)) | 0
+  return `sm-${outlineId}:${html.length}:${(h >>> 0).toString(36)}`
+}
+
+watch(() => props.standard?.id, id => { void loadImageUrlMap(id ?? null) }, { immediate: true })
+
 /** 将副本数据与锚点状态结合，生成渲染后的 HTML */
 const sectionsWithAnchors = computed(() => {
   return props.sections.map(section => {
     // 使用 anchored_text（如有锚点副本）或 original_text（无锚点原文）
-    const text = section.has_anchored ? section.anchored_text : section.original_text
+    // 图片路径先换成可访问 URL（要在插锚点 span 之前做，那时 markdown 还是完整的）
+    const rawText = section.has_anchored ? section.anchored_text : section.original_text
+    const text = resolveImagePaths(rawText)
     const anchoredHtml = renderAnchoredText(text, props.anchorStatusMap)
-    const formatted = markdownFormatter.formatMessage(anchoredHtml, `sm-${section.outline_id}`)
+    const formatted = markdownFormatter.formatMessage(anchoredHtml, renderCacheKey(section.outline_id, anchoredHtml))
     return {
       ...section,
       renderedHtml: formatted,

@@ -21,12 +21,18 @@ import logger from '../../../lib/logger.js';
 import Utils from '../../../lib/utils.js';
 import jwt from 'jsonwebtoken';
 import DocAccessService from '../../../lib/doc-access-service.js';
+import AttachmentService from '../../../server/services/attachment.service.js';
 import { getSystemUserSession } from '../../../lib/system-account.js';
 import { Op } from 'sequelize';
 import { DEFAULT_PROMPT, ANCHOR_EXPERT_MAX_TOOL_ROUNDS } from '../../../scripts/setup-anchor-expert.mjs';
 
 // R18-2: 清洗总超时 15→30 分钟（长标准 + 读写交替策略下 15 分钟偏紧）
-const CLEAN_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟
+// 单篇清洗的绝对上限。计时从提交就开始走，所以上游拥塞时不能取太小；
+// 批量纳管（一次提交几十篇）在并发上限下会排队，30 分钟会把后面的一批误杀。
+const CLEAN_TIMEOUT_MS = (() => {
+  const raw = parseInt(process.env.STANDARD_CLEAN_TIMEOUT_MS, 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 30 * 60 * 1000;
+})();
 const TASK_TOKEN_EXPIRY = '4h'; // 后台任务 token 有效期（需长于清洗超时）
 const DOCUMENT_IN_FLIGHT_STATUSES = [
   'pending_ocr',
@@ -186,10 +192,16 @@ function _normalizeConfusableId(id) {
     .replace(/[1il]/g, '1');
 }
 
+// 正在本进程内跑清洗的标准 id。**必须是模块级**：handler 与 clock job 各自
+// `new StandardMgrService(db)`，挂在实例上会变成两套互不相干的集合，
+// watcher 就会把兄弟实例正在跑的清洗当孤儿回收掉（实测把 26 篇在跑的清洗打断）。
+const activeCleaningJobs = new Set();
+
 class StandardMgrService {
   constructor(db) {
     this.db = db;
     this.docAccessService = new DocAccessService(db);
+    this.attachmentService = new AttachmentService(db);
   }
 
   // ============================================================
@@ -1206,6 +1218,102 @@ class StandardMgrService {
    * @param {string} standardId
    * @returns {Promise<Array>}
    */
+  /**
+   * 取标准正文里可渲染的图片：markdown 相对路径 -> 附件访问 URL。
+   *
+   * 为什么需要这个端点（不是锦上添花，是缺了就图片全破）：
+   *   副本正文里的图是 OCR 产物的相对路径（`imgs/xxx.jpg`、`images/xxx.jpg`），
+   *   浏览器会把它们当 SPA 路由下的相对地址去请求（404）；而附件 `access_level=private`，
+   *   `/api/attachments/:id/content` 要 Bearer 头，`<img>` 又带不上。唯一可用通路是
+   *   `/attach/t/<token>/<attachment_id>`，token 由核心 AttachmentService 按
+   *   (source_tag, source_id) 签发 —— 与知识库查看器 `preview_url` 完全同一条通路。
+   *
+   * 版本对齐：图片必须跟“锚点所依据的那一版”一致（`standard.current_revision_id`
+   * 缺失时才回退文档最新版），否则会拿旧版图去配新正文。
+   *
+   * @returns {Promise<null|{forbidden:boolean, images:Array}>} null=标准不存在
+   */
+  async getStandardImages(standardId, userId) {
+    const AppStandard = this._appStandard();
+    const standard = await AppStandard.findByPk(standardId, {
+      attributes: ['id', 'document_id', 'current_revision_id'],
+      raw: true,
+    });
+    if (!standard || !standard.document_id) {
+      return standard ? { forbidden: false, images: [] } : null;
+    }
+
+    if (userId && !(await this.docAccessService.canRead(standard.document_id, userId))) {
+      return { forbidden: true, images: [] };
+    }
+
+    let revisionId = standard.current_revision_id;
+    if (!revisionId) {
+      const Document = this.db.getModel('document');
+      const doc = await Document.findByPk(standard.document_id, {
+        attributes: ['id', 'current_revision_id'],
+        raw: true,
+      });
+      revisionId = doc ? doc.current_revision_id : null;
+    }
+
+    // revision_id 为 NULL 的旧数据（无版本）不能丢掉，所以只在拿到版本时做限定
+    const params = [standard.document_id];
+    let revisionFilter = '';
+    if (revisionId) {
+      revisionFilter = 'AND (r.revision_id = ? OR r.revision_id IS NULL)';
+      params.push(revisionId);
+    }
+
+    const rows = await this.db.query(
+      `SELECT i.filename, i.markdown_path, i.attachment_id, i.media_type, i.sort_order,
+              i.alt_text, i.referenced_in_markdown,
+              a.access_level, a.source_tag, a.source_id, a.file_size
+         FROM doc_ocr_images i
+         JOIN doc_ocr_results r ON r.id = i.ocr_result_id
+         JOIN attachments a ON a.id = i.attachment_id
+        WHERE r.document_id = ?
+          ${revisionFilter}
+        ORDER BY i.sort_order, i.id`,
+      params,
+    );
+
+    // 同一文档的图共用一个 token（按 source 签发），所以整页只调一次，不要每张图一次
+    let tokenResult = null;
+    let tokenTried = false;
+    const images = [];
+    for (const row of rows) {
+      let url = null;
+      if (row.access_level === 'public') {
+        url = `/attach/public/${row.attachment_id}`;
+      } else if (userId) {
+        if (!tokenTried) {
+          tokenTried = true;
+          try {
+            tokenResult = await this.attachmentService.generateToken(row.source_tag, row.source_id, userId);
+          } catch (err) {
+            logger.warn(`[standard-mgr] 图片 token 签发失败（${row.source_tag}:${row.source_id}）: ${err.message}`);
+          }
+        }
+        if (tokenResult?.token) url = `/attach/t/${tokenResult.token}/${row.attachment_id}`;
+      }
+
+      images.push({
+        filename: row.filename,
+        markdown_path: row.markdown_path,
+        attachment_id: row.attachment_id,
+        media_type: row.media_type,
+        alt_text: row.alt_text,
+        file_size: row.file_size,
+        sort_order: row.sort_order,
+        referenced_in_markdown: row.referenced_in_markdown,
+        url,
+      });
+    }
+
+    return { forbidden: false, images };
+  }
+
   async listAnchoredSections(standardId) {
     const AppStandard = this._appStandard();
     const AnchoredSection = this._anchoredSection();
@@ -1898,6 +2006,65 @@ class StandardMgrService {
   }
 
   /**
+   * 进程内清洗作业登记表（standard_id 集合）。
+   *
+   * @returns {Set<string>}
+   */
+  _activeCleaningSet() {
+    return activeCleaningJobs;
+  }
+
+  /**
+   * 回收孤儿清洗：状态停在 processing 但本进程没有对应作业在跑。
+   *
+   * 清洗是进程内异步任务，服务重启/崩溃后没人会把状态推回 pending，
+   * 标准会永久卡在 processing（前端进度条一直转，而 onboard watcher
+   * 只捣 pending，不会重试）。
+   *
+   * 回收后置为 error 而不是 pending：清洗上游一坏就会“重试 → 又失败 →
+   * 又被回收”打成热循环（实测每 2 分钟一轮 LLM 调用 + 新建 topic），
+   * 停在 error 下用户可以从 UI 手动 Re-clean，不会无限背井重跑。
+   *
+   * 单进程假设：多副本部署时兄弟进程的作业会被误判为孤儿，届时需
+   * 改成带心跳的时间判据或独立任务表。
+   *
+   * @returns {Promise<number>} 回收条数
+   */
+  async _reapOrphanCleaningStandards() {
+    const AppStandard = this._appStandard();
+    const active = this._activeCleaningSet();
+    const stuck = await AppStandard.findAll({
+      where: { anchor_build_status: ANCHOR_BUILD_STATUS.PROCESSING },
+      attributes: ['id', 'standard_code'],
+      raw: true,
+    });
+
+    let reaped = 0;
+    for (const s of stuck) {
+      if (active.has(s.id)) continue;
+      const [affected] = await AppStandard.update(
+        {
+          anchor_build_status: ANCHOR_BUILD_STATUS.ERROR,
+          last_anchor_build_error: '服务重启导致清洗中断，请手动重新清洗',
+          updated_at: new Date(),
+        },
+        {
+          where: {
+            id: s.id,
+            anchor_build_status: ANCHOR_BUILD_STATUS.PROCESSING,
+          },
+        },
+      );
+      if (!affected) continue;
+      reaped++;
+      logger.warn(
+        `[standard-mgr] 回收中断的清洗: standard=${s.standard_code || s.id} processing -> error`
+      );
+    }
+    return reaped;
+  }
+
+  /**
    * R14-2：原子锁 — 条件 UPDATE，只有 pending/error/done 才允许置 processing。
    * 避免 check-then-set 竞态导致同一标准被两个清洗会话同时处理。
    *
@@ -1988,6 +2155,40 @@ class StandardMgrService {
       throw err;
     }
 
+    // 2. 并发上限（唯一入口卡位）：清洗会话是多轮长流式任务，一次提交几十篇
+    // 会把它们全排在 LLM 闸门后面，而超时计时从提交就走，导致“排队 ≠ 失败”
+    // 被误判成超时。这里不启动，留在 pending 交给 onboard watcher 按上限放量。
+    const cleanCap = (() => {
+      const raw = parseInt(process.env.STANDARD_CLEAN_CONCURRENCY, 10);
+      return Number.isFinite(raw) && raw > 0 ? raw : 2;
+    })();
+    if (activeCleaningJobs.size >= cleanCap) {
+      // 标成 pending 等放量；error/done 直接排队的条目否则不会被 watcher 捣到
+      await this._appStandard().update(
+        {
+          anchor_build_status: ANCHOR_BUILD_STATUS.PENDING,
+          last_anchor_build_error: null,
+          updated_at: new Date(),
+        },
+        {
+          where: {
+            id: standardId,
+            anchor_build_status: {
+              [Op.in]: [
+                ANCHOR_BUILD_STATUS.PENDING,
+                ANCHOR_BUILD_STATUS.ERROR,
+                ANCHOR_BUILD_STATUS.DONE,
+              ],
+            },
+          },
+        },
+      );
+      logger.info(
+        `[standard-mgr] 清洗排队（已达并发上限 ${cleanCap}）: standard=${standardId}`
+      );
+      return { accepted: true, deferred: true, reason: '清洗队列已满，已排队等待后台放量' };
+    }
+
     // 2. 原子锁（R14-2）
     const locked = await this.tryLockForCleaning(standardId);
     if (!locked) {
@@ -2019,6 +2220,9 @@ class StandardMgrService {
     }
 
     // 5. 异步执行清洗，不阻塞响应
+    // 登记表用于识别“上一代进程遗留的 processing”（见 _reapOrphanCleaningStandards）
+    const activeCleaning = this._activeCleaningSet();
+    activeCleaning.add(standardId);
     this._runCleaningAsync({
       chatService,
       userId,
@@ -2030,6 +2234,8 @@ class StandardMgrService {
       lastAnchorBuildAt: standard.last_anchor_build_at,
     }).catch(err => {
       logger.error(`[standard-mgr] runCleaningPipeline async error for ${standardId}: ${err.message}`);
+    }).finally(() => {
+      activeCleaning.delete(standardId);
     });
 
     return { accepted: true };
@@ -2126,7 +2332,6 @@ class StandardMgrService {
        FROM app_standard AS s
        INNER JOIN documents AS d ON d.id = s.document_id
        WHERE s.anchor_build_status = ?
-         AND s.last_anchor_build_at IS NULL
          AND d.processing_status IN (?, ?)
        ORDER BY s.created_at ASC, s.id ASC`,
       [
@@ -2191,10 +2396,26 @@ class StandardMgrService {
    * @returns {Promise<{processed: number, cleaned: number, errored: number}>}
    */
   async triggerPendingOnboardedStandards({ chatService } = {}) {
-    const summary = { processed: 0, cleaned: 0, errored: 0 };
+    const summary = { processed: 0, cleaned: 0, errored: 0, reaped: 0 };
+    summary.reaped = await this._reapOrphanCleaningStandards();
     const standards = await this.findStandardsAwaitingDocument();
 
+    // 清洗并发封顶：一篇标准的清洗是几十轮长流式会话，全量入队会把闸门
+    // 排成积压（与文档流水线同构的问题）。多出的下轮再捣。
+    const cleanCap = (() => {
+      const raw = parseInt(process.env.STANDARD_CLEAN_CONCURRENCY, 10);
+      return Number.isFinite(raw) && raw > 0 ? raw : 2;
+    })();
+    let inFlight = this._activeCleaningSet().size;
+    if (inFlight >= cleanCap) {
+      return { ...summary, skipped_capacity: standards.length };
+    }
+
     for (const standard of standards) {
+      if (inFlight >= cleanCap) {
+        summary.deferred = (summary.deferred || 0) + 1;
+        continue;
+      }
       summary.processed++;
       try {
         if (standard.processing_status === 'error') {
@@ -2218,6 +2439,7 @@ class StandardMgrService {
         });
         if (pipeResult?.accepted) {
           summary.cleaned++;
+          inFlight++;
         } else {
           logger.info(
             `[standard-mgr] onboard cleaning already in progress, ` +
@@ -2308,6 +2530,9 @@ class StandardMgrService {
       );
 
       // ── 5. 驱动 AgentLoop（带超时） ──
+      // 内部发起的会话没有 HTTP 请求体，run 身份得自己带：erix 拿它当 transcript 的
+      // request_id，缺了会让每轮对话落库失败（:runId 无值）。
+      const cleaningRequestId = `stdclean_${Utils.newID(20)}`;
       const result = await new Promise((resolve) => {
         let settled = false;
         const timeoutId = setTimeout(() => {
@@ -2321,6 +2546,10 @@ class StandardMgrService {
             expert_id: expertId,
             content,
             session,
+            request_id: cleaningRequestId,
+            // 机器会话不需要人格反思：反思是非流式长请求，必被上游 120s 硬顶掉，
+            // 每轮白耗一次并发配额与 token
+            disable_reflection: true,
             // R20: 应用级配置模型覆盖专家默认模型（null 时由 chatService 回退）
             model_id: modelId || undefined,
           },
