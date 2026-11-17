@@ -304,6 +304,15 @@ class ApiServer {
     this.db = new Database(dbConfig);
     await this.db.connect();
 
+    // 把 db 交给 BaseLLM，让它能读到系统设置里的 task_timeout。
+    // 此前 setBaseLlmDb() 全仓库无人调用，_baseLlmDb 永远是 null，
+    // 任何没显式传 timeout 的 LLM 调用一律回退到 DEFAULT_TIMEOUT=120s（而不是
+    // 配置的 task_timeout=300s），长请求在 120s 被掉 ECONNRESET 后反复重试。
+    // 用动态 import：静态引入 base-llm 会和 server/index.js 形成循环依赖，
+    // 触发 "Cannot access 'setBaseLlmDb' before initialization"（启动即崩，exit 1）。
+    const { setBaseLlmDb } = await import('../lib/chat/base-llm.js');
+    setBaseLlmDb(this.db);
+
     // 检查表是否存在，不存在则运行初始化脚本
     const tablesExist = await this.checkTablesExist();
     if (!tablesExist) {
@@ -403,9 +412,6 @@ class ApiServer {
 
     const systemSettingService = getSystemSettingService(this.db);
     const appConfig = await systemSettingService.getAppConfig();
-
-    const { setBaseLlmDb } = await import('../lib/chat/base-llm.js');
-    setBaseLlmDb(this.db);
     
     process.env.ATTACHMENT_BASE_PATH = appConfig.attachment_base_path || './data/attachments';
     process.env.TEXT_FILTER_MAX_LENGTH = String(appConfig.text_filter_max_length || 50000);
@@ -868,7 +874,7 @@ class ApiServer {
       database: process.env.DB_NAME,
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
-      connectionLimit: 10,
+      connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT, 10) || 10,
     };
   }
 
