@@ -2536,7 +2536,7 @@ class StandardMgrService {
       const result = await new Promise((resolve) => {
         let settled = false;
         const timeoutId = setTimeout(() => {
-          if (!settled) { settled = true; resolve({ ok: false, error: '清洗超时（30 分钟）' }); }
+          if (!settled) { settled = true; resolve({ ok: false, error: `清洗超时（${Math.round(CLEAN_TIMEOUT_MS / 60000)} 分钟）` }); }
         }, CLEAN_TIMEOUT_MS);
 
         chatService.streamChat(
