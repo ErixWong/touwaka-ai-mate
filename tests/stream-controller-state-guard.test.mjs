@@ -81,7 +81,7 @@ function seedRow(overrides = {}) {
  *   · 只 SET `values` 里**真的出现**的列（values 不带 status 时 status 不可能被改）。
  * `findOne` 返回**副本**：否则 requestStore 会缓存住同一个对象引用，「缓存没被污染」会被假绿。
  */
-function createFakeDb(rows = []) {
+function createFakeDb(rows = [], { changedRows = false } = {}) {
   const table = new Map(rows.map((row) => [row.request_id, { ...row }]));
   const calls = { update: [], findOne: [] };
 
@@ -107,10 +107,17 @@ function createFakeDb(rows = []) {
         const matched = statusCondition === undefined
           || (Array.isArray(allowed) ? allowed.includes(row.status) : statusCondition === row.status);
         if (matched) {
+          // #1303 跟进（缺陷 A 的用例需要）：MySQL 驱动的 Model.update() 返回的是
+          // **changed rows** 而不是 matched rows —— SET 的值与现值逐项相同时影响行数就是 0
+          // （updated_at 列只到秒，同一秒内的重复写视为「未变」，故这里不参与比较）。
+          const changed = !changedRows
+            || Object.entries(values).some(
+              ([column, value]) => column !== 'updated_at' && !Object.is(row[column], value)
+            );
           for (const [column, value] of Object.entries(values)) {
             row[column] = value;
           }
-          affected = 1;
+          affected = changed ? 1 : 0;
         }
       }
       calls.update.push({ values: { ...values }, options: { where: { ...where } }, affected });
@@ -141,8 +148,8 @@ function createFakeDb(rows = []) {
   return db;
 }
 
-function createController({ rows = [], connected = true } = {}) {
-  const db = createFakeDb(rows);
+function createController({ rows = [], connected = true, changedRows = false } = {}) {
+  const db = createFakeDb(rows, { changedRows });
   const chatService = {
     streamChat: async () => {},
     abortRequest: async () => true,
@@ -438,4 +445,142 @@ test('记录不存在时不写库、返回 null（守卫改动没引入新的空
   assert.equal(updated, null);
   assert.equal(db.calls.update.length, 0, '查不到记录时一条 UPDATE 都不许发');
   assert.equal(controller.requestStore.has('req_missing'), false);
+});
+
+// ================================================================ #1303 跟进（两个残余缺陷）
+//
+// 缺陷 A：MySQL 驱动下 `Model.update()` 的影响行数是 **changed rows**，不是 matched rows。
+//         守卫其实命中、但要写的值与现值完全相同（updated_at 列只到秒 ⇒ 同一秒内不变）时
+//         同样返回 0 ⇒ 旧实现把「值没变」误判成「守卫拒绝」。
+// 缺陷 B：`_getRequestRecord()` 是**缓存优先**读，而 `_updateRequestRecord` 过去用本次调用
+//         开头读到的快照整体 `requestStore.set()`：期间 `stopRequest` 写进缓存的 stopped
+//         会被快照里的 running 盖回 ⇒ DB 已 stopped、缓存说 running ⇒ retry 照旧 409。
+
+test('缺陷 A 正例：守卫命中但 UPDATE 影响 0 行（changed rows）⇒ 仍算已推进、不补写、缓存同步', async () => {
+  logLines.debug.length = 0;
+  const startedAt = new Date().toISOString();
+  const { controller, db, table } = createController({
+    // 现值与要写的值逐项相同 ⇒ 假 db 在守卫命中的前提下也返回 [0]（模拟 MySQL 语义）
+    rows: [seedRow({ status: 'running', topic_id: 'topic_new', started_at: startedAt })],
+    changedRows: true,
+  });
+
+  const patch = { status: 'running', topic_id: 'topic_new', started_at: startedAt };
+  const updated = await controller._updateRequestRecord('req_1', patch, {
+    onlyFromStatuses: ['accepted', 'running'],
+  });
+
+  assert.equal(db.calls.update.length, 1, '只该发一条带守卫的 UPDATE');
+  assert.equal(db.calls.update[0].affected, 0, '假 db 确实在模拟 changed rows（值相同 ⇒ 0 行）');
+  assert.ok(updated, '值未变化不是「守卫拒绝」：必须返回记录而不是 null');
+  assert.equal(updated.status, 'running');
+  assert.equal(controller.requestStore.get('req_1').status, 'running', '守卫命中就要同步缓存');
+  assert.ok(
+    logLines.debug.some((line) => line.includes('值未变化') && line.includes('req_1')),
+    `要留下「值未变化，视为已推进」的 debug 痕迹：${JSON.stringify(logLines.debug)}`
+  );
+
+  const advanced = await controller._transitionRequestStatus('req_1', patch, {
+    onlyFromStatuses: ['accepted', 'running'],
+  });
+  assert.equal(advanced, true, '守卫命中（只是值没变）不许返回假 false');
+  assert.equal(db.calls.update.length, 2, '不许因为假的「守卫未命中」再补发一条 UPDATE');
+  assert.ok(
+    db.calls.update.every((call) => 'status' in call.values),
+    '两条都必须是带 status 的守卫写（出现不含 status 的那条就是补写）'
+  );
+  assert.equal(table.get('req_1').status, 'running');
+});
+
+test('缺陷 A 反例：DB 现值 stopped ⇒ 真未命中，返回 null、缓存仍是 stopped、走不带 status 的补写', async () => {
+  logLines.debug.length = 0;
+  const { controller, db, table } = createController({
+    rows: [seedRow({ status: 'stopped', topic_id: 'topic_old', error_message: '请求已停止' })],
+  });
+  await controller._getRequestRecord('req_1');   // 先让缓存里有一条 stopped
+
+  const advanced = await controller._transitionRequestStatus('req_1', {
+    status: 'running',
+    topic_id: 'topic_new',
+  }, { onlyFromStatuses: ['accepted', 'running'] });
+
+  assert.equal(advanced, false, '现值是终态 ⇒ 真未命中，返回 false');
+  assert.equal(table.get('req_1').status, 'stopped', 'DB 状态不许被倒写');
+  assert.equal(table.get('req_1').topic_id, 'topic_new', '守卫只拦状态：topic_id 仍要落库');
+  assert.equal(controller.requestStore.get('req_1').status, 'stopped', '缓存不许被 running 污染');
+  assert.ok(
+    db.calls.update
+      .filter((call) => call.values.status === 'running')
+      .every((call) => call.options.where.status !== undefined && call.affected === 0),
+    'status→running 只许出现在「带守卫且判定未命中」的那次尝试里，不许落库'
+  );
+  assert.ok(
+    db.calls.update.some((call) => !('status' in call.values) && call.values.topic_id === 'topic_new'),
+    `必须走「不带 status」的补写通路：${JSON.stringify(db.calls.update.map((c) => Object.keys(c.values)))}`
+  );
+  assert.ok(
+    logLines.debug.some((line) => line.includes('跳过 status→running') && line.includes('req_1')),
+    '真未命中的 debug 痕迹保持原样（现有用例钉着这句文案）'
+  );
+});
+
+test('缺陷 B 竞态：helper 读完快照后 stopRequest 才把缓存改成 stopped ⇒ 缓存必须停在 stopped', async () => {
+  const { controller, db, table } = createController({ rows: [seedRow({ status: 'running' })] });
+  await controller._getRequestRecord('req_1');   // 快照来自缓存（running）
+  assert.equal(controller.requestStore.get('req_1').status, 'running');
+
+  const fakeUpdate = controller.ChatRequest.update.bind(controller.ChatRequest);
+  let injected = false;
+  controller.ChatRequest.update = async (values, options) => {
+    if (!injected) {
+      injected = true;
+      // stopRequest 在「helper 读完快照之后、UPDATE 落地之前」把缓存改成 stopped
+      controller.requestStore.set('req_1', {
+        ...controller.requestStore.get('req_1'),
+        status: 'stopped',
+      });
+    }
+    return fakeUpdate(values, options);
+  };
+
+  const updated = await controller._updateRequestRecord('req_1', { user_message_id: 'msg_user_7' });
+
+  assert.ok(updated && typeof updated === 'object', '返回值语义不变：仍是合并后的记录');
+  assert.equal(updated.user_message_id, 'msg_user_7');
+  assert.equal(
+    controller.requestStore.get('req_1').status,
+    'stopped',
+    '缓存不许被开头读到的 running 快照盖回（#1303 验收实测：缓存 running ⇒ retry 照样 409）'
+  );
+  assert.ok(
+    db.calls.update.every((call) => call.values.status !== 'running'),
+    `这次写不许把 DB 的 status 改成 running：${JSON.stringify(db.calls.update.map((c) => Object.keys(c.values)))}`
+  );
+  assert.equal(table.get('req_1').status, 'running', 'DB 侧本来还是 running（stop 的 DB 写尚未落地）');
+  assert.equal(table.get('req_1').user_message_id, 'msg_user_7', '非状态字段照常落库');
+});
+
+test('缺陷 B 配套：缓存里没有该条且 patch 不含 status ⇒ 不回填陈旧快照（返回记录本身）', async () => {
+  const { controller, db } = createController({ rows: [seedRow({ status: 'stopped' })] });
+
+  const fakeUpdate = controller.ChatRequest.update.bind(controller.ChatRequest);
+  let injected = false;
+  controller.ChatRequest.update = async (values, options) => {
+    if (!injected) {
+      injected = true;
+      controller.requestStore.delete('req_1');   // 写库之前缓存条目失效/被清掉
+    }
+    return fakeUpdate(values, options);
+  };
+
+  const updated = await controller._updateRequestRecord('req_1', { user_message_id: 'msg_user_8' });
+
+  assert.ok(updated && typeof updated === 'object', '返回值仍是记录对象');
+  assert.equal(updated.status, 'stopped');
+  assert.equal(db.calls.update.length, 1);
+  assert.equal(
+    controller.requestStore.has('req_1'),
+    false,
+    '本次没有权威 status ⇒ 不许把开头快照的 status 塞回缓存，让下一次读回落到 DB'
+  );
 });
