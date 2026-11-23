@@ -544,7 +544,37 @@ class StreamController {
     }
   }
 
-  async _updateRequestRecord(request_id, patch) {
+  /**
+   * 更新 chat_request 记录：读整条（缓存优先）→ 合并 patch → 整行覆盖写。
+   *
+   * #1303 两条语义（都只为「终态不可被倒写」服务）：
+   *
+   * 1. `options.onlyFromStatuses`（**原子条件更新**，不是读后判断）：给 where 追加
+   *    `status IN (...)`，用影响行数裁决。命中 0 行 = DB 当前状态不在允许集合里
+   *    （典型是 stopRequest 已抢先收口成 stopped）⇒ 跳过状态推进：
+   *      · **不写 requestStore**（否则内存说 running、DB 说 stopped，缓存优先读继续撒谎）；
+   *      · 返回 null，调用方据此补写被守卫挡掉的其它合法字段；
+   *      · 不抛异常、不打 error/warn（这是正常竞态），只留 debug 痕迹。
+   *    必须在 SQL 里裁决：本 helper 自身是 read-modify-write，在外面「先读再决定」仍然留 TOCTOU。
+   * 2. patch **不含 `status` 键**时，SET 里**排除 status 列**（where 也不加 status 条件）。
+   *    整行覆盖写会把缓存里的 status 一并写回，于是「只补 user_message_id」的调用
+   *    也能把 stopped 复活成 running —— 这条把该通路彻底堵死（requestStore 的内存合并照旧）。
+   *
+   * 默认（不传 options）**无守卫**，行为与改动前逐字一致：终态写（completed/failed/stopped）
+   * 必须走无守卫路径，否则执行管线自己收不了口。守卫是**按调用点选择**的。
+   *
+   * 语义变更（#1303，与 stopRequest 注释对照阅读）：running 推进被条件化之后，
+   * `stopRequest()` 的乐观收口从「可能被在跑的管线写回」变成**权威**。
+   * 于是 DB `status='stopped'` 的含义是「**停止已生效，但管线可能仍在收尾**」，
+   * 不再是「管线已退出」。**不要拿 `status='stopped'` 判断进程是否空闲**
+   * （空闲与否看 `activeRequests` 的 runtime 相位，那里才有 recovering/stopping）。
+   *
+   * @param {string} request_id
+   * @param {object} patch - 要改的字段；不含 status 时 status 列不参与 UPDATE
+   * @param {{ onlyFromStatuses?: string[] }} [options] - 状态迁移守卫（可选，默认无守卫）
+   * @returns {Promise<object|null>} 合并后的记录；守卫未命中（或记录不存在）时为 null
+   */
+  async _updateRequestRecord(request_id, patch, options = {}) {
     const existing = await this._getRequestRecord(request_id);
     if (!existing) return null;
 
@@ -554,7 +584,7 @@ class StreamController {
       updated_at: new Date().toISOString(),
     };
 
-    await this.ChatRequest.update({
+    const updates = {
       original_request_id: next.original_request_id,
       topic_id: next.topic_id,
       user_id: next.user_id,
@@ -570,13 +600,93 @@ class StreamController {
       started_at: next.started_at,
       completed_at: next.completed_at,
       updated_at: next.updated_at,
-    }, {
-      where: { request_id },
-    });
+    };
 
-    this.requestStore.set(request_id, next);
+    // #1303 语义 2：patch 没带 status 就不许 SET status（缓存里的 status 不许复活终态）
+    const statusInPatch = patch !== null
+      && typeof patch === 'object'
+      && Object.prototype.hasOwnProperty.call(patch, 'status');
+    if (!statusInPatch) {
+      delete updates.status;
+    }
+
+    const where = { request_id };
+    // #1303 语义 1：只有「本次确实在写 status」时条件才有意义（patch 不含 status 时
+    // 加了条件只会让一次合法的非状态写凭空丢行）。
+    const onlyFromStatuses = statusInPatch && Array.isArray(options?.onlyFromStatuses) && options.onlyFromStatuses.length > 0
+      ? options.onlyFromStatuses
+      : null;
+    if (onlyFromStatuses) {
+      where.status = { [this.db.Op.in]: onlyFromStatuses };
+    }
+
+    // Sequelize Model.update() 返回 [affectedCount]：这就是原子裁决的结果
+    const [affectedCount] = await this.ChatRequest.update(updates, { where });
+
+    if (onlyFromStatuses && affectedCount === 0) {
+      // #1303 跟进（缺陷 A）：影响 0 行**不能**直接当成「守卫拒绝」。MySQL 驱动下
+      // `Model.update()` 返回的影响行数是 **changed rows**、不是 matched rows：要写的值与现值
+      // 逐项相同时（典型是 status 已是 running、`updated_at` 列只到秒、同一秒内重复推进）
+      // 守卫其实命中了却照样报 0 行（真机 12 轮压测里约 20 次），旧判定会让
+      // `_transitionRequestStatus` 返回假 false、并多发一条补写 UPDATE。
+      // 守卫本身仍是在 SQL 里裁决的，这里只是给「0 行」归因：补读一次 DB 现值做三分。
+      const fresh = await this.ChatRequest.findOne({ where: { request_id }, raw: true });
+      if (!fresh || !onlyFromStatuses.includes(fresh.status)) {
+        // 真·守卫未命中：现值不在允许集合（典型是 stopRequest 已收口成 stopped），或行已被删
+        logger.debug(
+          `[StreamController] 跳过 status→${next.status}：当前状态不在 [${onlyFromStatuses.join(', ')}] 内` +
+          `（多为 stopRequest 已收口），不动 requestStore: ${request_id}`
+        );
+        return null;
+      }
+      // 守卫命中、只是值没变 ⇒ 视为已推进，继续往下走缓存同步
+      logger.debug(
+        `[StreamController] status→${next.status} 值未变化，视为已推进` +
+        `（MySQL changed rows 语义下影响 0 行，DB 现值本就是 ${fresh.status}）: ${request_id}`
+      );
+    }
+
+    // #1303 跟进（缺陷 B）：缓存必须跟着 DB 走，**不许**用本次调用开头读到的快照整行覆盖。
+    // `_getRequestRecord()` 是缓存优先读，缓存里的陈旧 status 会让 retry 的 409 判据与
+    // getRequestStatus 继续读到已被倒写的状态（#1303 验收实测：DB=stopped、cache=running ⇒ 仍 409）。
+    // DB 写与缓存写**不是一个原子动作**：这中间 stopRequest 之类别的写可能已经落进缓存，
+    // 所以只做「把本次 patch 就地并入」，绝不整行覆盖；返回值仍是 next（签名与类型不变）。
+    const cached = this.requestStore.get(request_id);
+    if (cached) {
+      // patch 不含 status 时 status 键根本不在 patch 里 ⇒ 缓存里的 status 原样保留（缺陷 B 止血点）
+      Object.assign(cached, patch, { updated_at: next.updated_at });
+    } else if (statusInPatch) {
+      // 缓存里没有该条，但本次确实在写 status ⇒ status 是权威值，可以整条落缓存
+      this.requestStore.set(request_id, next);
+    } else {
+      // 既没有该条、本次又没有权威 status：next.status 只是开头那次读到的快照，可能已陈旧
+      // ⇒ 不回填缓存，让下一次读回落到 DB
+      this.requestStore.delete(request_id);
+    }
     this._cleanupRequestStore();
     return next;
+  }
+
+  /**
+   * #1303：带状态守卫地推进 status，且**守卫不命中时不丢其它字段**。
+   *
+   * `WHERE ... AND status IN (...)` 命中 0 行会整条 UPDATE 一起跳过，于是同一 patch 里
+   * 的 topic_id / started_at / error_message 也会被顺手吃掉（话题归组、耗时统计随之坏掉）。
+   * 所以状态与其它字段分开写：先带守卫写状态（含其余字段），没命中再用**不含 status** 的
+   * patch 补写其余字段（`_updateRequestRecord` 的语义 2 保证这次补写绝不碰 status 列）。
+   *
+   * @returns {Promise<boolean>} true=状态已推进；false=已被终态挡住（终态优先）
+   */
+  async _transitionRequestStatus(request_id, patch, options = {}) {
+    const updated = await this._updateRequestRecord(request_id, patch, options);
+    if (updated) return true;
+
+    const rest = { ...patch };
+    delete rest.status;
+    if (Object.keys(rest).length > 0) {
+      await this._updateRequestRecord(request_id, rest);
+    }
+    return false;
   }
 
   _cleanupRequestStore() {
@@ -945,12 +1055,21 @@ class StreamController {
     logger.info(`Broadcasting to ${userConnections.length} connection(s) for user: ${user_id}`);
     const runtimeState = this._createRuntimeState(request_id, { expert_id, user_id });
     this._transitionRuntimeState(request_id, RUNTIME_PHASE.RUNNING);
-    await this._updateRequestRecord(request_id, {
+    const startedAt = new Date().toISOString();
+    // #1303：status→running 必须是**条件更新**（只从 accepted/running 出发）。stopRequest()
+    // 可能已经抢先收口成 stopped，那之后的状态推进一律作废（终态不可倒写）；
+    // 但 topic_id / error_message / started_at 是合法字段，守卫不命中时仍要落库（helper 里分开写）。
+    const statusAdvanced = await this._transitionRequestStatus(request_id, {
       status: 'running',
       topic_id,
       error_message: null,
-      started_at: new Date().toISOString(),
+      started_at: startedAt,
+    }, {
+      onlyFromStatuses: ['accepted', 'running'],
     });
+    if (!statusAdvanced) {
+      logger.debug(`[StreamController] 状态未推进到 running（已被终态收口或记录已不存在），其余字段已补齐: ${request_id}`);
+    }
 
     try {
       // 使用 ChatService 处理流式对话
@@ -980,13 +1099,39 @@ class StreamController {
               topic_id: delta.topic_id,
               is_new_topic: delta.is_new_topic || false
             });
-            this._updateRequestRecord(request_id, {
+            const startTopicId = delta.topic_id || topic_id;
+            // #1303：本处就是「点中止后立刻重试 ⇒ 409」的主因——一个**延迟到达、且没被
+            // await** 的 start delta 能把 stopRequest 刚写的 stopped 复活成 running。
+            // 它必须在 SQL 里带状态守卫，且 topic_id 不许被守卫顺手吃掉。
+            //
+            // onDelta 是**同步回调**：全仓调用方都是 `onDelta?.({...})`（lib/agent/agent-loop.js、
+            // lib/tool-calling-executor.js、lib/llm-kit-adapters/provider-adapter.js 等），
+            // 无人 `await onDelta`，所以这里**无法真 await**（改了签名也没人接）。
+            // 因此显式接住 Promise 并降级成 warn：写库失败不许拖挂执行管线，
+            // 也不许留「异常静默消失」的裸 fire-and-forget。
+            this._transitionRequestStatus(request_id, {
               status: 'running',
-              topic_id: delta.topic_id || topic_id,
+              topic_id: startTopicId,
+            }, {
+              onlyFromStatuses: ['accepted', 'running'],
+            }).catch((error) => {
+              logger.warn(
+                `[StreamController] start delta 落库失败（不阻断流；状态收口由 onComplete/onError/stopRequest 负责）: ${error.message}`,
+                { request_id }
+              );
             });
           } else if (delta.type === 'user_message_saved') {
+            // #1303：这个 patch 不含 status —— 改动前它会整行覆盖写，把缓存里的 status
+            // （可能已是 stopped）一起写回 DB，等于「只补个 message_id 却能复活状态」。
+            // 现在 patch 不含 status 时 status 列直接不进 SET（见 _updateRequestRecord 语义 2）。
+            // 同 onDelta 的 start 分支：同步回调里无法 await，显式接住 Promise，不留裸 fire-and-forget。
             this._updateRequestRecord(request_id, {
               user_message_id: delta.message_id || existing_user_message_id || null,
+            }).catch((error) => {
+              logger.warn(
+                `[StreamController] user_message_saved 落库失败（不阻断流）: ${error.message}`,
+                { request_id }
+              );
             });
           } else if (delta.type === 'delta') {
             this._broadcastToConnections(expert_id, user_id, userConnections, 'delta', {
@@ -1146,6 +1291,15 @@ class StreamController {
    * 4. 统一进入 stopped：广播 stopped 事件 + DB 收口
    *
    * 返回值反映“request 是否已接受停止命令”，而非底层 socket 是否存在。
+   *
+   * #1303 语义变更（重要）：running 推进已改成条件更新（只从 accepted/running 出发），
+   * 本方法收尾那次 `status='stopped'` 收口（无守卫）因此从「可能被在跑的管线写回」
+   * 变成**权威**——它写完不会被迟到 delta 翻回 running。
+   * 代价是语义变了：DB `status='stopped'` 现在只意味着「**停止已生效**」，
+   * 管线**可能仍在收尾**（abort 是 best-effort，recovery backoff / 检查点之间的收尾还会跑一会儿）。
+   * **不要拿 `status='stopped'` 判断进程是否空闲**：空闲与否看 `activeRequests` 的 runtime
+   * 相位（那里才有 recovering/stopping，也才是真相源）；retry 的 409 判据同理，
+   * 它读的是「是否已接受停止」，不是「管线是否退出」。
    */
   async stopRequest(request_id, user_id) {
     const state = this._getRuntimeState(request_id);
