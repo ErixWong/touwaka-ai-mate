@@ -7,6 +7,12 @@
  *      且**没有**任何降级处置（不重试、不改策略、不改终局）。
  *
  * 引擎侧「策略真的生效」与 e2e 失败面见 `tests/agent/fold-strategy-contract.test.mjs`。
+ *
+ * issue #1307 —— 从「形状快照」改成「不变量」的原因：commit `06d8d46`（#1293）之后，
+ * 引擎新增 summarizer 超时/预算两格旋钮，本文件原来那条 `assert.deepEqual(context, {四格})`
+ * 加「键集合不多不少」是纯形状快照——引擎每加/删一格它就红，且红了也说不清"谁没消费这格"。
+ * 现把它拆成可判定不变量：三成员与入参逐一对应、键集合与登记表双向相等（加格须登记消费者）、
+ * 两格上限不变量（正整数 + 预算恒不短于单发）、以及到引擎源码里查接线证据。
  */
 
 import assert from 'node:assert/strict';
@@ -16,6 +22,7 @@ import {
   DEFAULT_FOLDING_STRATEGY,
   FOLDING_STRATEGY_ENV,
   FOLDING_STRATEGY_NAMES,
+  FOLD_SUMMARIZER_TIMEOUT_ENV,
   FoldingStrategyConfigError,
   INVALID_FOLDING_STRATEGY_CODE,
   buildFoldingContext,
@@ -77,21 +84,34 @@ test('#1277 非法值当场抛：点名收到的值 + 合法清单 + 环境变�
   }
 });
 
-test('#1277 buildFoldingContext：三个数据成员语义与取值一律不动，只多一格 strategy', () => {
-  const context = buildFoldingContext({
+// ── #1307：把原来的「形状快照」拆成可判定不变量（见文件头注释）──
+// config.folding.context 的键登记表：每个键注明**引擎侧消费者**。
+// 加/删一格是有意动作，必须同时改这张表并写明谁消费它，否则闸 2 就红。
+const EXPECTED_FOLDING_CONTEXT_KEYS = Object.freeze({
+  budgetTokens: 'erix-agent 折叠预算（compact 目标 token）',
+  keepRounds: 'erix-agent 折叠保留轮数',
+  stripHistoricalImages: 'erix-agent 折叠时是否剥离历史图片',
+  strategy: 'erix-agent 折叠策略选择（createFoldLlmStrategy / ErixAgent 装配）',
+  summarizerTimeoutMs: 'erix-agent 摘要器单发超时（src 内 provider-summarizer / assembly-validators / orchestrator 消费）',
+  summarizerBudgetMs: 'erix-agent 摘要器总预算（src 内 fold-llm / assembly-validators / orchestrator 消费）',
+});
+
+// 不变量 1：三成员（budgetTokens/keepRounds/stripHistoricalImages）取值与入参逐一对应（保留 #1277 原意）。
+test('#1307 buildFoldingContext：budgetTokens/keepRounds/stripHistoricalImages 三成员与入参逐一对应（#1277 原意）', () => {
+  const a = buildFoldingContext({
     budgetTokens: 300,
     keepRounds: 1,
     env: { [FOLDING_STRATEGY_ENV]: 'fold-statistical' },
   });
-  assert.deepEqual(context, {
-    budgetTokens: 300,
-    keepRounds: 1,
-    stripHistoricalImages: true,
-    strategy: 'fold-statistical',
-  });
-  assert.deepEqual(Object.keys(context).sort(),
-    ['budgetTokens', 'keepRounds', 'strategy', 'stripHistoricalImages'],
-    'config.folding.context 的键集合＝改造前三格 + strategy，不多不少');
+  assert.equal(a.budgetTokens, 300, 'budgetTokens 必须原样透传，不许被动到');
+  assert.equal(a.keepRounds, 1, 'keepRounds 必须原样透传，不许被动到');
+  assert.equal(a.stripHistoricalImages, true, '未显式传时默认 true（与改造前逐字一致）');
+  assert.equal(a.strategy, 'fold-statistical', 'strategy 按环境变量配档');
+
+  const b = buildFoldingContext({ budgetTokens: 80000, keepRounds: 6, stripHistoricalImages: false, env: {} });
+  assert.equal(b.budgetTokens, 80000, 'budgetTokens 必须随入参变');
+  assert.equal(b.keepRounds, 6, 'keepRounds 必须随入参变');
+  assert.equal(b.stripHistoricalImages, false, 'stripHistoricalImages 是入参直通，不是恒 true 的常量');
 
   // 未设环境变量 ⇒ 默认档（这条正是「本单之前没有 strategy」的对照格）
   assert.equal(
@@ -102,6 +122,95 @@ test('#1277 buildFoldingContext：三个数据成员语义与取值一律不动�
   assert.throws(
     () => buildFoldingContext({ budgetTokens: 80000, keepRounds: 6, env: { [FOLDING_STRATEGY_ENV]: 'nope' } }),
     FoldingStrategyConfigError,
+  );
+});
+
+// 不变量 2：键集合与登记表双向相等；加格是有意识动作，要同时写明引擎侧消费者。
+test('#1307 buildFoldingContext：键集合与登记表双向相等（加格必须同时登记消费者）', () => {
+  const context = buildFoldingContext({ budgetTokens: 300, keepRounds: 1, env: {} });
+  const actualKeys = Object.keys(context).sort();
+  const expectedKeys = Object.keys(EXPECTED_FOLDING_CONTEXT_KEYS).sort();
+  const unregistered = actualKeys.filter((k) => !(k in EXPECTED_FOLDING_CONTEXT_KEYS));
+  const disappeared = expectedKeys.filter((k) => !(k in context));
+  assert.deepEqual(
+    actualKeys,
+    expectedKeys,
+    'config.folding.context 的键集合必须与登记表双向相等：' +
+      (unregistered.length ? `【有键未登记消费者】${unregistered.join(', ')}——` : '') +
+      (disappeared.length ? `【登记键已从 context 消失】${disappeared.join(', ')}——` : '') +
+      '给折叠上下文加/删一格是有意识动作，必须同时改 EXPECTED_FOLDING_CONTEXT_KEYS 并写明引擎侧谁消费。',
+  );
+});
+
+// 不变量 3：两格上限的不变量——都是正整数，且预算恒不短于单发超时。
+test('#1307 buildFoldingContext：summarizer 两格是正整数，且预算恒不短于单发超时', () => {
+  const ctx = buildFoldingContext({ budgetTokens: 300, keepRounds: 1, env: {} });
+  assert.ok(
+    Number.isInteger(ctx.summarizerTimeoutMs) && ctx.summarizerTimeoutMs > 0,
+    `summarizerTimeoutMs 必须是正整数毫秒，收到 ${ctx.summarizerTimeoutMs}`,
+  );
+  assert.ok(
+    Number.isInteger(ctx.summarizerBudgetMs) && ctx.summarizerBudgetMs > 0,
+    `summarizerBudgetMs 必须是正整数毫秒，收到 ${ctx.summarizerBudgetMs}`,
+  );
+  // 默认档：预算必须严格大于单发超时——预算要盖住「首发 + 超窗自愈」，等于单发就没自愈余量。
+  assert.ok(
+    ctx.summarizerBudgetMs > ctx.summarizerTimeoutMs,
+    `默认档预算必须严格大于单发超时（预算 ${ctx.summarizerBudgetMs} 应 > 超时 ${ctx.summarizerTimeoutMs}）：`
+      + '预算若不盖住单发 + 超窗自愈，单发还没跑完就被步骤死线砍掉。',
+  );
+
+  // env 把单发超时抬到 200000（大于默认预算 180000）⇒ 预算必须跟住单发，不能仍停在旧默认。
+  const raised = buildFoldingContext({
+    budgetTokens: 300,
+    keepRounds: 1,
+    env: { [FOLD_SUMMARIZER_TIMEOUT_ENV]: '200000' },
+  });
+  assert.ok(
+    raised.summarizerBudgetMs >= raised.summarizerTimeoutMs,
+    `单发超时抬到 200000 后，预算(${raised.summarizerBudgetMs}) 必须 >= 单发(${raised.summarizerTimeoutMs})——` +
+      '预算要跟住单发，不能被单发超时甩开。',
+  );
+});
+
+// 不变量 4：接线证据——两格必须在引擎源码里真有消费者（不是我们这层的死字段）。
+test('#1307 summarizerTimeoutMs / summarizerBudgetMs 在引擎源码里各有消费者（接线证据）', async () => {
+  const { readdir, readFile } = await import('node:fs/promises');
+  const srcRoot = new URL('../../node_modules/erix-agent/src/', import.meta.url);
+  const enginePkgUrl = new URL('../../node_modules/erix-agent/package.json', import.meta.url);
+  // 版本现读（用 fs 读 package.json，不 import 引擎内部模块——后者会 ERR_PACKAGE_PATH_NOT_EXPORTED）。
+  const engineVersion = JSON.parse(await readFile(enginePkgUrl, 'utf8')).version;
+
+  const files = [];
+  async function walk(dirUrl) {
+    for (const ent of await readdir(dirUrl, { withFileTypes: true })) {
+      // 目录 URL 必须带尾斜杠再拼接，否则 new URL 会把末段当文件名丢掉（src/tools 的子项会错拼成 src/…）。
+      if (ent.isDirectory()) await walk(new URL(ent.name + '/', dirUrl));
+      else if (ent.isFile() && ent.name.endsWith('.js')) files.push(new URL(ent.name, dirUrl));
+    }
+  }
+  await walk(srcRoot);
+
+  async function filesMentioning(token) {
+    const hits = [];
+    for (const fileUrl of files) {
+      const text = await readFile(fileUrl, 'utf8');
+      if (text.includes(token)) hits.push(decodeURIComponent(fileUrl.pathname));
+    }
+    return hits;
+  }
+  const timeoutConsumers = await filesMentioning('summarizerTimeoutMs');
+  const budgetConsumers = await filesMentioning('summarizerBudgetMs');
+
+  assert.ok(
+    timeoutConsumers.length >= 1,
+    `erix-agent ${engineVersion} 源码里必须至少 1 个文件消费 summarizerTimeoutMs，实测命中 ${timeoutConsumers.length} 个——` +
+      '若为 0 说明这格是我们这层的死字段，引擎根本不读它。',
+  );
+  assert.ok(
+    budgetConsumers.length >= 1,
+    `erix-agent ${engineVersion} 源码里必须至少 1 个文件消费 summarizerBudgetMs，实测命中 ${budgetConsumers.length} 个——` +
+      '若为 0 说明这格是我们这层的死字段，引擎根本不读它。',
   );
 });
 
