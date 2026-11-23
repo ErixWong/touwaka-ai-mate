@@ -624,14 +624,45 @@ class StreamController {
     const [affectedCount] = await this.ChatRequest.update(updates, { where });
 
     if (onlyFromStatuses && affectedCount === 0) {
+      // #1303 跟进（缺陷 A）：影响 0 行**不能**直接当成「守卫拒绝」。MySQL 驱动下
+      // `Model.update()` 返回的影响行数是 **changed rows**、不是 matched rows：要写的值与现值
+      // 逐项相同时（典型是 status 已是 running、`updated_at` 列只到秒、同一秒内重复推进）
+      // 守卫其实命中了却照样报 0 行（真机 12 轮压测里约 20 次），旧判定会让
+      // `_transitionRequestStatus` 返回假 false、并多发一条补写 UPDATE。
+      // 守卫本身仍是在 SQL 里裁决的，这里只是给「0 行」归因：补读一次 DB 现值做三分。
+      const fresh = await this.ChatRequest.findOne({ where: { request_id }, raw: true });
+      if (!fresh || !onlyFromStatuses.includes(fresh.status)) {
+        // 真·守卫未命中：现值不在允许集合（典型是 stopRequest 已收口成 stopped），或行已被删
+        logger.debug(
+          `[StreamController] 跳过 status→${next.status}：当前状态不在 [${onlyFromStatuses.join(', ')}] 内` +
+          `（多为 stopRequest 已收口），不动 requestStore: ${request_id}`
+        );
+        return null;
+      }
+      // 守卫命中、只是值没变 ⇒ 视为已推进，继续往下走缓存同步
       logger.debug(
-        `[StreamController] 跳过 status→${next.status}：当前状态不在 [${onlyFromStatuses.join(', ')}] 内` +
-        `（多为 stopRequest 已收口），不动 requestStore: ${request_id}`
+        `[StreamController] status→${next.status} 值未变化，视为已推进` +
+        `（MySQL changed rows 语义下影响 0 行，DB 现值本就是 ${fresh.status}）: ${request_id}`
       );
-      return null;
     }
 
-    this.requestStore.set(request_id, next);
+    // #1303 跟进（缺陷 B）：缓存必须跟着 DB 走，**不许**用本次调用开头读到的快照整行覆盖。
+    // `_getRequestRecord()` 是缓存优先读，缓存里的陈旧 status 会让 retry 的 409 判据与
+    // getRequestStatus 继续读到已被倒写的状态（#1303 验收实测：DB=stopped、cache=running ⇒ 仍 409）。
+    // DB 写与缓存写**不是一个原子动作**：这中间 stopRequest 之类别的写可能已经落进缓存，
+    // 所以只做「把本次 patch 就地并入」，绝不整行覆盖；返回值仍是 next（签名与类型不变）。
+    const cached = this.requestStore.get(request_id);
+    if (cached) {
+      // patch 不含 status 时 status 键根本不在 patch 里 ⇒ 缓存里的 status 原样保留（缺陷 B 止血点）
+      Object.assign(cached, patch, { updated_at: next.updated_at });
+    } else if (statusInPatch) {
+      // 缓存里没有该条，但本次确实在写 status ⇒ status 是权威值，可以整条落缓存
+      this.requestStore.set(request_id, next);
+    } else {
+      // 既没有该条、本次又没有权威 status：next.status 只是开头那次读到的快照，可能已陈旧
+      // ⇒ 不回填缓存，让下一次读回落到 DB
+      this.requestStore.delete(request_id);
+    }
     this._cleanupRequestStore();
     return next;
   }
