@@ -302,7 +302,7 @@ class AttachmentService {
       expires_at: expiresAt,
     });
 
-    logger.info(`[AttachmentService] generateToken: ${tokenStr} for ${sourceTag}:${sourceId}`);
+    logger.info(`[AttachmentService] generateToken for ${sourceTag}:${sourceId}`);
     return {
       token: tokenStr,
       url: `/attach/t/${tokenStr}`,
