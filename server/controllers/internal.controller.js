@@ -556,7 +556,8 @@ class InternalController {
           id: provider.id,
           name: provider.name,
           base_url: provider.base_url,
-          api_key: provider.api_key,
+          // Issue #1314：内部接口也不得明文返回密钥（provider.controller.js 已有同款脱敏）
+          api_key: provider.api_key ? `****${provider.api_key.slice(-4)}` : '',
           timeout: provider.timeout,
         } : null,
       });
