@@ -1015,7 +1015,7 @@ class AttachmentController {
 
       ctx.success(tokenResult);
       
-      logger.info(`[Attachment] generateToken: ${tokenResult.token} for ${source_tag}:${source_id}`);
+      logger.info(`[Attachment] generateToken for ${source_tag}:${source_id}`);
     } catch (error) {
       logger.error('[Attachment] generateToken error:', error);
       ctx.throw(error.status || 500, error.message);
