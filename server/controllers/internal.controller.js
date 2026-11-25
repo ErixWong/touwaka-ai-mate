@@ -351,15 +351,13 @@ class InternalController {
     }
 
     // 2. 检查 IP（只允许本地访问）
+    // 只认 ctx.ip：app.proxy 未开启时它取自 socket peer，客户端无法用
+    // X-Forwarded-For 等请求头伪造（Issue #1314）
     const clientIp = ctx.ip || ctx.request.ip;
     const localIps = ['::1', '::ffff:127.0.0.1', '127.0.0.1', 'localhost', '0.0.0.0'];
     const isLocalIp = localIps.includes(clientIp);
 
-    // 检查 X-Forwarded-For（Docker 桥接等场景）
-    const remoteAddress = ctx.request?.headers?.['x-forwarded-for'] || '';
-    const isForwardedLocal = remoteAddress.includes('127.0.0.1') || remoteAddress.includes('localhost');
-
-    if (!isLocalIp && !isForwardedLocal) {
+    if (!isLocalIp) {
       logger.warn(`Internal API access denied from IP: ${clientIp} (localhost only)`);
       return false;
     }
